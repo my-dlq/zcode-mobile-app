@@ -1,0 +1,26 @@
+*.iml
+.gradle
+/local.properties
+/.idea/
+.DS_Store
+build/
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# 本机 Android SDK 路径临时文件
+/inst_user_settings.tmp
+
+# 模拟器调试临时产物（截图/UI dump）
+/.debug-emulator/
+
+# 会话计划文件（一次性调试计划，不入库）
+/.zcode/plans/
+/.zcode/
+
+# 本机调试辅助脚本（硬编码 SDK/用户目录路径，依赖仓库外工具，不入库）
+/scripts/
+
+# AI 协作指令文件（含本机绝对路径与调试环境信息，不入库）
+/AGENTS.md

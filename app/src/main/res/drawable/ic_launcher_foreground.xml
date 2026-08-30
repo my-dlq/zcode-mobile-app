@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 外围发光圆角矩形 -->
+    <path
+        android:pathData="M30,24 L78,24 A12,12 0 0,1 90,36 L90,72 A12,12 0 0,1 78,84 L30,84 A12,12 0 0,1 18,72 L18,36 A12,12 0 0,1 30,24 Z"
+        android:fillColor="#1E293B"
+        android:strokeWidth="2"
+        android:strokeColor="#3B82F6"/>
+    <!-- Z 字母闪电科技形态 -->
+    <path
+        android:pathData="M34,36 L74,36 L44,60 L74,60 L74,72 L34,72 L64,48 L34,48 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="34"
+                android:startY="36"
+                android:endX="74"
+                android:endY="72"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#60A5FA"/>
+                <item android:offset="1.0" android:color="#2563EB"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- 远程无线波点指示 -->
+    <path
+        android:pathData="M76,32 A4,4 0 1,1 76,40 A4,4 0 1,1 76,32"
+        android:fillColor="#10B981"/>
+</vector>
