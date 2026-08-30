@@ -24,3 +24,10 @@ local.properties
 
 # AI 协作指令文件（含本机绝对路径与调试环境信息，不入库）
 /AGENTS.md
+
+# Release 签名密钥（严禁入库，泄露等于丢失发布身份）
+zcode-release.jks
+
+# 含签名密码的本地配置（已由 gradle.properties 持有真实值，不入库）
+gradle.properties
+!gradle.properties.example

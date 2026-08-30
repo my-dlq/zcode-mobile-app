@@ -1,0 +1,10 @@
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+android.nonTransitiveRClass=true
+kotlin.code.style=official
+
+# Release 签名配置（复制本文件为 gradle.properties 并填入真实值；gradle.properties 已被 .gitignore 忽略）
+# ZCODE_RELEASE_STORE_FILE=zcode-release.jks
+# ZCODE_RELEASE_STORE_PASSWORD=your_store_password
+# ZCODE_RELEASE_KEY_ALIAS=zcode
+# ZCODE_RELEASE_KEY_PASSWORD=your_key_password

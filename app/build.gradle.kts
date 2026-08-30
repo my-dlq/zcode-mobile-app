@@ -20,6 +20,15 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file(rootProject.file(properties["ZCODE_RELEASE_STORE_FILE"].toString()))
+            storePassword = properties["ZCODE_RELEASE_STORE_PASSWORD"].toString()
+            keyAlias = properties["ZCODE_RELEASE_KEY_ALIAS"].toString()
+            keyPassword = properties["ZCODE_RELEASE_KEY_PASSWORD"].toString()
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -27,6 +36,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
         }
         debug {
             isMinifyEnabled = false
