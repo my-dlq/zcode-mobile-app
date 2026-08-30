@@ -46,8 +46,13 @@ android {
 
     applicationVariants.all {
         outputs.all {
-            (this as com.android.build.gradle.internal.api.ApkVariantOutputImpl).outputFileName =
-                "zcode-mobile-app-v${versionName}-${buildType.name}.apk"
+            val baseName = "zcode-mobile-app-v${versionName}"
+            val fileName = if (buildType.name == "release") {
+                "$baseName.apk"
+            } else {
+                "$baseName-${buildType.name}.apk"
+            }
+            (this as com.android.build.gradle.internal.api.ApkVariantOutputImpl).outputFileName = fileName
         }
     }
 
