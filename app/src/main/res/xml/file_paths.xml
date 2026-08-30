@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="cache_images" path="images/" />
+    <!-- 应用内更新下载的 APK 存放目录（优先外部私有目录，回退内部存储） -->
+    <external-files-path name="apk" path="apk/" />
+    <files-path name="apk_internal" path="apk/" />
 </paths>

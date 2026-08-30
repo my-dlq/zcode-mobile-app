@@ -11,12 +11,20 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import ai.zcode.remote.R
 import ai.zcode.remote.data.model.RemoteConnection
+import ai.zcode.remote.data.model.UpdateInfo
 import ai.zcode.remote.data.repository.ConnectionRepository
+import ai.zcode.remote.data.repository.UpdateRepository
 import ai.zcode.remote.databinding.ActivityMainBinding
 import ai.zcode.remote.ui.remote.RemoteControlActivity
 import ai.zcode.remote.ui.scan.QrScanActivity
 import ai.zcode.remote.utils.ToastUtils
+import ai.zcode.remote.utils.UpdateChecker
 import ai.zcode.remote.utils.UrlParser
+import ai.zcode.remote.BuildConfig
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import android.os.Handler
+import android.os.Looper
 
 class MainActivity : AppCompatActivity() {
 
@@ -24,6 +32,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var repository: ConnectionRepository
     private lateinit var adapter: ConnectionAdapter
     private var clipboardUrl: String? = null
+    private val updateExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,6 +45,7 @@ class MainActivity : AppCompatActivity() {
         initRecyclerView()
         initListeners()
         handleIncomingIntent(intent)
+        checkForUpdate(manual = false)
     }
 
     override fun onResume() {
@@ -108,6 +119,10 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnAddManual.setOnClickListener {
             showAddDialog()
+        }
+
+        binding.btnCheckUpdate.setOnClickListener {
+            checkForUpdate(manual = true)
         }
 
         binding.btnEmptyScan.setOnClickListener {
@@ -188,5 +203,46 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.action_cancel, null)
             .show()
+    }
+
+    /**
+     * 检查更新（GitHub Releases）。
+     * manual=true 手动检查：结果无论有无都给出反馈；
+     * manual=false 启动静默检查：受悬浮面板「启动时检查更新」开关控制，
+     * 仅在发现未被忽略的新版本时弹窗，其余情况完全无感知。
+     */
+    private fun checkForUpdate(manual: Boolean) {
+        val updateRepository = UpdateRepository.getInstance(this)
+        if (!manual && !updateRepository.isAutoCheckEnabled()) return
+
+        updateExecutor.execute {
+            val info = UpdateChecker.checkLatestRelease()
+            mainHandler.post {
+                // Activity 可能已销毁（异步回调），避免泄漏与崩溃
+                if (isDestroyed || isFinishing) return@post
+
+                when {
+                    info == null -> {
+                        if (manual) ToastUtils.show(this, getString(R.string.toast_check_update_failed))
+                    }
+                    UpdateChecker.compareVersion(BuildConfig.VERSION_NAME, info.versionName) >= 0 -> {
+                        if (manual) ToastUtils.show(this, getString(R.string.toast_already_latest))
+                    }
+                    !manual && info.versionName == updateRepository.getIgnoredVersion() -> {
+                        // 静默模式下用户已忽略该版本，不打扰
+                    }
+                    else -> showUpdateDialog(info)
+                }
+            }
+        }
+    }
+
+    private fun showUpdateDialog(info: UpdateInfo) {
+        UpdateDialog.newInstance(info).show(supportFragmentManager, "UpdateDialog")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        updateExecutor.shutdownNow()
     }
 }

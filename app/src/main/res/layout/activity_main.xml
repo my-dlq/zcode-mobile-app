@@ -62,6 +62,16 @@
                 android:orientation="horizontal">
 
                 <ImageButton
+                    android:id="@+id/btnCheckUpdate"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/action_check_update"
+                    android:padding="10dp"
+                    android:src="@drawable/ic_update"
+                    app:tint="@color/primary_light" />
+
+                <ImageButton
                     android:id="@+id/btnScanQr"
                     android:layout_width="44dp"
                     android:layout_height="44dp"

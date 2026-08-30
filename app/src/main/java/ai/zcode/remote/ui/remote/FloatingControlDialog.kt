@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import ai.zcode.remote.R
+import ai.zcode.remote.data.repository.UpdateRepository
 import ai.zcode.remote.databinding.DialogFloatingMenuBinding
 
 class FloatingControlDialog : BottomSheetDialogFragment() {
@@ -80,6 +81,16 @@ class FloatingControlDialog : BottomSheetDialogFragment() {
         binding.menuItemClearCache.setOnClickListener {
             dismiss()
             onClearCacheListener?.invoke()
+        }
+
+        // 启动静默检查更新开关：直接落库持久化，行点击与 switch 自身都能切换
+        val updateRepository = UpdateRepository.getInstance(requireContext())
+        binding.switchAutoCheckUpdate.isChecked = updateRepository.isAutoCheckEnabled()
+        binding.switchAutoCheckUpdate.setOnCheckedChangeListener { _, isChecked ->
+            updateRepository.setAutoCheckEnabled(isChecked)
+        }
+        binding.menuItemAutoCheckUpdate.setOnClickListener {
+            binding.switchAutoCheckUpdate.toggle()
         }
 
         binding.menuItemBackHome.setOnClickListener {
