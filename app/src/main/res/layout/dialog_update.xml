@@ -90,7 +90,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/action_ignore_this_version"
-            android:textColor="@color/text_muted" />
+        android:textColor="@color/text_muted" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnLater"
@@ -98,14 +98,14 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/action_later"
-            android:textColor="@color/text_secondary" />
+        android:textColor="@color/text_secondary" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnUpdateNow"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="4dp"
-            android:backgroundTint="@color/primary"
+        android:backgroundTint="@color/primary"
             android:text="@string/action_update_now"
             android:textColor="@color/white"
             app:cornerRadius="10dp" />
@@ -117,7 +117,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/action_cancel_download"
-            android:textColor="@color/danger"
+        android:textColor="@color/danger"
             android:visibility="gone" />
     </LinearLayout>
 </LinearLayout>

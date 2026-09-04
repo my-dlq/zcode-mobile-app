@@ -1,7 +1,8 @@
 package ai.zcode.remote.ui.main
 
+import ai.zcode.remote.R
 import ai.zcode.remote.data.model.UpdateInfo
-import ai.zcode.remote.utils.UpdateChecker
+import ai.zcode.remote.utils.ToastUtils
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -123,25 +124,34 @@ class UpdateDownloader(private val context: Context) {
     /**
      * 拉起系统安装器。未授予「安装未知应用」权限时先跳转系统设置页，
      * 用户授权后需回到应用再次点击更新（onActivityResult 闭环成本高，此为简单可靠方案）。
+     *
+     * 注意：debug 包（ai.zcode.remote.debug）安装 release 包（ai.zcode.remote）是
+     * 两个不同包名之间的全新安装，不存在签名冲突，可以正常拉起安装器。
      */
     fun installApk(context: Context, apkFile: File) {
-        // debug 包名带 .debug 后缀，与 release 签名不一致，安装必然失败，提前拦截
-        if (ai.zcode.remote.BuildConfig.DEBUG) return
+        val apkUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apkFile)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
-            context.startActivity(
-                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
+            try {
+                context.startActivity(
+                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            } catch (e: Exception) {
+                ToastUtils.show(context, context.getString(R.string.toast_install_redirect_failed))
+            }
             return
         }
 
-        val apkUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apkFile)
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(apkUri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            ToastUtils.show(context, context.getString(R.string.toast_install_launch_failed))
         }
-        context.startActivity(intent)
     }
 
     private fun postError(onError: (String) -> Unit, message: String) {

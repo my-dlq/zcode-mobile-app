@@ -17,107 +17,77 @@
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            app:titleTextColor="@color/text_primary">
+            android:layout_height="68dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="10dp"
+                app:titleTextColor="@color/text_primary">
 
             <LinearLayout
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="match_parent"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
                 <ImageView
-                    android:layout_width="32dp"
-                    android:layout_height="32dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:contentDescription="@string/app_name"
                     android:src="@drawable/ic_launcher_foreground" />
 
-                <LinearLayout
+                <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/app_name"
-                        android:textColor="@color/text_primary"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Web 移动专属控制端"
-                        android:textColor="@color/text_muted"
-                        android:textSize="11sp" />
-                </LinearLayout>
+                    android:layout_marginStart="11dp"
+                    android:fontFamily="sans"
+                    android:text="@string/app_name"
+                    android:textColor="@color/text_primary"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
             </LinearLayout>
 
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="end"
-                android:layout_marginEnd="8dp"
-                android:orientation="horizontal">
-
-                <ImageButton
-                    android:id="@+id/btnCheckUpdate"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/action_check_update"
-                    android:padding="10dp"
-                    android:src="@drawable/ic_update"
-                    app:tint="@color/primary_light" />
-
-                <ImageButton
-                    android:id="@+id/btnScanQr"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/action_scan_qr"
-                    android:padding="10dp"
-                    android:src="@drawable/ic_scan"
-                    app:tint="@color/primary_light" />
-
-                <ImageButton
-                    android:id="@+id/btnAddManual"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/action_add_url"
-                    android:padding="10dp"
-                    android:src="@drawable/ic_add"
-                    app:tint="@color/primary_light" />
-            </LinearLayout>
+            <ImageButton
+                android:id="@+id/btnMenu"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end|center_vertical"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/menu_title"
+                android:padding="12dp"
+                android:src="@drawable/ic_menu"
+                app:tint="@color/text_primary" />
         </androidx.appcompat.widget.Toolbar>
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:clipToPadding="false"
         android:fillViewport="true"
+        android:overScrollMode="never"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:paddingStart="20dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="28dp">
 
             <!-- 剪贴板快速连接快捷卡片 (动态显示) -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardClipboardPrompt"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
+                android:layout_marginBottom="20dp"
                 android:visibility="gone"
                 app:cardBackgroundColor="@color/bg_surface"
-                app:cardCornerRadius="14dp"
+                app:cardCornerRadius="16dp"
                 app:cardElevation="0dp"
                 app:strokeColor="@color/primary"
-                app:strokeWidth="1.5dp"
+                app:strokeWidth="1dp"
                 tools:visibility="visible">
 
                 <LinearLayout
@@ -171,16 +141,18 @@
                         android:text="直连"
                         android:textColor="@color/white"
                         android:textSize="12sp"
-                        app:cornerRadius="8dp" />
+                        app:cornerRadius="10dp" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- 标题栏 -->
+            <!-- 列表标题只在存在连接时出现，首屏保持专注的扫码引导 -->
             <LinearLayout
+                android:id="@+id/connectionHeader"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:orientation="horizontal"
+                android:visibility="gone">
 
                 <TextView
                     android:layout_width="0dp"
@@ -188,53 +160,76 @@
                     android:layout_weight="1"
                     android:text="@string/title_connections"
                     android:textColor="@color/text_primary"
-                    android:textSize="16sp"
+                    android:textSize="18sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/tvConnectionCount"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:visibility="gone"
                     android:textColor="@color/text_muted"
                     android:textSize="13sp"
                     tools:text="共 1 台设备" />
             </LinearLayout>
 
-            <!-- 列表视图 -->
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvConnections"
+            <!-- 连接列表：卡片作为一个整体，条目内部只保留名称、时间、状态点和更多操作 -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardConnectionList"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:nestedScrollingEnabled="false"
-                tools:itemCount="2"
-                tools:listitem="@layout/item_connection" />
+                android:layout_marginTop="14dp"
+                android:visibility="gone"
+                app:cardBackgroundColor="@color/bg_surface"
+                app:cardCornerRadius="18dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/border_color"
+                app:strokeWidth="1dp"
+                tools:visibility="visible">
 
-            <!-- 空列表占位视图 -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvConnections"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clipToPadding="false"
+                    android:nestedScrollingEnabled="false"
+                    android:overScrollMode="never"
+                    tools:itemCount="3"
+                    tools:listitem="@layout/item_connection" />
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 初始界面：缩小后的传统扫码图标，整个引导区域可进入扫码页 -->
             <LinearLayout
                 android:id="@+id/layoutEmpty"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="48dp"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:contentDescription="@string/action_scan_qr"
+                android:focusable="true"
                 android:gravity="center"
+                android:minHeight="380dp"
                 android:orientation="vertical"
                 android:padding="24dp"
-                android:visibility="gone"
+                android:visibility="visible"
                 tools:visibility="visible">
 
                 <ImageView
-                    android:layout_width="80dp"
-                    android:layout_height="80dp"
-                    android:src="@drawable/ic_computer"
-                    app:tint="@color/text_muted" />
+                    android:layout_width="96dp"
+                    android:layout_height="96dp"
+                    android:background="@android:color/transparent"
+                    android:contentDescription="@string/action_scan_qr"
+                    android:padding="25dp"
+                    android:src="@drawable/ic_scan"
+                    app:tint="@color/primary" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
+                    android:layout_marginTop="22dp"
                     android:text="@string/empty_connections_title"
                     android:textColor="@color/text_primary"
-                    android:textSize="16sp"
+                    android:textSize="20sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -242,22 +237,9 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:gravity="center"
-                    android:lineSpacingExtra="4dp"
                     android:text="@string/empty_connections_hint"
                     android:textColor="@color/text_secondary"
-                    android:textSize="13sp" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnEmptyScan"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
-                    android:backgroundTint="@color/primary"
-                    android:text="@string/action_scan_qr"
-                    android:textColor="@color/white"
-                    app:cornerRadius="10dp"
-                    app:icon="@drawable/ic_scan"
-                    app:iconTint="@color/white" />
+                    android:textSize="14sp" />
             </LinearLayout>
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>

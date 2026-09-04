@@ -1,25 +1,70 @@
 <resources>
-    <string name="app_name">ZCode 远控</string>
-    <string name="title_connections">远程设备列表</string>
+    <string name="app_name">ZMobile</string>
+    <string name="title_connections">连接列表</string>
     <string name="subtitle_connections">轻松连接并管理您的 ZCode 工作区</string>
     
     <!-- 首页操作 -->
-    <string name="action_scan_qr">扫码连接</string>
-    <string name="action_add_url">添加连接</string>
+    <string name="action_scan_qr">扫描连接</string>
+    <string name="action_add_url">地址连接</string>
     <string name="action_paste_connect">剪贴板直连</string>
     <string name="action_connect">立即连接</string>
     <string name="action_edit">编辑</string>
     <string name="action_delete">删除</string>
-    <string name="action_set_default">设为默认</string>
-    <string name="action_cancel_default">取消默认</string>
     <string name="action_save">保存</string>
     <string name="action_cancel">取消</string>
     <string name="action_confirm">确定</string>
 
     <!-- 列表状态与空态 -->
-    <string name="empty_connections_title">暂无保存的远程设备</string>
-    <string name="empty_connections_hint">点击右上角「扫码」扫描电脑端 ZCode 二维码，或点击「添加连接」手动输入 URL</string>
-    <string name="default_badge">默认</string>
+    <string name="empty_connections_title">扫描连接</string>
+    <string name="empty_connections_hint">扫描电脑端二维码</string>
+
+    <!-- 首页菜单 -->
+    <string name="menu_title">打开菜单</string>
+    <string name="menu_scan_connect">扫描连接</string>
+    <string name="menu_address_connect">地址连接</string>
+    <string name="menu_settings">设置</string>
+    <string name="menu_about">关于</string>
+    <string name="menu_more_options">更多连接操作</string>
+
+    <!-- 设置 -->
+    <string name="settings_title">设置</string>
+    <string name="settings_section_display">显示与体验</string>
+    <string name="settings_fullscreen_title">全屏设置</string>
+    <string name="settings_fullscreen_summary">进入远程控制时默认使用沉浸式全屏</string>
+    <string name="settings_fullscreen_on">已开启沉浸式全屏</string>
+    <string name="settings_fullscreen_off">保持系统状态栏和导航栏显示</string>
+    <string name="settings_theme_title">主题设置</string>
+    <string name="settings_theme_light">亮色主题</string>
+    <string name="settings_theme_dark">暗色主题</string>
+    <string name="settings_section_app">应用</string>
+    <string name="settings_section_security">安全与隐私</string>
+    <string name="settings_update_title">更新设置</string>
+    <string name="settings_update_summary">启动检查更新</string>
+    <string name="settings_security_title">安全设置</string>
+    <string name="settings_security_summary_enabled">已开启安全验证</string>
+    <string name="settings_security_summary_disabled">未开启安全验证</string>
+    <string name="settings_security_pattern_title">图案验证</string>
+    <string name="settings_security_pattern_configured">已设置滑动图案</string>
+    <string name="settings_security_pattern_not_configured">点击设置滑动图案</string>
+    <string name="settings_security_fingerprint_title">指纹验证</string>
+    <string name="settings_security_fingerprint_summary">进入应用时优先使用指纹验证</string>
+    <string name="settings_security_fingerprint_unavailable">设备不支持或尚未录入指纹</string>
+    <string name="settings_security_set_pattern">设置安全图案</string>
+    <string name="settings_security_draw_pattern">请绘制解锁图案</string>
+    <string name="settings_security_draw_pattern_again">请再次绘制图案以确认</string>
+    <string name="settings_security_pattern_saved">安全图案设置成功</string>
+    <string name="settings_security_pattern_mismatch">两次图案不一致，请重新设置</string>
+    <string name="settings_security_pattern_too_short">至少连接 4 个点</string>
+    <string name="settings_security_verify_title">安全验证</string>
+    <string name="settings_security_verify_hint">请绘制图案解锁 ZMobile</string>
+    <string name="settings_security_verify_failed">图案错误，请重试</string>
+    <string name="settings_security_use_fingerprint">使用指纹验证</string>
+    <string name="settings_security_biometric_failed">指纹验证失败，请重试；连续失败 3 次后切换图案验证</string>
+    <string name="settings_security_biometric_fallback">指纹验证失败次数过多，请使用图案验证</string>
+    <string name="settings_security_biometric_cancel">已取消指纹验证，请使用图案验证</string>
+    <string name="settings_theme_select_title">选择主题</string>
+    <string name="settings_theme_light_summary">明亮、清晰的界面</string>
+    <string name="settings_theme_dark_summary">深色背景，夜间更舒适</string>
 
     <!-- 弹窗 -->
     <string name="dialog_add_title">添加远程连接</string>
@@ -69,4 +114,14 @@
     <string name="toast_download_failed">下载失败：%1$s</string>
     <string name="toast_download_completed">下载完成，正在拉起安装…</string>
     <string name="toast_update_ignored">已忽略 v%1$s，可在下次发布后重新提醒</string>
+    <string name="toast_install_redirect_failed">无法打开安装权限设置页，请到系统设置手动允许「安装未知应用」</string>
+    <string name="toast_install_launch_failed">无法拉起安装器，请确认已允许「安装未知应用」后重试</string>
+
+    <!-- 关于页 -->
+    <string name="about_title">关于</string>
+    <string name="action_back">返回</string>
+    <string name="about_app_desc">ZCode Web Remote Control 的 Android 原生远程控制客户端</string>
+    <string name="about_version_format">版本 %1$s (%2$d)</string>
+    <string name="about_github_project">GitHub</string>
+    <string name="toast_no_browser">未找到可打开链接的浏览器</string>
 </resources>

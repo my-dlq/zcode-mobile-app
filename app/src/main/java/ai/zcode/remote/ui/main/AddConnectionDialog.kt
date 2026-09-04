@@ -46,6 +46,14 @@ class AddConnectionDialog : DialogFragment() {
         return dialog
     }
 
+    override fun onStart() {
+        super.onStart()
+        dialog?.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.92f).toInt(),
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+    }
+
     private fun initView() {
         val isEdit = editingConnection != null
         binding.tvDialogTitle.text = getString(
@@ -56,7 +64,6 @@ class AddConnectionDialog : DialogFragment() {
             val conn = editingConnection!!
             binding.etName.setText(conn.name)
             binding.etUrl.setText(conn.url)
-            binding.switchDefault.isChecked = conn.isDefault
         } else {
             // 尝试读取剪贴板智能填充
             tryAutoFillFromClipboard()
@@ -116,8 +123,6 @@ class AddConnectionDialog : DialogFragment() {
     private fun saveAndDone() {
         val rawUrl = binding.etUrl.text?.toString()?.trim() ?: ""
         var name = binding.etName.text?.toString()?.trim() ?: ""
-        val isDefault = binding.switchDefault.isChecked
-
         if (rawUrl.isEmpty()) {
             ToastUtils.show(requireContext(), getString(R.string.error_invalid_url))
             return
@@ -138,13 +143,11 @@ class AddConnectionDialog : DialogFragment() {
             this.url = parsed.originalUrl
             this.mid = parsed.mid
             this.sid = parsed.sid
-            this.isDefault = isDefault
         } ?: RemoteConnection(
             name = name,
             url = parsed.originalUrl,
             mid = parsed.mid,
-            sid = parsed.sid,
-            isDefault = isDefault
+            sid = parsed.sid
         )
 
         repository.saveConnection(connection)

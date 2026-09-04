@@ -1,4 +1,7 @@
+
 package ai.zcode.remote.ui.scan
+
+import androidx.appcompat.app.AppCompatActivity
 
 import android.Manifest
 import android.content.Context
@@ -13,7 +16,6 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis

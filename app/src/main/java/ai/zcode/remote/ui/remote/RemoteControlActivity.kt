@@ -1,4 +1,7 @@
+
 package ai.zcode.remote.ui.remote
+
+import androidx.appcompat.app.AppCompatActivity
 
 import android.annotation.SuppressLint
 import android.content.ClipData
@@ -14,10 +17,10 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import ai.zcode.remote.R
+import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.databinding.ActivityRemoteControlBinding
 import ai.zcode.remote.ui.remote.web.ZCodeWebChromeClient
 import ai.zcode.remote.ui.remote.web.ZCodeWebViewClient
@@ -27,6 +30,7 @@ import ai.zcode.remote.utils.ToastUtils
 class RemoteControlActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityRemoteControlBinding
+    private lateinit var appSettings: AppSettingsRepository
     private var targetUrl: String = ""
     private var deviceName: String = "ZCode 远程工作区"
     private var isFullscreen = true
@@ -64,6 +68,9 @@ class RemoteControlActivity : AppCompatActivity() {
         binding = ActivityRemoteControlBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        appSettings = AppSettingsRepository.getInstance(this)
+        isFullscreen = appSettings.isFullscreenEnabled()
+
         targetUrl = intent.getStringExtra(EXTRA_URL) ?: ""
         deviceName = intent.getStringExtra(EXTRA_NAME) ?: "ZCode 远程工作区"
         isSettingsModeRequested = intent.getBooleanExtra(EXTRA_SETTINGS_MODE, false)
@@ -97,6 +104,8 @@ class RemoteControlActivity : AppCompatActivity() {
     private fun setupImmersiveAndScreen() {
         if (isFullscreen) {
             ImmersiveHelper.enterImmersiveFullscreen(this)
+        } else {
+            ImmersiveHelper.exitImmersiveFullscreen(this)
         }
         ImmersiveHelper.setKeepScreenOn(this, isKeepScreenOn)
     }
@@ -266,6 +275,7 @@ class RemoteControlActivity : AppCompatActivity() {
 
         dialog.onToggleFullscreenListener = {
             isFullscreen = !isFullscreen
+            appSettings.setFullscreenEnabled(isFullscreen)
             if (isFullscreen) {
                 ImmersiveHelper.enterImmersiveFullscreen(this)
                 ToastUtils.show(this, "已进入沉浸全屏")
@@ -495,6 +505,8 @@ class RemoteControlActivity : AppCompatActivity() {
         binding.webView.onResume()
         if (isFullscreen) {
             ImmersiveHelper.enterImmersiveFullscreen(this)
+        } else {
+            ImmersiveHelper.exitImmersiveFullscreen(this)
         }
     }
 

@@ -1,9 +1,11 @@
 package ai.zcode.remote.ui.main
 
+import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.widget.PopupMenu
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import ai.zcode.remote.R
 import ai.zcode.remote.data.model.RemoteConnection
@@ -17,8 +19,7 @@ class ConnectionAdapter(
     private val onConnectClick: (RemoteConnection) -> Unit,
     private val onSettingsClick: (RemoteConnection) -> Unit,
     private val onEditClick: (RemoteConnection) -> Unit,
-    private val onDeleteClick: (RemoteConnection) -> Unit,
-    private val onSetDefaultClick: (RemoteConnection, Boolean) -> Unit
+    private val onDeleteClick: (RemoteConnection) -> Unit
 ) : RecyclerView.Adapter<ConnectionAdapter.ViewHolder>() {
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
@@ -38,7 +39,7 @@ class ConnectionAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.bind(items[position])
+        holder.bind(items[position], position == items.lastIndex)
     }
 
     override fun getItemCount(): Int = items.size
@@ -46,14 +47,23 @@ class ConnectionAdapter(
     inner class ViewHolder(private val binding: ItemConnectionBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(item: RemoteConnection) {
+        fun bind(item: RemoteConnection, isLastItem: Boolean) {
             binding.tvDeviceName.text = item.name
             binding.tvDeviceUrl.text = item.url
-            binding.tvDefaultBadge.visibility = if (item.isDefault) View.VISIBLE else View.GONE
+            binding.tvDeviceUrl.visibility = View.GONE
 
             val formattedTime = dateFormat.format(Date(item.lastConnectedTime))
-            binding.tvLastConnectedLabel.text = "上次连接"
+            binding.tvLastConnectedLabel.visibility = View.GONE
             binding.tvLastConnectedTime.text = formattedTime
+            binding.btnSettings.visibility = View.GONE
+            binding.btnConnect.visibility = View.GONE
+            binding.viewConnectionStatus.backgroundTintList = ColorStateList.valueOf(
+                ContextCompat.getColor(
+                    binding.root.context,
+                    if (item.isConnected) R.color.status_connected else R.color.status_disconnected
+                )
+            )
+            binding.connectionDivider.visibility = if (isLastItem) View.GONE else View.VISIBLE
 
             binding.root.setOnClickListener {
                 onConnectClick(item)
@@ -76,27 +86,16 @@ class ConnectionAdapter(
             val popup = PopupMenu(anchorView.context, anchorView)
             val menu = popup.menu
 
-            val defaultTitle = if (item.isDefault) {
-                anchorView.context.getString(R.string.action_cancel_default)
-            } else {
-                anchorView.context.getString(R.string.action_set_default)
-            }
-
-            menu.add(0, 1, 0, defaultTitle)
-            menu.add(0, 2, 1, anchorView.context.getString(R.string.action_edit))
-            menu.add(0, 3, 2, anchorView.context.getString(R.string.action_delete))
+            menu.add(0, 1, 0, anchorView.context.getString(R.string.action_edit))
+            menu.add(0, 2, 1, anchorView.context.getString(R.string.action_delete))
 
             popup.setOnMenuItemClickListener { menuItem ->
                 when (menuItem.itemId) {
                     1 -> {
-                        onSetDefaultClick(item, !item.isDefault)
-                        true
-                    }
-                    2 -> {
                         onEditClick(item)
                         true
                     }
-                    3 -> {
+                    2 -> {
                         onDeleteClick(item)
                         true
                     }
@@ -105,5 +104,6 @@ class ConnectionAdapter(
             }
             popup.show()
         }
+
     }
 }

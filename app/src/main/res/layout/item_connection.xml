@@ -4,22 +4,23 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="12dp"
-    app:cardBackgroundColor="@color/bg_surface"
-    app:cardCornerRadius="16dp"
+    app:cardBackgroundColor="@android:color/transparent"
+    app:cardCornerRadius="0dp"
     app:cardElevation="0dp"
-    app:strokeColor="@color/border_color"
-    app:strokeWidth="1dp">
+    app:strokeWidth="0dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:paddingStart="16dp"
+        android:paddingTop="4dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="4dp">
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="60dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -27,8 +28,8 @@
                 android:id="@+id/ivDeviceIcon"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:background="@drawable/bg_dialog_rounded"
-                android:padding="8dp"
+                android:background="@drawable/bg_device_icon"
+                android:padding="9dp"
                 android:src="@drawable/ic_computer"
                 app:tint="@color/primary_light" />
 
@@ -40,124 +41,95 @@
                 android:orientation="vertical">
 
                 <LinearLayout
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
                     <TextView
                         android:id="@+id/tvDeviceName"
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:maxLines="1"
                         android:textColor="@color/text_primary"
                         android:textSize="16sp"
                         android:textStyle="bold"
                         tools:text="示例设备" />
 
-                    <TextView
-                        android:id="@+id/tvDefaultBadge"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:background="@drawable/bg_tag_default"
-                        android:paddingHorizontal="6dp"
-                        android:paddingVertical="2dp"
-                        android:text="@string/default_badge"
-                        android:textColor="@color/primary_light"
-                        android:textSize="10sp"
-                        android:textStyle="bold"
-                        android:visibility="gone"
-                        tools:visibility="visible" />
                 </LinearLayout>
 
+                <!-- 保留绑定字段，但地址不在新版列表中展示 -->
                 <TextView
                     android:id="@+id/tvDeviceUrl"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:ellipsize="middle"
-                    android:singleLine="true"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp"
+                    android:layout_width="1dp"
+                    android:layout_height="1dp"
+                    android:visibility="gone"
                     tools:text="https://zcode.z.ai/remote/v4?name=示例设备..." />
-            </LinearLayout>
-
-            <ImageButton
-                android:id="@+id/btnMore"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="更多选项"
-                android:padding="6dp"
-                android:src="@drawable/ic_more"
-                app:tint="@color/text_muted" />
-        </LinearLayout>
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginVertical="12dp"
-            android:background="@color/border_color" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
 
                 <TextView
                     android:id="@+id/tvLastConnectedLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:singleLine="true"
-                    android:text="上次连接"
-                    android:textColor="@color/text_muted"
-                    android:textSize="11sp" />
+                    android:layout_width="1dp"
+                    android:layout_height="1dp"
+                    android:visibility="gone"
+                    android:text="上次连接" />
 
                 <TextView
                     android:id="@+id/tvLastConnectedTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:textColor="@color/text_muted"
-                    android:textSize="11sp"
-                    tools:text="2026-08-25 02:05" />
+                    android:layout_marginTop="4dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp"
+                    tools:text="2026-09-04 13:40" />
             </LinearLayout>
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnSettings"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="wrap_content"
-                android:layout_height="32dp"
-                android:layout_marginEnd="8dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:paddingHorizontal="10dp"
-                android:text="设置中心"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp"
-                app:cornerRadius="8dp"
-                app:strokeColor="@color/border_color" />
+            <!-- 状态点与更多操作在同一固定区域，始终保持右侧对齐 -->
+            <LinearLayout
+                android:layout_width="56dp"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical|end"
+                android:orientation="horizontal">
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnConnect"
-                style="@style/Widget.Material3.Button.TonalButton"
-                android:layout_width="wrap_content"
-                android:layout_height="32dp"
-                android:backgroundTint="@color/primary"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:paddingHorizontal="14dp"
-                android:text="@string/action_connect"
-                android:textColor="@color/white"
-                android:textSize="12sp"
-                app:cornerRadius="8dp" />
+                <View
+                    android:id="@+id/viewConnectionStatus"
+                    android:layout_width="9dp"
+                    android:layout_height="9dp"
+                    android:layout_marginEnd="12dp"
+                    android:background="@drawable/bg_status_dot"
+                    android:importantForAccessibility="no" />
+
+                <ImageButton
+                    android:id="@+id/btnMore"
+                    android:layout_width="32dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/menu_more_options"
+                    android:padding="4dp"
+                    android:src="@drawable/ic_more"
+                    app:tint="@color/text_muted" />
+            </LinearLayout>
         </LinearLayout>
+
+        <View
+            android:id="@+id/connectionDivider"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="4dp"
+            android:background="@color/border_color" />
+
+        <!-- 旧版操作控件保留绑定以兼容已有适配器逻辑，但按新稿不展示 -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSettings"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:visibility="gone" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnConnect"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:visibility="gone" />
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

@@ -1,6 +1,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
-    <style name="Theme.ZCodeRemote" parent="Theme.Material3.Dark.NoActionBar">
+    <style name="Theme.ZCodeRemote" parent="Theme.Material3.Light.NoActionBar">
         <item name="colorPrimary">@color/primary</item>
         <item name="colorOnPrimary">@color/white</item>
         <item name="colorPrimaryContainer">@color/bg_surface_elevated</item>
@@ -13,14 +13,16 @@
         <item name="colorSurface">@color/bg_surface</item>
         <item name="colorOnSurface">@color/text_primary</item>
 
+
         <item name="android:statusBarColor">@color/bg_dark</item>
         <item name="android:navigationBarColor">@color/bg_dark</item>
-        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
     </style>
 
     <!-- 沉浸式全屏主题（远程控制专用） -->
     <style name="Theme.ZCodeRemote.Fullscreen" parent="Theme.ZCodeRemote">
-        <item name="android:windowFullscreen">true</item>
+        <!-- 全屏由 ImmersiveHelper 根据设置动态控制，避免关闭全屏后系统栏仍被主题永久隐藏 -->
+        <item name="android:windowFullscreen">false</item>
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:statusBarColor">@color/transparent</item>
         <item name="android:navigationBarColor">@color/transparent</item>

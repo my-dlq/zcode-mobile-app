@@ -9,6 +9,9 @@ data class RemoteConnection(
     var url: String,
     var mid: String = "",
     var sid: String = "",
-    var lastConnectedTime: Long = System.currentTimeMillis(),
-    var isDefault: Boolean = false
-) : Serializable
+    var lastConnectedTime: Long = System.currentTimeMillis()
+) : Serializable {
+    /** 当前进程内的展示状态，不写入 SharedPreferences。 */
+    @Transient
+    var isConnected: Boolean = false
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:inset="12.9630%">
+    <!-- 80 / 108 foreground coverage: 60dp enlarged by one third. -->
+    <bitmap android:src="@drawable/ic_launcher_foreground_clean"
+        android:gravity="fill" android:filter="true" />
+</inset>

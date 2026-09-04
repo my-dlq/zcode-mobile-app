@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 暗色主题：采用选定的深海蓝灰层次，Logo 与标题保持原样 -->
+    <color name="primary">#6EA6FF</color>
+    <color name="primary_dark">#4F8CFF</color>
+    <color name="primary_light">#8CB8FF</color>
+    <color name="accent">#2BCB9B</color>
+    <color name="accent_orange">#FFB84D</color>
+    <color name="danger">#FF7B7B</color>
+
+    <color name="bg_dark">#0F1824</color>
+    <color name="bg_surface">#192635</color>
+    <color name="bg_surface_card">#192635</color>
+    <color name="bg_surface_elevated">#203247</color>
+
+    <color name="border_color">#2C455D</color>
+    <color name="border_light">#3D5770</color>
+
+    <color name="text_primary">#F4F7FC</color>
+    <color name="text_secondary">#A9B9CE</color>
+    <color name="text_muted">#8192A8</color>
+
+    <color name="logo_background">#0D1827</color>
+    <color name="logo_border">#4F8CFF</color>
+    <color name="logo_mark">#F5F8FC</color>
+    <color name="logo_accent">#3F8CFF</color>
+    <color name="logo_accent_cyan">#45D4DB</color>
+    <color name="logo_speed_coral">#FF9F8E</color>
+    <color name="launcher_icon_background">#0D1827</color>
+    <color name="scan_surface">#172B49</color>
+    <color name="status_connected">#2BCB9B</color>
+    <color name="status_disconnected">#7B8DA4</color>
+    <color name="fab_bg">#CC192635</color>
+    <color name="fab_tint">#8CB8FF</color>
+</resources>

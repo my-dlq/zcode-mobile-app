@@ -1,7 +1,6 @@
 package ai.zcode.remote.data.model
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.UUID
@@ -23,12 +22,6 @@ class RemoteConnectionTest {
     }
 
     @Test
-    fun `default connection is not marked as default`() {
-        val connection = RemoteConnection(name = "测试设备", url = "https://example.com")
-        assertFalse(connection.isDefault)
-    }
-
-    @Test
     fun `lastConnectedTime defaults to current time`() {
         val before = System.currentTimeMillis()
         val connection = RemoteConnection(name = "测试设备", url = "https://example.com")
@@ -41,10 +34,7 @@ class RemoteConnectionTest {
         val connection = RemoteConnection(name = "旧名称", url = "https://old.example.com")
         connection.name = "新名称"
         connection.url = "https://new.example.com"
-        connection.isDefault = true
-
         assertEquals("新名称", connection.name)
         assertEquals("https://new.example.com", connection.url)
-        assertTrue(connection.isDefault)
     }
 }

@@ -12,12 +12,15 @@ class ConnectionRepository(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val gson = Gson()
+    @Volatile
+    private var activeConnectionId: String? = null
 
     fun getAllConnections(): MutableList<RemoteConnection> {
         val json = prefs.getString(KEY_CONNECTIONS, null) ?: return mutableListOf()
         return try {
             val type = object : TypeToken<MutableList<RemoteConnection>>() {}.type
             val list: MutableList<RemoteConnection> = gson.fromJson(json, type) ?: mutableListOf()
+            list.forEach { it.isConnected = it.id == activeConnectionId }
             list.sortedByDescending { it.lastConnectedTime }.toMutableList()
         } catch (e: Exception) {
             mutableListOf()
@@ -28,11 +31,6 @@ class ConnectionRepository(context: Context) {
         val list = getAllConnections()
         val index = list.indexOfFirst { existing ->
             existing.id == connection.id || sameConnection(existing, connection)
-        }
-
-        if (connection.isDefault) {
-            // 如果设为了默认，将其他连接的默认状态清除
-            list.forEach { it.isDefault = false }
         }
 
         if (index >= 0) {
@@ -82,7 +80,6 @@ class ConnectionRepository(context: Context) {
         target.mid = mid
         target.sid = sid
         target.lastConnectedTime = lastConnectedTime
-        target.isDefault = isDefault
     }
 
     fun deleteConnection(id: String) {
@@ -95,22 +92,10 @@ class ConnectionRepository(context: Context) {
         val list = getAllConnections()
         val conn = list.find { it.id == id }
         if (conn != null) {
+            activeConnectionId = id
             conn.lastConnectedTime = System.currentTimeMillis()
             saveList(list)
         }
-    }
-
-    fun setDefaultConnection(id: String, isDefault: Boolean) {
-        val list = getAllConnections()
-        list.forEach {
-            it.isDefault = if (it.id == id) isDefault else false
-        }
-        saveList(list)
-    }
-
-    fun getDefaultConnection(): RemoteConnection? {
-        val list = getAllConnections()
-        return list.firstOrNull { it.isDefault }
     }
 
     private fun saveList(list: List<RemoteConnection>) {
