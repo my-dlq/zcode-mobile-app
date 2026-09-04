@@ -15,10 +15,10 @@ ZCode Mobile App 对官方远程控制页面做了原生封装，用 App 容器�
 
 <table>
   <tr>
-    <td><img src="http://img.mydlq.club/img/zmobile-01.png?x-oss-process=style/shuiyin" alt="Screenshot 1"></td>
-    <td><img src="http://img.mydlq.club/img/zmobile-02.png?x-oss-process=style/shuiyin" alt="Screenshot 2"></td>
-    <td><img src="http://img.mydlq.club/img/zmobile-03.png?x-oss-process=style/shuiyin" alt="Screenshot 3"></td>
-    <td><img src="http://img.mydlq.club/img/zmobile-04.png?x-oss-process=style/shuiyin" alt="Screenshot 4"></td>
+    <td><img src="https://github.com/my-dlq/zcode-mobile-app/blob/main/images/zmobile-01.png" alt="Screenshot 1"></td>
+    <td><img src="https://github.com/my-dlq/zcode-mobile-app/blob/main/images/zmobile-02.png" alt="Screenshot 2"></td>
+    <td><img src="https://github.com/my-dlq/zcode-mobile-app/blob/main/images/zmobile-03.png" alt="Screenshot 3"></td>
+    <td><img src="https://github.com/my-dlq/zcode-mobile-app/blob/main/images/zmobile-04.png" alt="Screenshot 4"></td>
   </tr>
 </table>
 
