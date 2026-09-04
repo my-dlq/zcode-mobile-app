@@ -13,24 +13,14 @@ ZCode Mobile App 对官方远程控制页面做了原生封装，用 App 容器�
 
 > 注：本应用不替换 ZCode 官方的远端执行能力，只负责连接管理、原生容器与移动端交互优化。
 
-![界面预览：演示连接列表](images/2-demo-connections.png)
-
-![对话框页面（任务会话）](images/3-task-dialog.png)
-
-![审查页面（Code Review）](images/4-code-review.png)
-
-### 演示连接地址
-
-连接列表截图中的三个演示设备仅用于展示（`mid/sid` 为示例值）。你可以扫码或复制下面的链接格式，替换为桌面端「移动端远程控制」弹窗中的真实参数来体验：
-
-```
-https://zcode.z.ai/remote?mid=<设备 ID>&sid=<会话 ID>&name=<设备名称>
-```
-
-- `mid` / `sid`：桌面端移动远程控制弹窗中提供的设备与会话参数（必填）
-- `name`：设备备注名称（可选，如 `演示设备-办公电脑`）
-
-> 注：列表中的演示连接为示例数据，真实使用时以你扫码添加的设备为准。
+<table>
+  <tr>
+    <td><img src="http://img.mydlq.club/img/zmobile-01.png?x-oss-process=style/shuiyin" alt="Screenshot 1"></td>
+    <td><img src="http://img.mydlq.club/img/zmobile-02.png?x-oss-process=style/shuiyin" alt="Screenshot 2"></td>
+    <td><img src="http://img.mydlq.club/img/zmobile-03.png?x-oss-process=style/shuiyin" alt="Screenshot 3"></td>
+    <td><img src="http://img.mydlq.club/img/zmobile-04.png?x-oss-process=style/shuiyin" alt="Screenshot 4"></td>
+  </tr>
+</table>
 
 ## 项目背景
 

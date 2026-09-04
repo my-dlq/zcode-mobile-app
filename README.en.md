@@ -139,6 +139,8 @@ Run from the project root:
 ./gradlew lint
 ```
 
+> **Build repositories:** Dependency resolution is centralized in `settings.gradle.kts` (`RepositoriesMode.FAIL_ON_PROJECT_REPOS`), so module-level `build.gradle.kts` files must not declare their own `repositories`. It uses Aliyun Maven mirrors (`maven.aliyun.com/repository/google`, `maven.aliyun.com/repository/public`, `maven.aliyun.com/repository/gradle-plugin`) together with Google, Maven Central, and `jitpack.io`, letting the project build in restricted network environments where the default Google/Maven Central endpoints are slow or blocked.
+
 Debug APK output path:
 
 ```text
