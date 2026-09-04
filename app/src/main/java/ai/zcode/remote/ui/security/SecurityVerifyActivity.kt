@@ -86,47 +86,62 @@ class SecurityVerifyActivity : FragmentActivity() {
         biometricFailureCount = 0
         switchedToPattern = false
         val executor = ContextCompat.getMainExecutor(this)
-        val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                super.onAuthenticationSucceeded(result)
-                biometricPrompt = null
-                SecuritySession.unlock()
-                openMain()
-            }
-
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                super.onAuthenticationError(errorCode, errString)
-                biometricPrompt = null
-                if (errorCode == BiometricPrompt.ERROR_LOCKOUT ||
-                    errorCode == BiometricPrompt.ERROR_LOCKOUT_PERMANENT ||
-                    errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON
-                ) {
-                    fallbackToPattern()
-                } else if (!switchedToPattern) {
-                    binding.tvHint.setText(R.string.settings_security_biometric_cancel)
+        try {
+            val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    super.onAuthenticationSucceeded(result)
+                    biometricPrompt = null
+                    SecuritySession.unlock()
+                    openMain()
                 }
-            }
 
-            override fun onAuthenticationFailed() {
-                super.onAuthenticationFailed()
-                biometricFailureCount++
-                if (biometricFailureCount >= BIOMETRIC_FAILURE_LIMIT && settings.isPatternEnabled()) {
-                    fallbackToPattern()
-                } else {
-                    binding.tvHint.setText(R.string.settings_security_biometric_failed)
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    super.onAuthenticationError(errorCode, errString)
+                    biometricPrompt = null
+                    if (errorCode == BiometricPrompt.ERROR_LOCKOUT ||
+                        errorCode == BiometricPrompt.ERROR_LOCKOUT_PERMANENT ||
+                        errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON
+                    ) {
+                        fallbackToPattern()
+                    } else if (!switchedToPattern) {
+                        binding.tvHint.setText(R.string.settings_security_biometric_cancel)
+                    }
                 }
+
+                override fun onAuthenticationFailed() {
+                    super.onAuthenticationFailed()
+                    biometricFailureCount++
+                    if (biometricFailureCount >= BIOMETRIC_FAILURE_LIMIT && settings.isPatternEnabled()) {
+                        fallbackToPattern()
+                    } else {
+                        binding.tvHint.setText(R.string.settings_security_biometric_failed)
+                    }
+                }
+            })
+            biometricPrompt = prompt
+            val infoBuilder = BiometricPrompt.PromptInfo.Builder()
+                .setTitle(getString(R.string.settings_security_verify_title))
+                .setSubtitle(getString(R.string.settings_security_use_fingerprint))
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+            // BIOMETRIC_STRONG 不含设备凭证，与 setNegativeButtonText 可安全共存。
+            builderWithNegativeButton(infoBuilder)
+            val info = infoBuilder.build()
+            prompt.authenticate(info)
+        } catch (e: Exception) {
+            // 指纹不可用或构建失败时优雅降级到图案验证，避免闪退
+            biometricPrompt = null
+            binding.tvHint.setText(R.string.settings_security_biometric_failed)
+            if (settings.isPatternEnabled()) {
+                binding.patternLock.visibility = View.VISIBLE
+                binding.patternLock.reset()
             }
-        })
-        biometricPrompt = prompt
-        val infoBuilder = BiometricPrompt.PromptInfo.Builder()
-            .setTitle(getString(R.string.settings_security_verify_title))
-            .setSubtitle(getString(R.string.settings_security_use_fingerprint))
-            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-        if (settings.isPatternEnabled()) {
-            infoBuilder.setNegativeButtonText(getString(R.string.settings_security_pattern_title))
         }
-        val info = infoBuilder.build()
-        prompt.authenticate(info)
+    }
+
+    private fun builderWithNegativeButton(builder: BiometricPrompt.PromptInfo.Builder) {
+        if (settings.isPatternEnabled()) {
+            builder.setNegativeButtonText(getString(R.string.settings_security_pattern_title))
+        }
     }
 
     private fun fallbackToPattern() {
