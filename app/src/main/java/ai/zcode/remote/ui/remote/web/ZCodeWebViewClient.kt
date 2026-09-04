@@ -391,6 +391,11 @@ class ZCodeWebViewClient(
                 font-size: 12px !important;
                 line-height: 18px !important;
             }
+            /* 弹层默认右缘贴死屏幕边缘（x=92 宽 320 @视口 412），整体左移 46px 后
+               水平居中、左右留白均衡；transform 无需与浮层 wrapper 的 inline 定位耦合 */
+            div[data-slot="hover-card-content"] {
+                transform: translateX(-46px) !important;
+            }
 
             /* 思考等级与权限控制使用 Radix Select listbox；
                统一字体大小与模型选择列表一致（主标题 12px/16px，副描述 10.5px/14px）；
