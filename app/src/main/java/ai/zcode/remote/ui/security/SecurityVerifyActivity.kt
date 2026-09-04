@@ -145,71 +145,81 @@ class SecurityVerifyActivity : FragmentActivity() {
         biometricFailureCount = 0
         switchedToPattern = false
         val executor = ContextCompat.getMainExecutor(this)
-        val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                super.onAuthenticationSucceeded(result)
-                biometricPrompt = null
-                settings.clearPatternLockState()
-                if (verifyOnly) {
-                    setResult(RESULT_OK)
-                    finish()
-                } else {
-                    SecuritySession.unlock()
-                    openMain()
-                }
-            }
-
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                super.onAuthenticationError(errorCode, errString)
-                biometricPrompt = null
-                when {
-                    errorCode == BiometricPrompt.ERROR_LOCKOUT ||
-                        errorCode == BiometricPrompt.ERROR_LOCKOUT_PERMANENT -> {
-                        // 指纹不累计错误次数（5 次阈值只由图案触发），
-                        // 但系统锁定指纹时同样触发共享锁定：指纹与图案按同一档位一起等待
-                        triggerSharedLockout()
-                        fallbackToPattern()
+        try {
+            val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    super.onAuthenticationSucceeded(result)
+                    biometricPrompt = null
+                    settings.clearPatternLockState()
+                    if (verifyOnly) {
+                        setResult(RESULT_OK)
+                        finish()
+                    } else {
+                        SecuritySession.unlock()
+                        openMain()
                     }
-                    (errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
-                        errorCode == BiometricPrompt.ERROR_USER_CANCELED) && !switchedToPattern -> {
-                        // 取消指纹后把图案作为可选项展示（指纹按钮保留，两种方式任选）；
-                        // 指纹+图案同时启用时，启动只先弹指纹，图案仅在取消指纹后出现
-                        binding.tvHint.setText(
-                            if (settings.isPatternEnabled()) R.string.settings_security_biometric_cancel
-                            else R.string.settings_security_biometric_cancelled
-                        )
-                        if (settings.isPatternEnabled()) {
-                            binding.patternLock.visibility = View.VISIBLE
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    super.onAuthenticationError(errorCode, errString)
+                    biometricPrompt = null
+                    when {
+                        errorCode == BiometricPrompt.ERROR_LOCKOUT ||
+                            errorCode == BiometricPrompt.ERROR_LOCKOUT_PERMANENT -> {
+                            // 指纹不累计错误次数（5 次阈值只由图案触发），
+                            // 但系统锁定指纹时同样触发共享锁定：指纹与图案按同一档位一起等待
+                            triggerSharedLockout()
+                            fallbackToPattern()
                         }
+                        (errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
+                            errorCode == BiometricPrompt.ERROR_USER_CANCELED) && !switchedToPattern -> {
+                            // 取消指纹后把图案作为可选项展示（指纹按钮保留，两种方式任选）；
+                            // 指纹+图案同时启用时，启动只先弹指纹，图案仅在取消指纹后出现
+                            binding.tvHint.setText(
+                                if (settings.isPatternEnabled()) R.string.settings_security_biometric_cancel
+                                else R.string.settings_security_biometric_cancelled
+                            )
+                            if (settings.isPatternEnabled()) {
+                                binding.patternLock.visibility = View.VISIBLE
+                            }
+                        }
+                        !switchedToPattern ->
+                            binding.tvHint.setText(R.string.settings_security_biometric_cancelled)
                     }
-                    !switchedToPattern ->
-                        binding.tvHint.setText(R.string.settings_security_biometric_cancelled)
                 }
-            }
 
-            override fun onAuthenticationFailed() {
-                super.onAuthenticationFailed()
-                biometricFailureCount++
-                if (biometricFailureCount >= BIOMETRIC_FAILURE_LIMIT && settings.isPatternEnabled()) {
-                    fallbackToPattern()
-                } else {
-                    binding.tvHint.setText(
-                        if (settings.isPatternEnabled()) R.string.settings_security_biometric_failed
-                        else R.string.settings_security_biometric_failed_short
-                    )
+                override fun onAuthenticationFailed() {
+                    super.onAuthenticationFailed()
+                    biometricFailureCount++
+                    if (biometricFailureCount >= BIOMETRIC_FAILURE_LIMIT && settings.isPatternEnabled()) {
+                        fallbackToPattern()
+                    } else {
+                        binding.tvHint.setText(
+                            if (settings.isPatternEnabled()) R.string.settings_security_biometric_failed
+                            else R.string.settings_security_biometric_failed_short
+                        )
+                    }
                 }
+            })
+            biometricPrompt = prompt
+            val infoBuilder = BiometricPrompt.PromptInfo.Builder()
+                .setTitle(getString(R.string.settings_security_verify_title))
+                .setSubtitle(getString(R.string.settings_security_use_fingerprint))
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+            // 仅生物识别（不含系统凭据）时必须设置非空负按钮文本，否则 build() 抛 IllegalArgumentException；
+            // 负按钮统一为"取消"：即使图案已启用也不提供"图案验证"捷径，图案只在取消指纹后或失败达阈值时出现
+            infoBuilder.setNegativeButtonText(getString(R.string.action_cancel))
+            val info = infoBuilder.build()
+            prompt.authenticate(info)
+        } catch (e: Exception) {
+            // 指纹不可用或构建失败时优雅降级到图案验证，避免闪退
+            biometricPrompt = null
+            binding.tvHint.setText(R.string.settings_security_biometric_failed)
+            if (settings.isPatternEnabled()) {
+                binding.patternLock.visibility = View.VISIBLE
+                binding.patternLock.reset()
             }
-        })
-        biometricPrompt = prompt
-        val infoBuilder = BiometricPrompt.PromptInfo.Builder()
-            .setTitle(getString(R.string.settings_security_verify_title))
-            .setSubtitle(getString(R.string.settings_security_use_fingerprint))
-            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-        // 仅生物识别（不含系统凭据）时必须设置非空负按钮文本，否则 build() 抛 IllegalArgumentException；
-        // 负按钮统一为"取消"：即使图案已启用也不提供"图案验证"捷径，图案只在指纹失败达阈值后出现
-        infoBuilder.setNegativeButtonText(getString(R.string.action_cancel))
-        val info = infoBuilder.build()
-        prompt.authenticate(info)
+        }
     }
 
     private fun fallbackToPattern() {
