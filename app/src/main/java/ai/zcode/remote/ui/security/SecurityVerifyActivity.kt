@@ -76,7 +76,9 @@ class SecurityVerifyActivity : FragmentActivity() {
         binding.btnFingerprint.visibility = if (fingerprintEnabled) View.VISIBLE else View.GONE
         binding.btnFingerprint.setOnClickListener { showBiometricPrompt() }
         if (fingerprintEnabled) {
-            binding.patternLock.post { showBiometricPrompt() }
+            // 从设置页立即启动时窗口切换动画未结束，MIUI 系统指纹窗会因焦点竞争
+            // 被瞬间取消（表现为"没弹指纹"直接回到图案网格），稍等窗口稳定再弹
+            binding.patternLock.postDelayed({ showBiometricPrompt() }, 400)
         }
         if (!setupMode && isVerifyLocked()) {
             // 锁定状态持久化：进程被杀死后重新进入，未过期的锁定仍然生效
