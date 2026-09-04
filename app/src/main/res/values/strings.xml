@@ -49,6 +49,8 @@
     <string name="settings_security_fingerprint_title">指纹验证</string>
     <string name="settings_security_fingerprint_summary">进入应用时优先使用指纹验证</string>
     <string name="settings_security_fingerprint_unavailable">设备不支持或尚未录入指纹</string>
+    <string name="settings_security_fingerprint_verify_hint">请验证指纹以开启指纹验证功能</string>
+    <string name="settings_security_fingerprint_verify_rejected">指纹验证未通过，未开启指纹验证</string>
     <string name="settings_security_set_pattern">设置安全图案</string>
     <string name="settings_security_draw_pattern">请绘制解锁图案</string>
     <string name="settings_security_draw_pattern_again">请再次绘制图案以确认</string>
@@ -58,10 +60,15 @@
     <string name="settings_security_verify_title">安全验证</string>
     <string name="settings_security_verify_hint">请绘制图案解锁 ZMobile</string>
     <string name="settings_security_verify_failed">图案错误，请重试</string>
+    <string name="settings_security_pattern_lock_wait">错误次数过多，请 %1$s 秒后重试</string>
+    <string name="settings_security_pattern_lock_retry">等待结束，请重新绘制图案验证</string>
+    <string name="settings_security_lock_retry">等待结束，请重新验证</string>
     <string name="settings_security_use_fingerprint">使用指纹验证</string>
     <string name="settings_security_biometric_failed">指纹验证失败，请重试；连续失败 3 次后切换图案验证</string>
+    <string name="settings_security_biometric_failed_short">指纹验证失败，请重试</string>
     <string name="settings_security_biometric_fallback">指纹验证失败次数过多，请使用图案验证</string>
-    <string name="settings_security_biometric_cancel">已取消指纹验证，请使用图案验证</string>
+    <string name="settings_security_biometric_cancel">已取消指纹验证，可使用图案验证</string>
+    <string name="settings_security_biometric_cancelled">已取消指纹验证</string>
     <string name="settings_theme_select_title">选择主题</string>
     <string name="settings_theme_light_summary">明亮、清晰的界面</string>
     <string name="settings_theme_dark_summary">深色背景，夜间更舒适</string>

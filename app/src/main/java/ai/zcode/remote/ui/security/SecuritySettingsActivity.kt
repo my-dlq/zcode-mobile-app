@@ -10,12 +10,27 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
 
 class SecuritySettingsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySecuritySettingsBinding
     private lateinit var settings: AppSettingsRepository
+
+    /** 关闭验证开关前需先通过验证（指纹/图案任一成功）；验证成功后执行的动作。 */
+    private var disableAfterVerify: (() -> Unit)? = null
+    private val verifyToDisableLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val action = disableAfterVerify
+        disableAfterVerify = null
+        if (result.resultCode == RESULT_OK) action?.invoke()
+        // 无论验证结果如何都按当前设置刷新开关，取消/失败时开关会回弹
+        refreshState()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,14 +53,7 @@ class SecuritySettingsActivity : AppCompatActivity() {
             handlePatternToggle(checked)
         }
         binding.switchFingerprint.setOnCheckedChangeListener { _, checked ->
-            if (checked && !isFingerprintAvailable()) {
-                binding.switchFingerprint.setOnCheckedChangeListener(null)
-                binding.switchFingerprint.isChecked = false
-                binding.switchFingerprint.setOnCheckedChangeListener { _, value -> handleFingerprintToggle(value) }
-                Toast.makeText(this, R.string.settings_security_fingerprint_unavailable, Toast.LENGTH_SHORT).show()
-            } else {
-                settings.setFingerprintEnabled(checked)
-            }
+            handleFingerprintToggle(checked)
         }
         refreshState()
     }
@@ -61,6 +69,11 @@ class SecuritySettingsActivity : AppCompatActivity() {
             binding.switchPattern.isChecked = false
             binding.switchPattern.setOnCheckedChangeListener { _, value -> handlePatternToggle(value) }
             SecurityVerifyActivity.start(this, setupMode = true)
+        } else if (!checked && settings.isSecurityVerificationEnabled()) {
+            // 关闭图案同样需要先通过一次验证（指纹或图案任一成功），防止误触关闭
+            verifyToDisable {
+                settings.setPatternEnabled(false)
+            }
         } else {
             settings.setPatternEnabled(checked)
             refreshState()
@@ -72,9 +85,72 @@ class SecuritySettingsActivity : AppCompatActivity() {
             binding.switchFingerprint.setOnCheckedChangeListener(null)
             binding.switchFingerprint.isChecked = false
             binding.switchFingerprint.setOnCheckedChangeListener { _, value -> handleFingerprintToggle(value) }
-        } else {
-            settings.setFingerprintEnabled(checked)
+            Toast.makeText(this, R.string.settings_security_fingerprint_unavailable, Toast.LENGTH_SHORT).show()
+            return
         }
+        if (checked) {
+            // 开启指纹前先弹系统指纹验证：验证通过才落设置，避免误触开关直接开启安全验证
+            showFingerprintEnablePrompt()
+        } else if (settings.isSecurityVerificationEnabled()) {
+            // 关闭指纹同样需要先通过一次验证（指纹或图案任一成功），防止误触关闭
+            verifyToDisable {
+                settings.setFingerprintEnabled(false)
+            }
+        } else {
+            settings.setFingerprintEnabled(false)
+        }
+    }
+
+    /** 拉起仅验证模式的验证页，验证成功（指纹或图案任一成功）后执行 disable 动作。 */
+    private fun verifyToDisable(disable: () -> Unit) {
+        if (disableAfterVerify != null) return
+        disableAfterVerify = disable
+        // 必须经 launcher.launch() 启动，setResult 才会回传（普通 startActivity 会丢失结果）
+        verifyToDisableLauncher.launch(
+            SecurityVerifyActivity.createIntent(this, setupMode = false, verifyOnly = true)
+        )
+    }
+
+    private fun showFingerprintEnablePrompt() {
+        if (fingerprintPromptShowing) return
+        fingerprintPromptShowing = true
+        // 验证期间开关先回弹，验证成功后再由 refreshState() 置为开
+        binding.switchFingerprint.setOnCheckedChangeListener(null)
+        binding.switchFingerprint.isChecked = false
+        binding.switchFingerprint.setOnCheckedChangeListener { _, value -> handleFingerprintToggle(value) }
+        val executor = ContextCompat.getMainExecutor(this)
+        val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                super.onAuthenticationSucceeded(result)
+                fingerprintPromptShowing = false
+                settings.setFingerprintEnabled(true)
+                refreshState()
+            }
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                super.onAuthenticationError(errorCode, errString)
+                fingerprintPromptShowing = false
+                Toast.makeText(
+                    this@SecuritySettingsActivity,
+                    R.string.settings_security_fingerprint_verify_rejected,
+                    Toast.LENGTH_SHORT
+                ).show()
+                refreshState()
+            }
+
+            override fun onAuthenticationFailed() {
+                super.onAuthenticationFailed()
+                // 弹窗保持，允许重试；连续失败后由系统弹窗转错误回调
+            }
+        })
+        prompt.authenticate(
+            BiometricPrompt.PromptInfo.Builder()
+                .setTitle(getString(R.string.settings_security_fingerprint_title))
+                .setSubtitle(getString(R.string.settings_security_fingerprint_verify_hint))
+                .setNegativeButtonText(getString(R.string.action_cancel))
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                .build()
+        )
     }
 
     private fun refreshState() {
@@ -97,6 +173,8 @@ class SecuritySettingsActivity : AppCompatActivity() {
             else R.string.settings_security_fingerprint_unavailable
         )
     }
+
+    private var fingerprintPromptShowing = false
 
     private fun isFingerprintAvailable(): Boolean =
         BiometricManager.from(this).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==

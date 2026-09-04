@@ -59,6 +59,36 @@ class AppSettingsRepository(context: Context) {
         prefs.edit().putBoolean(KEY_FINGERPRINT_ENABLED, enabled).apply()
     }
 
+    /** 图案解锁：当前窗口内已累计的错误次数（达到阈值触发锁定后清零）。 */
+    fun getPatternFailCount(): Int = prefs.getInt(KEY_PATTERN_FAIL_COUNT, 0)
+
+    fun setPatternFailCount(count: Int) {
+        prefs.edit().putInt(KEY_PATTERN_FAIL_COUNT, count).apply()
+    }
+
+    /** 图案解锁：已触发的锁定档位（1=60s，2=90s，之后每档 3 分钟）。 */
+    fun getPatternLockStage(): Int = prefs.getInt(KEY_PATTERN_LOCK_STAGE, 0)
+
+    fun setPatternLockStage(stage: Int) {
+        prefs.edit().putInt(KEY_PATTERN_LOCK_STAGE, stage).apply()
+    }
+
+    /** 图案解锁：当前锁定截止时间（毫秒时间戳），0 表示未锁定。 */
+    fun getPatternLockUntil(): Long = prefs.getLong(KEY_PATTERN_LOCK_UNTIL, 0L)
+
+    fun setPatternLockUntil(until: Long) {
+        prefs.edit().putLong(KEY_PATTERN_LOCK_UNTIL, until).apply()
+    }
+
+    /** 图案校验正确后清零全部累计：窗口错误次数、锁定档位与截止时间。 */
+    fun clearPatternLockState() {
+        prefs.edit()
+            .putInt(KEY_PATTERN_FAIL_COUNT, 0)
+            .putInt(KEY_PATTERN_LOCK_STAGE, 0)
+            .putLong(KEY_PATTERN_LOCK_UNTIL, 0L)
+            .apply()
+    }
+
     fun isSecurityVerificationEnabled(): Boolean =
         isPatternEnabled() || isFingerprintEnabled()
 
@@ -88,6 +118,9 @@ class AppSettingsRepository(context: Context) {
         private const val KEY_PATTERN_HASH = "key_pattern_hash"
         private const val KEY_PATTERN_ENABLED = "key_pattern_enabled"
         private const val KEY_FINGERPRINT_ENABLED = "key_fingerprint_enabled"
+        private const val KEY_PATTERN_FAIL_COUNT = "key_pattern_fail_count"
+        private const val KEY_PATTERN_LOCK_STAGE = "key_pattern_lock_stage"
+        private const val KEY_PATTERN_LOCK_UNTIL = "key_pattern_lock_until"
 
         @Volatile
         private var instance: AppSettingsRepository? = null
