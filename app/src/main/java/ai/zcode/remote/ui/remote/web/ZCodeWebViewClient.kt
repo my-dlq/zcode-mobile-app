@@ -383,6 +383,15 @@ class ZCodeWebViewClient(
                 line-height: 18px !important;
             }
 
+            /* 任务会话底部"上下文容量"悬浮卡（Radix HoverCard）字体与模型菜单
+               一致：label 为 text-ui-base 14px、数值为 text-ui-sm，统一 12px/18px。
+               限定 data-slot="hover-card-content"，不影响聊天消息与输入框。 */
+            div[data-slot="hover-card-content"],
+            div[data-slot="hover-card-content"] * {
+                font-size: 12px !important;
+                line-height: 18px !important;
+            }
+
             /* 思考等级与权限控制使用 Radix Select listbox；
                统一字体大小与模型选择列表一致（主标题 12px/16px，副描述 10.5px/14px）；
                调小条目上下间隙并收窄左右宽度至 180~200px。 */
