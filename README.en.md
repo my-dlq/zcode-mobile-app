@@ -13,7 +13,14 @@ ZCode Mobile App wraps the official remote control page in a native shell: it us
 
 > Note: This app does not replace ZCode's remote execution capabilities. It focuses on connection management, the native container, and mobile interaction optimization.
 
-![ZCode Mobile App preview](images/1.png)
+<table>
+  <tr>
+    <td><img src="http://img.mydlq.club/img/zmobile-01.png?x-oss-process=style/shuiyin" alt="Screenshot 1"></td>
+    <td><img src="http://img.mydlq.club/img/zmobile-02.png?x-oss-process=style/shuiyin" alt="Screenshot 2"></td>
+    <td><img src="http://img.mydlq.club/img/zmobile-03.png?x-oss-process=style/shuiyin" alt="Screenshot 3"></td>
+    <td><img src="http://img.mydlq.club/img/zmobile-04.png?x-oss-process=style/shuiyin" alt="Screenshot 4"></td>
+  </tr>
+</table>
 
 ## Background
 
@@ -39,7 +46,13 @@ This project replaces the mobile browser with an Android native container to hos
 - Immersive full screen; the page is raised when the soft keyboard appears so inputs stay visible
 - Back key is handled in stages: close panels and dialogs first, then navigate back, exit last
 - When the render process is reclaimed, a retry prompt is shown instead of crashing
-- The floating control ball is draggable and auto-hides halfway after resting near a screen edge
+
+**Native settings & security** — Client-side capabilities outside the WebView container:
+
+- App settings: immersive full-screen toggle, light / dark theme, and automatic update check on startup
+- App lock: pattern and fingerprint (biometric) unlock; consecutive verification failures trigger a shared lockout countdown
+- In-app updates: detect new GitHub Releases versions, download the APK in the background, and upgrade via the system installer
+- About page: view version, manually check for updates, and open the GitHub project home
 
 **Page adaptation** — Injecting CSS/JS to fix how the remote page behaves on phones. This is the bulk of the work:
 
@@ -63,13 +76,14 @@ This project replaces the mobile browser with an Android native container to hos
 - Store multiple remote devices locally
 - Edit, delete, set as default, and reconnect
 
-### Mobile Interaction
+### Native Settings & Security
 
-- Switch between immersive full screen and normal window mode
-- Drag the floating control ball to any position
-- The ball auto-hides halfway after resting near a screen edge for 5 seconds; tap the exposed part to restore it
-- The quick panel provides remote settings, refresh, full screen, copy URL, clear cache, and exit to list
-- The back key requires confirmation, reducing the chance of exiting by accident
+- Switch between immersive full screen and the native window mode
+- Switch between light and dark themes
+- App lock: unlock the app with a pattern or fingerprint; too many failed attempts trigger a shared lockout
+- Automatic update check on startup (can be disabled); the About page supports manual checks
+- Detect new GitHub Releases versions and download with one tap to launch the system installer
+- Back key is handled in stages to reduce accidental exits
 
 ### WebView Adaptation
 
