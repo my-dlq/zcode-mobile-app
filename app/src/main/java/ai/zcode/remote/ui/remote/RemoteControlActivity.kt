@@ -606,7 +606,8 @@ class RemoteControlActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        binding.webView.onResume()
+        // 不调 webView.onResume()：与 onPause 对应，保持 WebView 持续活跃，
+        // 让切后台时 JS 的 WebSocket 仍能收消息（审批/完成事件镜像到系统通知）
         if (isFullscreen) {
             ImmersiveHelper.enterImmersiveFullscreen(this)
         } else {
@@ -616,7 +617,9 @@ class RemoteControlActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        binding.webView.onPause()
+        // 不调 webView.onPause()：暂停会冻结 JS 定时器与 WS 回调，
+        // 导致切后台后电脑端发审批 APP 收不到。让 WebView 在后台保持活跃，
+        // 事件经 TaskEventBridge → TaskNotifier 触发系统通知。
         // 切出时记录当前任务会话：通过 JS 从页面 DOM 提取 task-item 的
         // data-testid（选中态/展开态），持久化到对应连接，下次切回时恢复
         saveCurrentTaskId()

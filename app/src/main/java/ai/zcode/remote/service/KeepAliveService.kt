@@ -55,7 +55,6 @@ class KeepAliveService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
     private val handler = Handler(Looper.getMainLooper())
-    private var eventMonitor: BackgroundEventMonitor? = null
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -89,15 +88,8 @@ class KeepAliveService : Service() {
         }
         // 启动时屏幕已灭则直接持有（服务可能在后台被拉起）
         if (!powerManager.isInteractive) holdWakeLock()
-        // 启动后台事件监听：为非活跃连接维持 WebSocket，镜像审批/完成事件
-        if (eventMonitor == null) {
-            eventMonitor = BackgroundEventMonitor(this).also {
-                it.startAll()
-                BackgroundEventMonitor.registerInstance(it)
-            }
-        } else {
-            eventMonitor?.refresh()
-        }
+        // 后台事件监听已由 ZCodeApp 全局持有并常驻，本服务仅负责"保进程"职责，
+        // 不再重复创建/销毁监听器——避免服务销毁时误停全局后台 WS
         return START_STICKY
     }
 
@@ -114,9 +106,6 @@ class KeepAliveService : Service() {
     }
 
     override fun onDestroy() {
-        eventMonitor?.let { BackgroundEventMonitor.unregisterInstance(it) }
-        eventMonitor?.stopAll()
-        eventMonitor = null
         handler.removeCallbacksAndMessages(null)
         try {
             unregisterReceiver(screenReceiver)
