@@ -1,0 +1,37 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Release 签名密钥不入库；CI 用 debug 签名出包（本地发布仍走 assembleRelease）
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Rename APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/*.apk "dist/zcode-mobile-app-${GITHUB_REF_NAME}-debug.apk"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk

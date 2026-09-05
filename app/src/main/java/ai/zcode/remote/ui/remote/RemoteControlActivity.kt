@@ -9,6 +9,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.webkit.ValueCallback
@@ -22,10 +23,14 @@ import androidx.core.view.WindowInsetsCompat
 import ai.zcode.remote.R
 import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.databinding.ActivityRemoteControlBinding
+import ai.zcode.remote.ui.remote.event.TaskEventBridge
+import ai.zcode.remote.ui.remote.event.TaskNotifier
 import ai.zcode.remote.ui.remote.web.ZCodeWebChromeClient
 import ai.zcode.remote.ui.remote.web.ZCodeWebViewClient
 import ai.zcode.remote.utils.ImmersiveHelper
 import ai.zcode.remote.utils.ToastUtils
+import android.os.Handler
+import android.os.Looper
 
 class RemoteControlActivity : AppCompatActivity() {
 
@@ -40,6 +45,8 @@ class RemoteControlActivity : AppCompatActivity() {
 
     private lateinit var customWebViewClient: ZCodeWebViewClient
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
+    private lateinit var eventBridge: TaskEventBridge
+    private val handler = Handler(Looper.getMainLooper())
 
     private val fileChooserLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -98,7 +105,50 @@ class RemoteControlActivity : AppCompatActivity() {
             settings.displayZoomControls = false
         }
 
+        setupEventCapture()
         loadUrl(targetUrl)
+    }
+
+    /** 注册任务事件桥并在每次页面加载后注入捕获脚本（SPA 导航可能重建 window）。 */
+    private fun setupEventCapture() {
+        ensureNotificationPermission()
+        eventBridge = TaskEventBridge(
+            deviceName = deviceName,
+            onEvent = { event ->
+                runOnUiThread { TaskNotifier.notify(this, event) }
+            },
+            onSessionState = { up ->
+                runOnUiThread { updateSessionHealth(up) }
+            }
+        )
+        binding.webView.addJavascriptInterface(eventBridge, TaskEventBridge.BRIDGE_NAME)
+    }
+
+    /** Android 13+ 通知需要运行时授权；拒绝后不再重复打扰（系统会记住选择）。 */
+    private fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT < 33) return
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) return
+        requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 9001)
+    }
+
+    private fun updateSessionHealth(up: Boolean) {
+        val tv = binding.sessionHealth.root
+        tv.visibility = View.VISIBLE
+        if (up) {
+            tv.text = getString(R.string.session_state_connected)
+            // 连接稳定 5 秒后自动隐藏，避免长期遮挡页面内容
+            handler.removeCallbacks(hideHealthRunnable)
+            handler.postDelayed(hideHealthRunnable, 5000)
+        } else {
+            tv.text = getString(R.string.session_state_disconnected)
+            handler.removeCallbacks(hideHealthRunnable)
+        }
+    }
+
+    private val hideHealthRunnable = Runnable {
+        binding.sessionHealth.root.visibility = View.GONE
     }
 
     private fun setupImmersiveAndScreen() {

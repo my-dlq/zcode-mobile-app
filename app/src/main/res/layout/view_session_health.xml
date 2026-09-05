@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 会话健康指示胶囊：叠加在 WebView 顶部（避开进度条，右侧对齐） -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/tvSessionHealth"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_gravity="end"
+    android:layout_marginTop="10dp"
+    android:layout_marginEnd="14dp"
+    android:background="@drawable/bg_session_health"
+    android:drawablePadding="6dp"
+    android:paddingStart="10dp"
+    android:paddingTop="4dp"
+    android:paddingEnd="10dp"
+    android:paddingBottom="4dp"
+    android:text="@string/session_state_connecting"
+    android:textColor="@color/text_primary"
+    android:textSize="11sp"
+    android:visibility="gone" />

@@ -7,6 +7,8 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import ai.zcode.remote.ui.remote.event.EventCaptureScript
+import ai.zcode.remote.ui.remote.event.TaskEventBridge
 
 class ZCodeWebViewClient(
     private val onPageStart: () -> Unit,
@@ -41,7 +43,14 @@ class ZCodeWebViewClient(
         // 仅依赖 openWorkspaceSettings 成功回调注入一次不够（实测用户进详情
         // 页时按钮缺失即由此引起）
         view?.let { injectDetailBackButton(it) }
+        // 任务事件捕获脚本：镜像 fetch/SSE/WS 流量回传原生（通知 + 会话健康）。
+        // SPA 内部导航不触发 onPageFinished，但 window 重建（整页加载）后必须重注
+        view?.let { injectEventCapture(it) }
         onPageFinish(url ?: "")
+    }
+
+    private fun injectEventCapture(view: WebView) {
+        view.evaluateJavascript(EventCaptureScript.build(TaskEventBridge.BRIDGE_NAME), null)
     }
 
     override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {

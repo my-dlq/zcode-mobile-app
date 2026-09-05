@@ -48,6 +48,24 @@
     <string name="keepalive_channel_desc">保持远程会话运行所需的常驻通知</string>
     <string name="keepalive_notif_title">ZMobile 后台守护中</string>
     <string name="keepalive_notif_text">正在保持远程会话在线</string>
+
+    <!-- 任务事件通知 -->
+    <string name="notif_channel_approvals">审批请求</string>
+    <string name="notif_channel_approvals_desc">任务等待你批准时立即提醒</string>
+    <string name="notif_channel_events">任务动态</string>
+    <string name="notif_channel_events_desc">任务完成或失败时提醒</string>
+    <string name="notif_approval_title">任务等待审批</string>
+    <string name="notif_approval_text">「%1$s」需要你批准后才能继续</string>
+    <string name="notif_completed_title">任务已完成</string>
+    <string name="notif_completed_text">「%1$s」已执行完成</string>
+    <string name="notif_failed_title">任务失败</string>
+    <string name="notif_failed_text">「%1$s」执行失败，请查看详情</string>
+    <string name="notif_task_unnamed">未命名任务</string>
+
+    <!-- 会话健康指示 -->
+    <string name="session_state_connected">已连接</string>
+    <string name="session_state_connecting">连接中</string>
+    <string name="session_state_disconnected">连接断开</string>
     <string name="settings_update_title">更新设置</string>
     <string name="settings_update_summary">启动检查更新</string>
     <string name="settings_security_title">安全设置</string>
