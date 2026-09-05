@@ -620,6 +620,13 @@ class RemoteControlActivity : AppCompatActivity() {
             ImmersiveHelper.exitImmersiveFullscreen(this)
         }
         ai.zcode.remote.ui.main.MainActivity.markVisiblePage("remote")
+        // 页面恢复到前台可见：记录可见状态并持续跟踪当前会话 ID。
+        // 若用户正停留在该会话页（正在对话），审批/提问弹层已在页面上，
+        // 系统通知跳过（见 TaskNotifier.notify 的前台会话判断）。
+        // 周期刷新以跟随 SPA 页面内切换会话（页面内导航不触发 onPageFinished）
+        foregroundSessionVisible.set(true)
+        refreshForegroundSessionId()
+        handler.postDelayed(foregroundSessionTick, FOREGROUND_SESSION_TICK_MS)
     }
 
     override fun onPause() {
@@ -627,9 +634,39 @@ class RemoteControlActivity : AppCompatActivity() {
         // 不调 webView.onPause()：暂停会冻结 JS 定时器与 WS 回调，
         // 导致切后台后电脑端发审批 APP 收不到。让 WebView 在后台保持活跃，
         // 事件经 TaskEventBridge → TaskNotifier 触发系统通知。
+        // 页面离开前台（被列表页覆盖/切后台/关闭）：不再抑制系统通知
+        foregroundSessionVisible.set(false)
+        handler.removeCallbacks(foregroundSessionTick)
         // 切出时记录当前任务会话：通过 JS 从页面 DOM 提取 task-item 的
         // data-testid（选中态/展开态），持久化到对应连接，下次切回时恢复
         saveCurrentTaskId()
+    }
+
+    /** 周期刷新前台会话 ID 的 Runnable（跟随页面内会话切换）。 */
+    private val foregroundSessionTick = object : Runnable {
+        override fun run() {
+            if (!foregroundSessionVisible.get()) return
+            refreshForegroundSessionId()
+            handler.postDelayed(this, FOREGROUND_SESSION_TICK_MS)
+        }
+    }
+
+    /** 提取当前前台会话 ID 并更新全局（供 TaskNotifier 判断是否抑制通知）。 */
+    private fun refreshForegroundSessionId() {
+        if (connectionId.isEmpty()) return
+        binding.webView.evaluateJavascript("""
+            (function() {
+                var pane = document.querySelector('[data-session-id]');
+                if (pane) {
+                    var sid = pane.getAttribute('data-session-id');
+                    if (sid && sid.length > 0) return sid;
+                }
+                return '';
+            })()
+        """.trimIndent()) { result ->
+            val taskId = result?.trim('"')?.trim() ?: ""
+            foregroundSessionId.set(taskId)
+        }
     }
 
     /** 从页面 DOM 提取当前所在的任务会话 ID 并保存到连接仓库。 */
@@ -670,6 +707,7 @@ class RemoteControlActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         if (current === this) current = null
+        handler.removeCallbacks(foregroundSessionTick)
         filePathCallback?.onReceiveValue(null)
         filePathCallback = null
         binding.webView.destroy()
@@ -698,12 +736,28 @@ class RemoteControlActivity : AppCompatActivity() {
         const val EXTRA_TASK_ID = "extra_task_id"
         private const val EXTRA_SETTINGS_MODE = "extra_settings_mode"
 
+        /** 前台会话 ID 的刷新周期（ms）：跟随 SPA 页面内会话切换。 */
+        private const val FOREGROUND_SESSION_TICK_MS = 2000L
+
         /** 当前存活的 RemoteControlActivity 实例（单连接监听：最多一个）。 */
         @Volatile
         private var current: RemoteControlActivity? = null
 
         /** 是否已有远程页存活（供 MainActivity 切回判断/自动恢复去重）。 */
         fun hasLiveInstance(): Boolean = current != null
+
+        /** 远程页是否在前台可见（Activity onResume/onPause 维护）。 */
+        private val foregroundSessionVisible = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        /** 前台页面当前显示的会话 ID（从 [data-session-id] 提取，列表页为空）。 */
+        private val foregroundSessionId = java.util.concurrent.atomic.AtomicReference("")
+
+        /**
+         * 用户是否正停留在该任务会话页（页面前台可见且显示此会话）。
+         * 此时审批/提问弹层已在页面上，TaskNotifier 跳过系统通知。
+         */
+        fun isForegroundSession(taskId: String): Boolean =
+            foregroundSessionVisible.get() && foregroundSessionId.get() == taskId
 
         fun start(
             context: Context,

@@ -58,6 +58,14 @@ object TaskNotifier {
     /** 发布任务事件通知；重复事件（同任务同类型）只刷新不重复弹。 */
     @Synchronized
     fun notify(context: Context, event: TaskEventParser.TaskEvent) {
+        // 用户正停留在该任务会话页（页面可见且显示此会话）：
+        // 审批/提问弹层本身就在页面上，系统通知是额外打扰，跳过
+        if (event.taskId.isNotEmpty() &&
+            ai.zcode.remote.ui.remote.RemoteControlActivity.isForegroundSession(event.taskId)
+        ) {
+            return
+        }
+
         // resolved 是撤回信号：撤销该任务的审批/提问通知，不发新通知
         // 但需冷却窗口保护：通知刚弹出 5s 内的 resolved 判定为远端快照抖动的假撤回，忽略
         if (event.type == TaskEventParser.TaskEvent.Type.RESOLVED) {
