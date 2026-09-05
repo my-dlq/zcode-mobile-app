@@ -224,13 +224,24 @@ class MainActivity : AppCompatActivity() {
                     viewHolder: RecyclerView.ViewHolder,
                 ) {
                     super.clearView(recyclerView, viewHolder)
+                    val v = viewHolder.itemView
                     // 回弹归位：阴影与缩放复位
-                    viewHolder.itemView.animate()
+                    v.animate()
                         .translationZ(0f)
                         .scaleX(1f)
                         .scaleY(1f)
                         .setDuration(150)
                         .start()
+                    // 拖动抬高的 translationZ 会让 View 生成独立合成层，松手后该层
+                    // 残留为一块白色浮起底色（透明根卡片上尤为明显）。动画结束后
+                    // 强制清 Z 并刷新，确保合成层随 Z=0 一起销毁、底色彻底去除。
+                    v.postDelayed({
+                        v.animate().cancel()
+                        v.translationZ = 0f
+                        v.scaleX = 1f
+                        v.scaleY = 1f
+                        v.invalidate()
+                    }, 160)
                     adapter.onMoveFinished()
                 }
 
