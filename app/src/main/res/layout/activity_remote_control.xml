@@ -30,11 +30,6 @@
         tools:progress="60"
         tools:visibility="visible" />
 
-    <!-- 会话健康指示胶囊：由 WebSocket/SSE 连接状态驱动 -->
-    <include
-        android:id="@+id/sessionHealth"
-        layout="@layout/view_session_health" />
-
     <!-- 异常断网/加载失败占位覆盖层 -->
     <LinearLayout
         android:id="@+id/layoutErrorOverlay"

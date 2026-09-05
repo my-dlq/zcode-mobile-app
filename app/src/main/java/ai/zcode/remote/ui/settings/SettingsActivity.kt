@@ -54,12 +54,6 @@ class SettingsActivity : AppCompatActivity() {
             openBatteryOptimizationSettings()
         }
 
-        binding.switchKeepAlive.setOnCheckedChangeListener { _, checked ->
-            appSettings.setKeepAliveEnabled(checked)
-            if (checked) KeepAliveService.start(this) else KeepAliveService.stop(this)
-            refreshKeepAliveState()
-        }
-
         refreshState()
     }
 

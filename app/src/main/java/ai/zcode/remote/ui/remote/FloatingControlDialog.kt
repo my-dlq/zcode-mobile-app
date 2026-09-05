@@ -20,8 +20,6 @@ class FloatingControlDialog : BottomSheetDialogFragment() {
     var onOpenSettingsListener: (() -> Unit)? = null
     var onRefreshListener: (() -> Unit)? = null
     var onToggleFullscreenListener: (() -> Unit)? = null
-    var onToggleKeepScreenOnListener: (() -> Unit)? = null
-    var onToggleDesktopModeListener: (() -> Unit)? = null
     var onCopyUrlListener: (() -> Unit)? = null
     var onClearCacheListener: (() -> Unit)? = null
     var onBackHomeListener: (() -> Unit)? = null

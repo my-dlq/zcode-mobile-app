@@ -1,21 +1,16 @@
 <resources>
     <string name="app_name">ZMobile</string>
     <string name="title_connections">连接列表</string>
-    <string name="subtitle_connections">轻松连接并管理您的 ZCode 工作区</string>
     <string name="hint_drag_to_sort">长按拖动进行排序</string>
     
     <!-- 首页操作 -->
     <string name="action_scan_qr">扫描连接</string>
-    <string name="action_add_url">地址连接</string>
-    <string name="action_paste_connect">剪贴板直连</string>
-    <string name="action_connect">立即连接</string>
     <string name="action_edit">编辑连接</string>
     <string name="action_copy_url">复制地址</string>
     <string name="toast_url_copied">连接地址已复制</string>
     <string name="action_delete">删除</string>
     <string name="action_save">保存</string>
     <string name="action_cancel">取消</string>
-    <string name="action_confirm">确定</string>
 
     <!-- 列表状态与空态 -->
     <string name="empty_connections_title">扫描连接</string>
@@ -33,7 +28,6 @@
     <string name="settings_title">设置</string>
     <string name="settings_section_display">显示与体验</string>
     <string name="settings_fullscreen_title">全屏设置</string>
-    <string name="settings_fullscreen_summary">进入远程控制时默认使用沉浸式全屏</string>
     <string name="settings_fullscreen_on">已开启沉浸式全屏</string>
     <string name="settings_fullscreen_off">保持系统状态栏和导航栏显示</string>
     <string name="settings_theme_title">主题设置</string>
@@ -83,9 +77,6 @@
     <string name="notif_task_unnamed">未命名任务</string>
 
     <!-- 会话健康指示 -->
-    <string name="session_state_connected">已连接</string>
-    <string name="session_state_connecting">连接中</string>
-    <string name="session_state_disconnected">连接断开</string>
     <string name="settings_update_title">更新设置</string>
     <string name="settings_update_summary">启动检查更新</string>
     <string name="settings_security_title">安全设置</string>
@@ -127,7 +118,6 @@
     <string name="hint_name">设备备注名称 (例如: 办公室电脑)</string>
     <string name="hint_url">ZCode 远程控制完整 URL</string>
     <string name="error_invalid_url">请输入有效的 ZCode 远程连接 URL</string>
-    <string name="error_empty_name">请输入设备名称</string>
     <string name="confirm_delete_title">确认删除</string>
     <string name="confirm_delete_msg">确定要删除设备「%1$s」吗？</string>
 
@@ -140,7 +130,6 @@
     <string name="camera_permission_required">需要相机权限以扫描二维码</string>
 
     <!-- 远程控制界面 -->
-    <string name="remote_loading">正在连接 ZCode 远程工作区…</string>
     <string name="remote_load_failed">连接失败，请检查网络或重新刷新</string>
     <string name="remote_retry">重试</string>
     <string name="menu_refresh">刷新页面</string>

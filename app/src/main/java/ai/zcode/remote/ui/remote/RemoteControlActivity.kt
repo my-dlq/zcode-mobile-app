@@ -13,7 +13,6 @@ import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.webkit.ValueCallback
-import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
@@ -44,7 +43,6 @@ class RemoteControlActivity : AppCompatActivity() {
     private var connectionId: String = ""
     private var isFullscreen = true
     private var isKeepScreenOn = true
-    private var isDesktopMode = false
     private var lastBackPressTime = 0L
 
     private lateinit var customWebViewClient: ZCodeWebViewClient
@@ -120,7 +118,6 @@ class RemoteControlActivity : AppCompatActivity() {
         setupBackPressHandler()
 
         if (isSettingsModeRequested) {
-            isDesktopMode = true
             val settings = binding.webView.settings
             settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
             settings.useWideViewPort = true
@@ -141,14 +138,6 @@ class RemoteControlActivity : AppCompatActivity() {
             deviceName = deviceName,
             onEvent = { event ->
                 runOnUiThread { TaskNotifier.notify(this, event) }
-            },
-            onSessionState = { up ->
-                runOnUiThread { updateSessionHealth(up) }
-            },
-            wsUrlCallback = { url ->
-                // WS 打开时仅记录日志：事件监听完全依赖页面 WebView 自身连接
-                // （页面带完整鉴权），原生不做独立 WS（裸连缺桥会话必然被踢）
-                android.util.Log.d("ZCodeEvent", "onWsUrl: connId=$connectionId url=$url")
             }
         )
         binding.webView.addJavascriptInterface(eventBridge, TaskEventBridge.BRIDGE_NAME)
@@ -172,11 +161,6 @@ class RemoteControlActivity : AppCompatActivity() {
             android.content.pm.PackageManager.PERMISSION_GRANTED
         ) return
         requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 9001)
-    }
-
-    private fun updateSessionHealth(up: Boolean) {
-        // 用户不需要连接状态提示框，始终保持隐藏
-        binding.sessionHealth.root.visibility = View.GONE
     }
 
     private fun setupImmersiveAndScreen() {
@@ -275,7 +259,6 @@ class RemoteControlActivity : AppCompatActivity() {
                         customWebViewClient.openWorkspaceSettings(binding.webView) { opened ->
                             isSettingsModeRequested = false
                             if (opened) {
-                                isDesktopMode = false
                                 ToastUtils.show(this@RemoteControlActivity, "已进入设置中心")
                             } else {
                                 customWebViewClient.setDesktopViewport(binding.webView, false)
@@ -343,11 +326,10 @@ class RemoteControlActivity : AppCompatActivity() {
         )
 
         // 打开设置中心：openWorkspaceSettings 内部会先切桌面视口拉起齿轮按钮，
-        // 成功后再回切移动端视口以 APP 端布局展示设置中心，因此同步桌面模式状态
+        // 成功后再回切移动端视口以 APP 端布局展示设置中心
         dialog.onOpenSettingsListener = {
             customWebViewClient.openWorkspaceSettings(binding.webView) { success ->
                 if (success) {
-                    isDesktopMode = false
                     ToastUtils.show(this@RemoteControlActivity, "已进入设置中心")
                 } else {
                     customWebViewClient.setDesktopViewport(binding.webView, false)
@@ -562,26 +544,6 @@ class RemoteControlActivity : AppCompatActivity() {
                 }
             }
         })
-    }
-
-    private fun applyDesktopMode(enable: Boolean) {
-        val settings = binding.webView.settings
-        if (enable) {
-            settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-            settings.useWideViewPort = true
-            settings.loadWithOverviewMode = true
-            settings.setSupportZoom(true)
-            settings.builtInZoomControls = true
-            settings.displayZoomControls = false
-        } else {
-            settings.userAgentString = "Mozilla/5.0 (Linux; Android 15; Pixel 7 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
-            settings.useWideViewPort = false
-            settings.loadWithOverviewMode = false
-            settings.setSupportZoom(false)
-            settings.builtInZoomControls = false
-        }
-        customWebViewClient.setDesktopViewport(binding.webView, enable)
-        binding.webView.reload()
     }
 
     private fun loadUrl(url: String) {

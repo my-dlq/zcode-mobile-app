@@ -1,7 +1,5 @@
 package ai.zcode.remote.ui.remote.event
 
-import android.util.Log
-
 /**
  * JS → 原生 事件桥：注入脚本把镜像的页面流量（fetch/SSE/WS）与连接状态通过
  * addJavascriptInterface 回传。信封解码（base64/分片重组/递归解嵌套）由
@@ -10,8 +8,6 @@ import android.util.Log
 class TaskEventBridge(
     private val deviceName: String,
     private val onEvent: (TaskEventParser.TaskEvent) -> Unit,
-    private val onSessionState: (up: Boolean) -> Unit,
-    private val wsUrlCallback: (url: String) -> Unit = {},
 ) {
     @Volatile
     var enabled = true
@@ -29,25 +25,8 @@ class TaskEventBridge(
         }
     }
 
-    @android.webkit.JavascriptInterface
-    fun onSessionState(state: String) {
-        if (!enabled) return
-        val up = state == "up"
-        Log.d(TAG, "session state: $state")
-        onSessionState(up)
-    }
-
-    /** WS 连接建立时回传 URL：KeepAliveService 后台重连用。 */
-    @android.webkit.JavascriptInterface
-    fun onWsUrl(url: String) {
-        if (!enabled || url.isEmpty()) return
-        Log.d(TAG, "ws url: $url")
-        wsUrlCallback(url)
-    }
-
     companion object {
         const val BRIDGE_NAME = "__zcodeNative"
-        private const val TAG = "ZCodeEvent"
         private const val MAX_BYTES = 512 * 1024
     }
 }

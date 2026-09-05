@@ -1,11 +1,6 @@
 package ai.zcode.remote.utils
 
 import android.app.Activity
-import android.content.pm.ActivityInfo
-import android.os.Build
-import android.view.View
-import android.view.WindowInsets
-import android.view.WindowInsetsController
 import android.view.WindowManager
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat

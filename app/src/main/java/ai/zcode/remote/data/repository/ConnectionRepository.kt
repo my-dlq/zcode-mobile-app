@@ -122,7 +122,6 @@ class ConnectionRepository(context: Context) {
             .putString(KEY_LAST_ACTIVE_URL, conn.url)
             .putString(KEY_LAST_ACTIVE_NAME, conn.name)
             .putString(KEY_LAST_ACTIVE_TASK_ID, conn.lastTaskId)
-            .putString(KEY_LAST_ACTIVE_CONN_ID, conn.id)
             .apply()
     }
 
@@ -141,11 +140,6 @@ class ConnectionRepository(context: Context) {
         }
     }
 
-    /** 获取某连接最后活跃的任务会话 ID。 */
-    fun getLastTaskId(connectionId: String): String {
-        return getAllConnections().find { it.id == connectionId }?.lastTaskId ?: ""
-    }
-
     /** 通过 URL 查找连接（用于 RemoteControlActivity 反查 connectionId）。 */
     fun findByUrl(url: String): RemoteConnection? {
         val normalized = normalizeUrl(url)
@@ -161,20 +155,6 @@ class ConnectionRepository(context: Context) {
     /** 获取最近一次活跃连接的任务会话 ID。 */
     fun getLastActiveTaskId(): String = prefs.getString(KEY_LAST_ACTIVE_TASK_ID, "") ?: ""
 
-    /** 获取最近一次活跃连接的 ID。 */
-    fun getLastActiveConnId(): String? = prefs.getString(KEY_LAST_ACTIVE_CONN_ID, null)
-
-    /** 清除活跃连接标记（用户主动退出远程页时调用）。 */
-    fun clearLastActive() {
-        activeConnectionId = null
-        prefs.edit()
-            .remove(KEY_LAST_ACTIVE_URL)
-            .remove(KEY_LAST_ACTIVE_NAME)
-            .remove(KEY_LAST_ACTIVE_TASK_ID)
-            .remove(KEY_LAST_ACTIVE_CONN_ID)
-            .apply()
-    }
-
     private fun saveList(list: List<RemoteConnection>) {
         val json = gson.toJson(list)
         prefs.edit().putString(KEY_CONNECTIONS, json).apply()
@@ -186,7 +166,6 @@ class ConnectionRepository(context: Context) {
         private const val KEY_LAST_ACTIVE_URL = "key_last_active_url"
         private const val KEY_LAST_ACTIVE_NAME = "key_last_active_name"
         private const val KEY_LAST_ACTIVE_TASK_ID = "key_last_active_task_id"
-        private const val KEY_LAST_ACTIVE_CONN_ID = "key_last_active_conn_id"
 
         @Volatile
         private var instance: ConnectionRepository? = null
