@@ -80,6 +80,7 @@ dependencies {
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.webkit)
     implementation(libs.google.gson)
+    implementation(libs.okhttp)
 
     // CameraX
     implementation(libs.androidx.camera.core)

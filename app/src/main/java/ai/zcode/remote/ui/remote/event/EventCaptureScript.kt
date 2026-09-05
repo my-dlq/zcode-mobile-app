@@ -32,6 +32,10 @@ object EventCaptureScript {
     var reportState = function(up) {
         try { BRIDGE.onSessionState(up ? 'up' : 'down'); } catch (e) {}
     };
+    // WS open 时把 URL 也传给原生：KeepAliveService 后台重连用
+    var reportWsUrl = function(url) {
+        try { BRIDGE.onWsUrl(String(url || '')); } catch (e) {}
+    };
 
     // ---- WebSocket：连接状态即会话健康指示数据源；消息镜像送事件解析 ----
     var OrigWS = window.WebSocket;
@@ -39,7 +43,10 @@ object EventCaptureScript {
         var WSWrapped = function(url, protocols) {
             var ws = (protocols === undefined) ? new OrigWS(url) : new OrigWS(url, protocols);
             try {
-                ws.addEventListener('open', function() { reportState(true); });
+                ws.addEventListener('open', function() {
+                    reportState(true);
+                    reportWsUrl(url);
+                });
                 ws.addEventListener('close', function() { reportState(false); });
                 ws.addEventListener('error', function() { reportState(false); });
                 ws.addEventListener('message', function(ev) {

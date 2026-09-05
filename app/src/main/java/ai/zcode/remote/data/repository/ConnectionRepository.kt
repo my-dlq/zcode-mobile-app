@@ -138,6 +138,15 @@ class ConnectionRepository(context: Context) {
         return getAllConnections().firstOrNull { normalizeUrl(it.url) == normalized }
     }
 
+    /** 保存某连接的 WebSocket URL（KeepAliveService 后台重连用）。 */
+    fun saveWsUrl(connectionId: String, wsUrl: String) {
+        prefs.edit().putString(KEY_WS_PREFIX + connectionId, wsUrl).apply()
+    }
+
+    /** 获取某连接的 WebSocket URL。 */
+    fun getWsUrl(connectionId: String): String? =
+        prefs.getString(KEY_WS_PREFIX + connectionId, null)
+
     /** 获取最近一次活跃连接的 URL（用于进程被杀后自动恢复远程页）。 */
     fun getLastActiveUrl(): String? = prefs.getString(KEY_LAST_ACTIVE_URL, null)
 
@@ -173,6 +182,7 @@ class ConnectionRepository(context: Context) {
         private const val KEY_LAST_ACTIVE_NAME = "key_last_active_name"
         private const val KEY_LAST_ACTIVE_TASK_ID = "key_last_active_task_id"
         private const val KEY_LAST_ACTIVE_CONN_ID = "key_last_active_conn_id"
+        private const val KEY_WS_PREFIX = "key_ws_url_"
 
         @Volatile
         private var instance: ConnectionRepository? = null

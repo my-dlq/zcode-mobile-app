@@ -95,6 +95,7 @@ class RemoteControlActivity : AppCompatActivity() {
 
         // 反查 connectionId：用于 onPause 时保存当前任务会话到对应连接
         connectionId = ConnectionRepository.getInstance(this).findByUrl(targetUrl)?.id ?: ""
+        android.util.Log.d("ZCodeEvent", "connectionId for $deviceName: ${connectionId.ifEmpty { "(not found)" }}")
 
         setupImmersiveAndScreen()
         setupKeyboardInsets()
@@ -127,6 +128,15 @@ class RemoteControlActivity : AppCompatActivity() {
             },
             onSessionState = { up ->
                 runOnUiThread { updateSessionHealth(up) }
+            },
+            wsUrlCallback = { url ->
+                // 保存 WS URL 到连接：KeepAliveService 后台重连用
+                android.util.Log.d("ZCodeEvent", "onWsUrl: connId=$connectionId url=$url")
+                if (connectionId.isNotEmpty()) {
+                    ConnectionRepository.getInstance(this).saveWsUrl(connectionId, url)
+                    // 通知后台事件监听刷新（新连接的 WS 也需要后台镜像）
+                    ai.zcode.remote.service.BackgroundEventMonitor.refreshInstance()
+                }
             }
         )
         binding.webView.addJavascriptInterface(eventBridge, TaskEventBridge.BRIDGE_NAME)
