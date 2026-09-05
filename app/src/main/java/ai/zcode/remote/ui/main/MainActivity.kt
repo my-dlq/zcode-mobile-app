@@ -130,7 +130,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun initRecyclerView() {
         adapter = ConnectionAdapter(
-            items = emptyList(),
+            items = mutableListOf(),
             onConnectClick = { connection ->
                 repository.updateLastConnected(connection.id)
                 // 正常点击连接不传 taskId：停留在任务列表页，让用户自己选会话
@@ -149,12 +149,50 @@ class MainActivity : AppCompatActivity() {
             },
             onDeleteClick = { connection ->
                 showDeleteConfirmDialog(connection)
+            },
+            onStartDrag = { viewHolder ->
+                itemTouchHelper?.startDrag(viewHolder)
+            },
+            onOrderChanged = { orderedIds ->
+                repository.saveOrder(orderedIds)
             }
         )
 
         binding.rvConnections.layoutManager = LinearLayoutManager(this)
         binding.rvConnections.adapter = adapter
+
+        // 长按拖动排序：用户手动调整连接顺序，APP 不自动重排
+        itemTouchHelper = androidx.recyclerview.widget.ItemTouchHelper(
+            object : androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback(
+                androidx.recyclerview.widget.ItemTouchHelper.UP or
+                    androidx.recyclerview.widget.ItemTouchHelper.DOWN, 0
+            ) {
+                override fun onMove(
+                    recyclerView: androidx.recyclerview.widget.RecyclerView,
+                    viewHolder: androidx.recyclerview.widget.RecyclerView.ViewHolder,
+                    target: androidx.recyclerview.widget.RecyclerView.ViewHolder,
+                ): Boolean {
+                    adapter.onItemMove(viewHolder.adapterPosition, target.adapterPosition)
+                    return true
+                }
+
+                override fun onSwiped(viewHolder: androidx.recyclerview.widget.RecyclerView.ViewHolder, direction: Int) {}
+
+                override fun clearView(
+                    recyclerView: androidx.recyclerview.widget.RecyclerView,
+                    viewHolder: androidx.recyclerview.widget.RecyclerView.ViewHolder,
+                ) {
+                    super.clearView(recyclerView, viewHolder)
+                    adapter.onMoveFinished()
+                }
+
+                override fun isLongPressDragEnabled(): Boolean = true // ItemTouchHelper 自动处理长按
+            }
+        )
+        itemTouchHelper?.attachToRecyclerView(binding.rvConnections)
     }
+
+    private var itemTouchHelper: androidx.recyclerview.widget.ItemTouchHelper? = null
 
     private fun initListeners() {
         binding.btnMenu.setOnClickListener {

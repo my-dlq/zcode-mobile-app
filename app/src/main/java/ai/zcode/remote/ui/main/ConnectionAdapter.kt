@@ -15,18 +15,32 @@ import java.util.Date
 import java.util.Locale
 
 class ConnectionAdapter(
-    private var items: List<RemoteConnection>,
+    private var items: MutableList<RemoteConnection>,
     private val onConnectClick: (RemoteConnection) -> Unit,
     private val onSettingsClick: (RemoteConnection) -> Unit,
     private val onEditClick: (RemoteConnection) -> Unit,
-    private val onDeleteClick: (RemoteConnection) -> Unit
+    private val onDeleteClick: (RemoteConnection) -> Unit,
+    private val onStartDrag: (RecyclerView.ViewHolder) -> Unit = {},
+    private val onOrderChanged: (List<String>) -> Unit = {},
 ) : RecyclerView.Adapter<ConnectionAdapter.ViewHolder>() {
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
 
     fun updateData(newItems: List<RemoteConnection>) {
-        this.items = newItems
+        this.items = newItems.toMutableList()
         notifyDataSetChanged()
+    }
+
+    /** ItemTouchHelper 拖动回调：交换两个位置的元素。 */
+    fun onItemMove(fromPosition: Int, toPosition: Int) {
+        val item = items.removeAt(fromPosition)
+        items.add(toPosition, item)
+        notifyItemMoved(fromPosition, toPosition)
+    }
+
+    /** ItemTouchHelper 拖动结束：通知外部保存新顺序。 */
+    fun onMoveFinished() {
+        onOrderChanged(items.map { it.id })
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {

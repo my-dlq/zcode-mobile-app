@@ -29,7 +29,8 @@ class ConnectionRepository(context: Context) {
             val type = object : TypeToken<MutableList<RemoteConnection>>() {}.type
             val list: MutableList<RemoteConnection> = gson.fromJson(json, type) ?: mutableListOf()
             list.forEach { it.isConnected = it.id == activeConnectionId }
-            list.sortedByDescending { it.lastConnectedTime }.toMutableList()
+            // 不再按最近连接时间自动排序：顺序由用户手动拖动决定，APP 不自动调整
+            list
         } catch (e: Exception) {
             mutableListOf()
         }
@@ -45,10 +46,23 @@ class ConnectionRepository(context: Context) {
             val existing = list[index]
             connection.copyInto(existing)
         } else {
-            list.add(0, connection)
+            // 新连接追加到末尾（不再插入到开头），保持用户手动排序的顺序
+            list.add(connection)
         }
 
         saveList(list)
+    }
+
+    /** 保存用户手动排序后的连接顺序。 */
+    fun saveOrder(orderedIds: List<String>) {
+        val list = getAllConnections()
+        val idToConn = list.associateBy { it.id }
+        val reordered = orderedIds.mapNotNull { idToConn[it] }.toMutableList()
+        // 防御：如果有新增连接不在 orderedIds 中，追加到末尾
+        for (conn in list) {
+            if (conn.id !in orderedIds) reordered.add(conn)
+        }
+        saveList(reordered)
     }
 
     private fun sameConnection(first: RemoteConnection, second: RemoteConnection): Boolean {
