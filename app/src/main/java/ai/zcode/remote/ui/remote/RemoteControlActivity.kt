@@ -597,9 +597,9 @@ class RemoteControlActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    /** 用户主动退出（返回键两次确认）时清除活跃连接标记。 */
+    /** 用户返回到连接列表：保持连接状态（activeConnectionId 不清除），
+     *  方便用户快速切回或切换到其他连接。 */
     private fun exitToDeviceList() {
-        ConnectionRepository.getInstance(this).clearLastActive()
         finish()
     }
 

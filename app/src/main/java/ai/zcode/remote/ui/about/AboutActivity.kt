@@ -31,8 +31,7 @@ class AboutActivity : AppCompatActivity() {
 
         binding.tvAboutVersion.text = getString(
             R.string.about_version_format,
-            BuildConfig.VERSION_NAME,
-            BuildConfig.VERSION_CODE
+            BuildConfig.VERSION_NAME
         )
 
         binding.btnBack.setOnClickListener { finish() }
