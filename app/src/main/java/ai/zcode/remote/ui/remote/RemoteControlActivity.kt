@@ -94,7 +94,13 @@ class RemoteControlActivity : AppCompatActivity() {
         }
 
         // 反查 connectionId：用于 onPause 时保存当前任务会话到对应连接
-        connectionId = ConnectionRepository.getInstance(this).findByUrl(targetUrl)?.id ?: ""
+        val repo = ConnectionRepository.getInstance(this)
+        connectionId = repo.findByUrl(targetUrl)?.id ?: ""
+        // 不管从哪条路径进入（列表点击/通知点击/深链接/自动恢复），
+        // 都更新 lastActive 指向当前连接——确保下次恢复/通知跳转到正确的连接
+        if (connectionId.isNotEmpty()) {
+            repo.updateLastConnected(connectionId)
+        }
         android.util.Log.d("ZCodeEvent", "connectionId for $deviceName: ${connectionId.ifEmpty { "(not found)" }}")
 
         setupImmersiveAndScreen()
@@ -594,6 +600,28 @@ class RemoteControlActivity : AppCompatActivity() {
 
     private fun loadUrl(url: String) {
         binding.webView.loadUrl(url)
+    }
+
+    /** singleTop 复用栈顶实例时：用新 Intent 的 extra 切换到新连接/会话。 */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val newUrl = intent.getStringExtra(EXTRA_URL) ?: return
+        val newName = intent.getStringExtra(EXTRA_NAME) ?: deviceName
+        val newTaskId = intent.getStringExtra(EXTRA_TASK_ID) ?: ""
+        // 保存当前页面的 taskId 到旧连接（切换前）
+        saveCurrentTaskId()
+        // 更新连接信息并重新加载
+        targetUrl = newUrl
+        deviceName = newName
+        pendingTaskId = newTaskId
+        val repo = ConnectionRepository.getInstance(this)
+        connectionId = repo.findByUrl(targetUrl)?.id ?: ""
+        if (connectionId.isNotEmpty()) {
+            repo.updateLastConnected(connectionId)
+        }
+        // 重新加载页面
+        loadUrl(targetUrl)
     }
 
     override fun onResume() {

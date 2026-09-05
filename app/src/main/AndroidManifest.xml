@@ -71,12 +71,14 @@
             </intent-filter>
         </activity>
 
-        <!-- 核心远程控制 WebView 沉浸式全屏界面 -->
+        <!-- 核心远程控制 WebView 沉浸式全屏界面；singleTop 避免从通知/列表
+             重复创建多个实例叠加，已在栈顶时通过 onNewIntent 切换连接 -->
         <activity
             android:name=".ui.remote.RemoteControlActivity"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
             android:exported="true"
             android:hardwareAccelerated="true"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.ZCodeRemote.Fullscreen"
             android:windowSoftInputMode="adjustResize" />
 

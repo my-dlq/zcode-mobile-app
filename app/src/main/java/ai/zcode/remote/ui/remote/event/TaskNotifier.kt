@@ -105,16 +105,15 @@ object TaskNotifier {
     }
 
     /**
-     * 构造通知点击后的启动 Intent：优先打开该设备对应的远程控制页（通过
-     * deviceName 从连接仓库反查 URL），并携带 taskId 让页面加载完成后
-     * 自动跳转到对应任务会话；查不到连接时退化为打开首页。
+     * 构造通知点击后的启动 Intent：通过 deviceName 从连接仓库反查连接，
+     * 打开对应远程控制页并携带 taskId 跳转到任务会话；查不到时退化为首页。
      */
     private fun buildLaunchIntent(context: Context, event: TaskEventParser.TaskEvent): Intent {
-        val url = findConnectionUrl(context, event.deviceName)
-        return if (url != null) {
+        val conn = findConnection(context, event.deviceName)
+        return if (conn != null) {
             Intent(context, RemoteControlActivity::class.java).apply {
-                putExtra(RemoteControlActivity.EXTRA_URL, url)
-                putExtra(RemoteControlActivity.EXTRA_NAME, event.deviceName)
+                putExtra(RemoteControlActivity.EXTRA_URL, conn.url)
+                putExtra(RemoteControlActivity.EXTRA_NAME, conn.name)
                 if (event.taskId.isNotEmpty()) {
                     putExtra(RemoteControlActivity.EXTRA_TASK_ID, event.taskId)
                 }
@@ -127,12 +126,12 @@ object TaskNotifier {
         }
     }
 
-    /** 按设备名从连接仓库反查最近一次连接的 URL。 */
-    private fun findConnectionUrl(context: Context, deviceName: String): String? {
+    /** 按设备名从连接仓库反查连接。 */
+    private fun findConnection(context: Context, deviceName: String): ai.zcode.remote.data.model.RemoteConnection? {
         if (deviceName.isBlank()) return null
         return try {
             val repo = ConnectionRepository.getInstance(context)
-            repo.getAllConnections().firstOrNull { it.name == deviceName }?.url
+            repo.getAllConnections().firstOrNull { it.name == deviceName }
         } catch (e: Exception) {
             null
         }
