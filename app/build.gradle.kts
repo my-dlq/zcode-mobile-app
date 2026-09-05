@@ -11,8 +11,8 @@ android {
         applicationId = "ai.zcode.remote"
         minSdk = 24
         targetSdk = 34
-        versionCode = 4
-        versionName = "0.1.3"
+        versionCode = 5
+        versionName = "0.1.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -80,6 +80,7 @@ dependencies {
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.webkit)
     implementation(libs.google.gson)
+    implementation(libs.okhttp)
 
     // CameraX
     implementation(libs.androidx.camera.core)

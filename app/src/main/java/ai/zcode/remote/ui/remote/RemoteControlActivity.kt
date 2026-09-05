@@ -9,10 +9,10 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.webkit.ValueCallback
-import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
@@ -21,11 +21,17 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import ai.zcode.remote.R
 import ai.zcode.remote.data.repository.AppSettingsRepository
+import ai.zcode.remote.data.repository.ConnectionRepository
 import ai.zcode.remote.databinding.ActivityRemoteControlBinding
+import ai.zcode.remote.ui.remote.event.EventCaptureScript
+import ai.zcode.remote.ui.remote.event.TaskEventBridge
+import ai.zcode.remote.ui.remote.event.TaskNotifier
 import ai.zcode.remote.ui.remote.web.ZCodeWebChromeClient
 import ai.zcode.remote.ui.remote.web.ZCodeWebViewClient
 import ai.zcode.remote.utils.ImmersiveHelper
 import ai.zcode.remote.utils.ToastUtils
+import android.os.Handler
+import android.os.Looper
 
 class RemoteControlActivity : AppCompatActivity() {
 
@@ -33,13 +39,16 @@ class RemoteControlActivity : AppCompatActivity() {
     private lateinit var appSettings: AppSettingsRepository
     private var targetUrl: String = ""
     private var deviceName: String = "ZCode 远程工作区"
+    private var pendingTaskId: String = ""
+    private var connectionId: String = ""
     private var isFullscreen = true
     private var isKeepScreenOn = true
-    private var isDesktopMode = false
     private var lastBackPressTime = 0L
 
     private lateinit var customWebViewClient: ZCodeWebViewClient
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
+    private lateinit var eventBridge: TaskEventBridge
+    private val handler = Handler(Looper.getMainLooper())
 
     private val fileChooserLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -73,6 +82,7 @@ class RemoteControlActivity : AppCompatActivity() {
 
         targetUrl = intent.getStringExtra(EXTRA_URL) ?: ""
         deviceName = intent.getStringExtra(EXTRA_NAME) ?: "ZCode 远程工作区"
+        pendingTaskId = intent.getStringExtra(EXTRA_TASK_ID) ?: ""
         isSettingsModeRequested = intent.getBooleanExtra(EXTRA_SETTINGS_MODE, false)
 
         if (targetUrl.isBlank()) {
@@ -81,6 +91,26 @@ class RemoteControlActivity : AppCompatActivity() {
             return
         }
 
+        // 反查 connectionId：用于 onPause 时保存当前任务会话到对应连接
+        val repo = ConnectionRepository.getInstance(this)
+        connectionId = repo.findByUrl(targetUrl)?.id ?: ""
+        // 不管从哪条路径进入（列表点击/通知点击/深链接/自动恢复），
+        // 都更新 lastActive 指向当前连接——确保下次恢复/通知跳转到正确的连接
+        if (connectionId.isNotEmpty()) {
+            repo.updateLastConnected(connectionId)
+        }
+        android.util.Log.d("ZCodeEvent", "connectionId for $deviceName: ${connectionId.ifEmpty { "(not found)" }}")
+
+        // 单连接监听：一次只保留一个远程页实例（新打开连接时关闭旧页面，
+        // 旧 WebView 随之销毁，事件监听切换到当前连接）
+        current?.takeIf { it !== this }?.finish()
+        current = this
+
+        // 打开任一连接即自动启动保活前台服务：
+        // 防止进程被系统冻结（Android 12+ cached-app freeze / MIUI 更甚），
+        // 冻结后所有 WebSocket、重连、事件接收全部停摆——通知收不到的致命原因
+        ai.zcode.remote.service.KeepAliveService.start(this)
+
         setupImmersiveAndScreen()
         setupKeyboardInsets()
         setupWebView()
@@ -88,7 +118,6 @@ class RemoteControlActivity : AppCompatActivity() {
         setupBackPressHandler()
 
         if (isSettingsModeRequested) {
-            isDesktopMode = true
             val settings = binding.webView.settings
             settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
             settings.useWideViewPort = true
@@ -98,7 +127,40 @@ class RemoteControlActivity : AppCompatActivity() {
             settings.displayZoomControls = false
         }
 
+        setupEventCapture()
         loadUrl(targetUrl)
+    }
+
+    /** 注册任务事件桥并在每次页面加载后注入捕获脚本（SPA 导航可能重建 window）。 */
+    private fun setupEventCapture() {
+        ensureNotificationPermission()
+        eventBridge = TaskEventBridge(
+            deviceName = deviceName,
+            onEvent = { event ->
+                runOnUiThread { TaskNotifier.notify(this, event) }
+            }
+        )
+        binding.webView.addJavascriptInterface(eventBridge, TaskEventBridge.BRIDGE_NAME)
+        // document-start 注入必须在 loadUrl 之前调用一次——onPageStarted 回调时页面
+        // 已开始加载，脚本可能赶不上页面引导阶段建立的 WebSocket 连接
+        try {
+            androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
+                binding.webView,
+                EventCaptureScript.build(TaskEventBridge.BRIDGE_NAME),
+                setOf("https://zcode.z.ai")
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("ZCodeWeb", "document-start inject failed: ${e.message}")
+        }
+    }
+
+    /** Android 13+ 通知需要运行时授权；拒绝后不再重复打扰（系统会记住选择）。 */
+    private fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT < 33) return
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) return
+        requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 9001)
     }
 
     private fun setupImmersiveAndScreen() {
@@ -181,13 +243,22 @@ class RemoteControlActivity : AppCompatActivity() {
             },
             onPageFinish = { _ ->
                 binding.progressBar.visibility = View.GONE
+                // 通知点击带来的会话跳转：页面加载完成后注入 JS 定位并点击任务条目
+                if (pendingTaskId.isNotEmpty()) {
+                    val tid = pendingTaskId
+                    pendingTaskId = "" // 只跳一次，SPA 内部导航不再重复
+                    binding.webView.postDelayed({
+                        binding.webView.evaluateJavascript(
+                            ai.zcode.remote.ui.remote.event.SessionJumpScript.build(tid), null
+                        )
+                    }, 1500) // 等任务列表渲染完成
+                }
                 if (isSettingsModeRequested && binding.layoutErrorOverlay.visibility != View.VISIBLE) {
                     binding.webView.postDelayed({
                         if (!isSettingsModeRequested || binding.layoutErrorOverlay.visibility == View.VISIBLE) return@postDelayed
                         customWebViewClient.openWorkspaceSettings(binding.webView) { opened ->
                             isSettingsModeRequested = false
                             if (opened) {
-                                isDesktopMode = false
                                 ToastUtils.show(this@RemoteControlActivity, "已进入设置中心")
                             } else {
                                 customWebViewClient.setDesktopViewport(binding.webView, false)
@@ -255,11 +326,10 @@ class RemoteControlActivity : AppCompatActivity() {
         )
 
         // 打开设置中心：openWorkspaceSettings 内部会先切桌面视口拉起齿轮按钮，
-        // 成功后再回切移动端视口以 APP 端布局展示设置中心，因此同步桌面模式状态
+        // 成功后再回切移动端视口以 APP 端布局展示设置中心
         dialog.onOpenSettingsListener = {
             customWebViewClient.openWorkspaceSettings(binding.webView) { success ->
                 if (success) {
-                    isDesktopMode = false
                     ToastUtils.show(this@RemoteControlActivity, "已进入设置中心")
                 } else {
                     customWebViewClient.setDesktopViewport(binding.webView, false)
@@ -450,7 +520,7 @@ class RemoteControlActivity : AppCompatActivity() {
                         val now = System.currentTimeMillis()
                         if (now - lastBackPressTime < 2000) {
                             lastBackPressTime = 0L
-                            finish()
+                            exitToDeviceList()
                         } else {
                             lastBackPressTime = now
                             ToastUtils.show(this@RemoteControlActivity, getString(R.string.press_again_to_exit))
@@ -466,7 +536,7 @@ class RemoteControlActivity : AppCompatActivity() {
 
                     val now = System.currentTimeMillis()
                     if (now - lastBackPressTime < 2000) {
-                        finish()
+                        exitToDeviceList()
                     } else {
                         lastBackPressTime = now
                         ToastUtils.show(this@RemoteControlActivity, getString(R.string.press_again_to_exit))
@@ -476,62 +546,193 @@ class RemoteControlActivity : AppCompatActivity() {
         })
     }
 
-    private fun applyDesktopMode(enable: Boolean) {
-        val settings = binding.webView.settings
-        if (enable) {
-            settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-            settings.useWideViewPort = true
-            settings.loadWithOverviewMode = true
-            settings.setSupportZoom(true)
-            settings.builtInZoomControls = true
-            settings.displayZoomControls = false
-        } else {
-            settings.userAgentString = "Mozilla/5.0 (Linux; Android 15; Pixel 7 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
-            settings.useWideViewPort = false
-            settings.loadWithOverviewMode = false
-            settings.setSupportZoom(false)
-            settings.builtInZoomControls = false
-        }
-        customWebViewClient.setDesktopViewport(binding.webView, enable)
-        binding.webView.reload()
-    }
-
     private fun loadUrl(url: String) {
         binding.webView.loadUrl(url)
     }
 
+    /** singleTop 复用栈顶实例时：用新 Intent 的 extra 切换到新连接/会话。 */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val newUrl = intent.getStringExtra(EXTRA_URL) ?: return
+        val newName = intent.getStringExtra(EXTRA_NAME) ?: deviceName
+        val newTaskId = intent.getStringExtra(EXTRA_TASK_ID) ?: ""
+        // 保存当前页面的 taskId 到旧连接（切换前）
+        saveCurrentTaskId()
+        // 更新连接信息并重新加载
+        targetUrl = newUrl
+        deviceName = newName
+        pendingTaskId = newTaskId
+        val repo = ConnectionRepository.getInstance(this)
+        connectionId = repo.findByUrl(targetUrl)?.id ?: ""
+        if (connectionId.isNotEmpty()) {
+            repo.updateLastConnected(connectionId)
+        }
+        // 重新加载页面
+        loadUrl(targetUrl)
+    }
+
     override fun onResume() {
         super.onResume()
-        binding.webView.onResume()
+        // 不调 webView.onResume()：与 onPause 对应，保持 WebView 持续活跃，
+        // 让切后台时 JS 的 WebSocket 仍能收消息（审批/完成事件镜像到系统通知）
         if (isFullscreen) {
             ImmersiveHelper.enterImmersiveFullscreen(this)
         } else {
             ImmersiveHelper.exitImmersiveFullscreen(this)
         }
+        ai.zcode.remote.ui.main.MainActivity.markVisiblePage("remote")
+        // 页面恢复到前台可见：记录可见状态并持续跟踪当前会话 ID。
+        // 若用户正停留在该会话页（正在对话），审批/提问弹层已在页面上，
+        // 系统通知跳过（见 TaskNotifier.notify 的前台会话判断）。
+        // 周期刷新以跟随 SPA 页面内切换会话（页面内导航不触发 onPageFinished）
+        foregroundSessionVisible.set(true)
+        refreshForegroundSessionId()
+        handler.postDelayed(foregroundSessionTick, FOREGROUND_SESSION_TICK_MS)
     }
 
     override fun onPause() {
         super.onPause()
-        binding.webView.onPause()
+        // 不调 webView.onPause()：暂停会冻结 JS 定时器与 WS 回调，
+        // 导致切后台后电脑端发审批 APP 收不到。让 WebView 在后台保持活跃，
+        // 事件经 TaskEventBridge → TaskNotifier 触发系统通知。
+        // 页面离开前台（被列表页覆盖/切后台/关闭）：不再抑制系统通知
+        foregroundSessionVisible.set(false)
+        handler.removeCallbacks(foregroundSessionTick)
+        // 切出时记录当前任务会话：通过 JS 从页面 DOM 提取 task-item 的
+        // data-testid（选中态/展开态），持久化到对应连接，下次切回时恢复
+        saveCurrentTaskId()
+    }
+
+    /** 周期刷新前台会话 ID 的 Runnable（跟随页面内会话切换）。 */
+    private val foregroundSessionTick = object : Runnable {
+        override fun run() {
+            if (!foregroundSessionVisible.get()) return
+            refreshForegroundSessionId()
+            handler.postDelayed(this, FOREGROUND_SESSION_TICK_MS)
+        }
+    }
+
+    /** 提取当前前台会话 ID 并更新全局（供 TaskNotifier 判断是否抑制通知）。 */
+    private fun refreshForegroundSessionId() {
+        if (connectionId.isEmpty()) return
+        binding.webView.evaluateJavascript("""
+            (function() {
+                var pane = document.querySelector('[data-session-id]');
+                if (pane) {
+                    var sid = pane.getAttribute('data-session-id');
+                    if (sid && sid.length > 0) return sid;
+                }
+                return '';
+            })()
+        """.trimIndent()) { result ->
+            val taskId = result?.trim('"')?.trim() ?: ""
+            foregroundSessionId.set(taskId)
+        }
+    }
+
+    /** 从页面 DOM 提取当前所在的任务会话 ID 并保存到连接仓库。 */
+    private fun saveCurrentTaskId() {
+        if (connectionId.isEmpty()) return
+        binding.webView.evaluateJavascript("""
+            (function() {
+                // 优先：会话页的 data-session-id（v4-session-pane 元素上）
+                var pane = document.querySelector('[data-session-id]');
+                if (pane) {
+                    var sid = pane.getAttribute('data-session-id');
+                    if (sid && sid.length > 0) return sid;
+                }
+                // 其次：task-item 列表中的选中态
+                var items = document.querySelectorAll('[data-testid^="task-item-"]');
+                for (var i = 0; i < items.length; i++) {
+                    var el = items[i];
+                    if (el.getAttribute('aria-current') === 'true' ||
+                        el.getAttribute('data-state') === 'active' ||
+                        el.getAttribute('data-state') === 'selected' ||
+                        (el.className || '').match(/active|selected|current/)) {
+                        var tid = el.getAttribute('data-testid') || '';
+                        if (tid.indexOf('task-item-') === 0) return tid.substring(10);
+                    }
+                }
+                // fallback：URL hash 中的 sessionId
+                var m = (location.hash || '').match(/sess_[a-f0-9-]+/);
+                if (m) return m[0];
+                return '';
+            })()
+        """.trimIndent()) { result ->
+            val taskId = result?.trim('"')?.trim() ?: ""
+            if (taskId.isNotEmpty()) {
+                ConnectionRepository.getInstance(this).updateLastTaskId(connectionId, taskId)
+            }
+        }
     }
 
     override fun onDestroy() {
+        if (current === this) current = null
+        handler.removeCallbacks(foregroundSessionTick)
         filePathCallback?.onReceiveValue(null)
         filePathCallback = null
         binding.webView.destroy()
         super.onDestroy()
     }
 
+    /** 用户返回到连接列表：不销毁本页——把 MainActivity 启动到栈顶
+     *  （MainActivity 已改 standard，不再清栈），本页留在后台，
+     *  WebView 及页面 WS 继续存活：审批/完成事件继续镜像到系统通知。
+     *  保持连接状态：activeConnectionId 不清除，方便用户快速切回。 */
+    private fun exitToDeviceList() {
+        lastBackPressTime = 0L
+        try {
+            startActivity(
+                Intent(this, ai.zcode.remote.ui.main.MainActivity::class.java)
+                    .putExtra(ai.zcode.remote.ui.main.MainActivity.EXTRA_FROM_REMOTE, true)
+            )
+        } catch (e: Exception) {
+            finish()
+        }
+    }
+
     companion object {
-        private const val EXTRA_URL = "extra_url"
-        private const val EXTRA_NAME = "extra_name"
+        const val EXTRA_URL = "extra_url"
+        const val EXTRA_NAME = "extra_name"
+        const val EXTRA_TASK_ID = "extra_task_id"
         private const val EXTRA_SETTINGS_MODE = "extra_settings_mode"
 
-        fun start(context: Context, url: String, name: String = "", startInSettingsMode: Boolean = false) {
+        /** 前台会话 ID 的刷新周期（ms）：跟随 SPA 页面内会话切换。 */
+        private const val FOREGROUND_SESSION_TICK_MS = 2000L
+
+        /** 当前存活的 RemoteControlActivity 实例（单连接监听：最多一个）。 */
+        @Volatile
+        private var current: RemoteControlActivity? = null
+
+        /** 是否已有远程页存活（供 MainActivity 切回判断/自动恢复去重）。 */
+        fun hasLiveInstance(): Boolean = current != null
+
+        /** 远程页是否在前台可见（Activity onResume/onPause 维护）。 */
+        private val foregroundSessionVisible = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        /** 前台页面当前显示的会话 ID（从 [data-session-id] 提取，列表页为空）。 */
+        private val foregroundSessionId = java.util.concurrent.atomic.AtomicReference("")
+
+        /**
+         * 用户是否正停留在该任务会话页（页面前台可见且显示此会话）。
+         * 此时审批/提问弹层已在页面上，TaskNotifier 跳过系统通知。
+         */
+        fun isForegroundSession(taskId: String): Boolean =
+            foregroundSessionVisible.get() && foregroundSessionId.get() == taskId
+
+        fun start(
+            context: Context,
+            url: String,
+            name: String = "",
+            startInSettingsMode: Boolean = false,
+            taskId: String = "",
+        ) {
             val intent = Intent(context, RemoteControlActivity::class.java).apply {
                 putExtra(EXTRA_URL, url)
                 putExtra(EXTRA_NAME, name)
                 putExtra(EXTRA_SETTINGS_MODE, startInSettingsMode)
+                if (taskId.isNotEmpty()) putExtra(EXTRA_TASK_ID, taskId)
             }
             context.startActivity(intent)
         }

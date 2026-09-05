@@ -2,19 +2,15 @@
 <resources>
     <!-- 亮色主题：冷白背景配深海军蓝文字，呼应选定的 Z Logo -->
     <color name="primary">#3B82F6</color>
-    <color name="primary_dark">#2563EB</color>
     <color name="primary_light">#60A5FA</color>
     <color name="accent">#10B981</color>
-    <color name="accent_orange">#F59E0B</color>
     <color name="danger">#EF4444</color>
 
     <color name="bg_dark">#F3F5F7</color>
     <color name="bg_surface">#FFFFFF</color>
-    <color name="bg_surface_card">#FFFFFF</color>
     <color name="bg_surface_elevated">#E8EEF8</color>
 
     <color name="border_color">#D7DFEA</color>
-    <color name="border_light">#C5D0E0</color>
 
     <color name="text_primary">#17243A</color>
     <color name="text_secondary">#52627A</color>
@@ -28,16 +24,13 @@
     <color name="logo_accent_cyan">#21C8D2</color>
     <color name="logo_speed_coral">#FF8B7A</color>
     <color name="launcher_icon_background">#F8FAFD</color>
-    <color name="scan_surface">#EAF1FF</color>
     <color name="status_connected">#18A875</color>
     <color name="status_disconnected">#8A96A5</color>
     <color name="fab_bg">#FFFFFFFF</color>
-    <color name="fab_tint">#326BDE</color>
 
     <!-- 通用 -->
     <color name="white">#FFFFFF</color>
     <color name="black">#000000</color>
     <color name="transparent">#00000000</color>
-    <color name="scrim">#99000000</color>
 
 </resources>

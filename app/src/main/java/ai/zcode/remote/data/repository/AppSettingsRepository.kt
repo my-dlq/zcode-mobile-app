@@ -99,6 +99,43 @@ class AppSettingsRepository(context: Context) {
     fun isSecurityVerificationEnabled(): Boolean =
         isPatternEnabled() || isFingerprintEnabled()
 
+    // ---- 通知偏好 ----
+
+    /** 通知总开关：关闭后所有任务事件通知都不再弹出。 */
+    fun isNotificationEnabled(): Boolean = prefs.getBoolean(KEY_NOTIF_ENABLED, true)
+
+    fun setNotificationEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_NOTIF_ENABLED, enabled).apply()
+    }
+
+    /** 审批请求通知。 */
+    fun isNotifApprovalEnabled(): Boolean = prefs.getBoolean(KEY_NOTIF_APPROVAL, true)
+
+    fun setNotifApprovalEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_NOTIF_APPROVAL, enabled).apply()
+    }
+
+    /** 提问确认通知。 */
+    fun isNotifElicitationEnabled(): Boolean = prefs.getBoolean(KEY_NOTIF_ELICITATION, true)
+
+    fun setNotifElicitationEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_NOTIF_ELICITATION, enabled).apply()
+    }
+
+    /** 任务完成通知。 */
+    fun isNotifCompletedEnabled(): Boolean = prefs.getBoolean(KEY_NOTIF_COMPLETED, true)
+
+    fun setNotifCompletedEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_NOTIF_COMPLETED, enabled).apply()
+    }
+
+    /** 任务失败通知。 */
+    fun isNotifFailedEnabled(): Boolean = prefs.getBoolean(KEY_NOTIF_FAILED, true)
+
+    fun setNotifFailedEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_NOTIF_FAILED, enabled).apply()
+    }
+
     private fun hashPattern(pattern: List<Int>, salt: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256")
         digest.update(salt)
@@ -129,6 +166,11 @@ class AppSettingsRepository(context: Context) {
         private const val KEY_PATTERN_FAIL_COUNT = "key_pattern_fail_count"
         private const val KEY_PATTERN_LOCK_STAGE = "key_pattern_lock_stage"
         private const val KEY_PATTERN_LOCK_UNTIL = "key_pattern_lock_until"
+        private const val KEY_NOTIF_ENABLED = "key_notif_enabled"
+        private const val KEY_NOTIF_APPROVAL = "key_notif_approval"
+        private const val KEY_NOTIF_ELICITATION = "key_notif_elicitation"
+        private const val KEY_NOTIF_COMPLETED = "key_notif_completed"
+        private const val KEY_NOTIF_FAILED = "key_notif_failed"
 
         @Volatile
         private var instance: AppSettingsRepository? = null

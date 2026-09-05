@@ -41,6 +41,9 @@ class SettingsActivity : AppCompatActivity() {
         binding.rowTheme.setOnClickListener {
             ThemeSettingsActivity.start(this)
         }
+        binding.rowNotification.setOnClickListener {
+            NotificationSettingsActivity.start(this)
+        }
         binding.rowSecurity.setOnClickListener {
             SecuritySettingsActivity.start(this)
         }
@@ -49,12 +52,6 @@ class SettingsActivity : AppCompatActivity() {
         }
         binding.rowBattery.setOnClickListener {
             openBatteryOptimizationSettings()
-        }
-
-        binding.switchKeepAlive.setOnCheckedChangeListener { _, checked ->
-            appSettings.setKeepAliveEnabled(checked)
-            if (checked) KeepAliveService.start(this) else KeepAliveService.stop(this)
-            refreshKeepAliveState()
         }
 
         refreshState()
@@ -94,6 +91,10 @@ class SettingsActivity : AppCompatActivity() {
             } else {
                 R.string.settings_security_summary_disabled
             }
+        )
+        binding.tvNotifSummary.setText(
+            if (appSettings.isNotificationEnabled()) R.string.settings_notif_summary_on
+            else R.string.settings_notif_summary_off
         )
         refreshKeepAliveState()
     }

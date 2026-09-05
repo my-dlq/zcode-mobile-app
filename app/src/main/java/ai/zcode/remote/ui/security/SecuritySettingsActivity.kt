@@ -39,8 +39,9 @@ class SecuritySettingsActivity : AppCompatActivity() {
         settings = AppSettingsRepository.getInstance(this)
 
         binding.btnBack.setOnClickListener { finish() }
+        // 点图案栏整行 = 拨动开关：开启/关闭（不再单独承担"修改图案"入口）
         binding.rowPattern.setOnClickListener {
-            SecurityVerifyActivity.start(this, setupMode = true)
+            binding.switchPattern.toggle()
         }
         binding.rowFingerprint.setOnClickListener {
             if (isFingerprintAvailable()) {
@@ -64,18 +65,20 @@ class SecuritySettingsActivity : AppCompatActivity() {
     }
 
     private fun handlePatternToggle(checked: Boolean) {
-        if (checked && !settings.isPatternConfigured()) {
+        if (checked) {
+            // 每次开启都进入设置流程画新图案（覆盖旧图案）：先把开关回弹，
+            // 待设置页画完两遍一致后由那边 setPatternEnabled(true) 并刷新
             binding.switchPattern.setOnCheckedChangeListener(null)
             binding.switchPattern.isChecked = false
             binding.switchPattern.setOnCheckedChangeListener { _, value -> handlePatternToggle(value) }
             SecurityVerifyActivity.start(this, setupMode = true)
-        } else if (!checked && settings.isSecurityVerificationEnabled()) {
+        } else if (settings.isSecurityVerificationEnabled()) {
             // 关闭图案同样需要先通过一次验证（指纹或图案任一成功），防止误触关闭
             verifyToDisable {
                 settings.setPatternEnabled(false)
             }
         } else {
-            settings.setPatternEnabled(checked)
+            settings.setPatternEnabled(false)
             refreshState()
         }
     }

@@ -198,6 +198,19 @@
                     tools:listitem="@layout/item_connection" />
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- 拖动排序小字提示：仅在有连接时展示 -->
+            <TextView
+                android:id="@+id/tvDragSortHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center"
+                android:text="@string/hint_drag_to_sort"
+                android:textColor="@color/text_muted"
+                android:textSize="12sp"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
             <!-- 初始界面：缩小后的传统扫码图标，整个引导区域可进入扫码页 -->
             <LinearLayout
                 android:id="@+id/layoutEmpty"

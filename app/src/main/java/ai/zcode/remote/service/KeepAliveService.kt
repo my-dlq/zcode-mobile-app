@@ -88,6 +88,8 @@ class KeepAliveService : Service() {
         }
         // 启动时屏幕已灭则直接持有（服务可能在后台被拉起）
         if (!powerManager.isInteractive) holdWakeLock()
+        // 后台事件监听已由 ZCodeApp 全局持有并常驻，本服务仅负责"保进程"职责，
+        // 不再重复创建/销毁监听器——避免服务销毁时误停全局后台 WS
         return START_STICKY
     }
 

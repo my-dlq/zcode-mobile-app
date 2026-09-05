@@ -1,18 +1,16 @@
 <resources>
     <string name="app_name">ZMobile</string>
     <string name="title_connections">连接列表</string>
-    <string name="subtitle_connections">轻松连接并管理您的 ZCode 工作区</string>
+    <string name="hint_drag_to_sort">长按拖动进行排序</string>
     
     <!-- 首页操作 -->
     <string name="action_scan_qr">扫描连接</string>
-    <string name="action_add_url">地址连接</string>
-    <string name="action_paste_connect">剪贴板直连</string>
-    <string name="action_connect">立即连接</string>
-    <string name="action_edit">编辑</string>
+    <string name="action_edit">编辑连接</string>
+    <string name="action_copy_url">复制地址</string>
+    <string name="toast_url_copied">连接地址已复制</string>
     <string name="action_delete">删除</string>
     <string name="action_save">保存</string>
     <string name="action_cancel">取消</string>
-    <string name="action_confirm">确定</string>
 
     <!-- 列表状态与空态 -->
     <string name="empty_connections_title">扫描连接</string>
@@ -30,7 +28,6 @@
     <string name="settings_title">设置</string>
     <string name="settings_section_display">显示与体验</string>
     <string name="settings_fullscreen_title">全屏设置</string>
-    <string name="settings_fullscreen_summary">进入远程控制时默认使用沉浸式全屏</string>
     <string name="settings_fullscreen_on">已开启沉浸式全屏</string>
     <string name="settings_fullscreen_off">保持系统状态栏和导航栏显示</string>
     <string name="settings_theme_title">主题设置</string>
@@ -39,6 +36,21 @@
     <string name="settings_section_app">应用</string>
     <string name="settings_section_security">安全与隐私</string>
     <string name="settings_section_general">通用</string>
+    <string name="settings_notif_title">通知管理</string>
+    <string name="settings_notif_summary_on">已开启</string>
+    <string name="settings_notif_summary_off">已关闭</string>
+    <string name="notif_settings_title">通知管理</string>
+    <string name="notif_settings_master">接收任务通知</string>
+    <string name="notif_settings_master_summary">关闭后所有任务事件通知都不再弹出</string>
+    <string name="notif_settings_section_events">事件类型</string>
+    <string name="notif_settings_approval">审批请求</string>
+    <string name="notif_settings_approval_summary">任务需要你批准后才能继续时通知</string>
+    <string name="notif_settings_elicitation">提问确认</string>
+    <string name="notif_settings_elicitation_summary">任务需要你提供信息后才能继续时通知</string>
+    <string name="notif_settings_completed">任务完成</string>
+    <string name="notif_settings_completed_summary">任务执行完成时通知</string>
+    <string name="notif_settings_failed">任务失败</string>
+    <string name="notif_settings_failed_summary">任务执行失败时通知</string>
     <string name="settings_keepalive_title">后台保活</string>
     <string name="settings_keepalive_summary_on">息屏时保持远程会话在线（状态栏显示常驻通知）</string>
     <string name="settings_keepalive_summary_off">关闭后切后台或息屏可能断开远程会话</string>
@@ -48,6 +60,23 @@
     <string name="keepalive_channel_desc">保持远程会话运行所需的常驻通知</string>
     <string name="keepalive_notif_title">ZMobile 后台守护中</string>
     <string name="keepalive_notif_text">正在保持远程会话在线</string>
+
+    <!-- 任务事件通知 -->
+    <string name="notif_channel_approvals">审批请求</string>
+    <string name="notif_channel_approvals_desc">任务等待你批准时立即提醒</string>
+    <string name="notif_channel_events">任务动态</string>
+    <string name="notif_channel_events_desc">任务完成或失败时提醒</string>
+    <string name="notif_approval_title">任务等待审批</string>
+    <string name="notif_approval_text">「%1$s」需要你批准后才能继续</string>
+    <string name="notif_elicitation_title">任务等待确认</string>
+    <string name="notif_elicitation_text">「%1$s」需要你提供信息后才能继续</string>
+    <string name="notif_completed_title">任务已完成</string>
+    <string name="notif_completed_text">「%1$s」已执行完成</string>
+    <string name="notif_failed_title">任务失败</string>
+    <string name="notif_failed_text">「%1$s」执行失败，请查看详情</string>
+    <string name="notif_task_unnamed">未命名任务</string>
+
+    <!-- 会话健康指示 -->
     <string name="settings_update_title">更新设置</string>
     <string name="settings_update_summary">启动检查更新</string>
     <string name="settings_security_title">安全设置</string>
@@ -89,7 +118,6 @@
     <string name="hint_name">设备备注名称 (例如: 办公室电脑)</string>
     <string name="hint_url">ZCode 远程控制完整 URL</string>
     <string name="error_invalid_url">请输入有效的 ZCode 远程连接 URL</string>
-    <string name="error_empty_name">请输入设备名称</string>
     <string name="confirm_delete_title">确认删除</string>
     <string name="confirm_delete_msg">确定要删除设备「%1$s」吗？</string>
 
@@ -102,7 +130,6 @@
     <string name="camera_permission_required">需要相机权限以扫描二维码</string>
 
     <!-- 远程控制界面 -->
-    <string name="remote_loading">正在连接 ZCode 远程工作区…</string>
     <string name="remote_load_failed">连接失败，请检查网络或重新刷新</string>
     <string name="remote_retry">重试</string>
     <string name="menu_refresh">刷新页面</string>
@@ -138,7 +165,7 @@
     <string name="about_title">关于</string>
     <string name="action_back">返回</string>
     <string name="about_app_desc">ZCode Web Remote Control 的 Android 原生远程控制客户端</string>
-    <string name="about_version_format">版本 %1$s (%2$d)</string>
+    <string name="about_version_format">版本 %1$s</string>
     <string name="about_github_project">GitHub</string>
     <string name="toast_no_browser">未找到可打开链接的浏览器</string>
 </resources>

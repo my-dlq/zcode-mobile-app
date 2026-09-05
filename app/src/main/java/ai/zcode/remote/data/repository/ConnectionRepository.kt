@@ -7,6 +7,14 @@ import android.content.SharedPreferences
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
+/**
+ * 连接仓库：SharedPreferences + Gson 持久化。
+ *
+ * 多连接并行模型：每个连接独立记录 lastConnectedTime / lastTaskId，
+ * 列表页按最近使用时间排序，"已连接"状态由 isConnected 标记（内存态）。
+ * 进程被杀后通过 lastActiveUrl/lastActiveName/lastActiveTaskId 恢复
+ * 最近一次活跃的连接及其任务会话。
+ */
 class ConnectionRepository(context: Context) {
 
     private val prefs: SharedPreferences =
@@ -21,7 +29,8 @@ class ConnectionRepository(context: Context) {
             val type = object : TypeToken<MutableList<RemoteConnection>>() {}.type
             val list: MutableList<RemoteConnection> = gson.fromJson(json, type) ?: mutableListOf()
             list.forEach { it.isConnected = it.id == activeConnectionId }
-            list.sortedByDescending { it.lastConnectedTime }.toMutableList()
+            // 不再按最近连接时间自动排序：顺序由用户手动拖动决定，APP 不自动调整
+            list
         } catch (e: Exception) {
             mutableListOf()
         }
@@ -37,10 +46,23 @@ class ConnectionRepository(context: Context) {
             val existing = list[index]
             connection.copyInto(existing)
         } else {
-            list.add(0, connection)
+            // 新连接追加到末尾（不再插入到开头），保持用户手动排序的顺序
+            list.add(connection)
         }
 
         saveList(list)
+    }
+
+    /** 保存用户手动排序后的连接顺序。 */
+    fun saveOrder(orderedIds: List<String>) {
+        val list = getAllConnections()
+        val idToConn = list.associateBy { it.id }
+        val reordered = orderedIds.mapNotNull { idToConn[it] }.toMutableList()
+        // 防御：如果有新增连接不在 orderedIds 中，追加到末尾
+        for (conn in list) {
+            if (conn.id !in orderedIds) reordered.add(conn)
+        }
+        saveList(reordered)
     }
 
     private fun sameConnection(first: RemoteConnection, second: RemoteConnection): Boolean {
@@ -80,6 +102,7 @@ class ConnectionRepository(context: Context) {
         target.mid = mid
         target.sid = sid
         target.lastConnectedTime = lastConnectedTime
+        // lastTaskId 不在 copyInto 中覆盖——它由 updateLastTaskId 独立更新
     }
 
     fun deleteConnection(id: String) {
@@ -90,13 +113,47 @@ class ConnectionRepository(context: Context) {
 
     fun updateLastConnected(id: String) {
         val list = getAllConnections()
-        val conn = list.find { it.id == id }
-        if (conn != null) {
-            activeConnectionId = id
-            conn.lastConnectedTime = System.currentTimeMillis()
-            saveList(list)
+        val conn = list.find { it.id == id } ?: return
+        activeConnectionId = id
+        conn.lastConnectedTime = System.currentTimeMillis()
+        saveList(list)
+        // 持久化活跃连接：进程被系统回收后恢复用
+        prefs.edit()
+            .putString(KEY_LAST_ACTIVE_URL, conn.url)
+            .putString(KEY_LAST_ACTIVE_NAME, conn.name)
+            .putString(KEY_LAST_ACTIVE_TASK_ID, conn.lastTaskId)
+            .apply()
+    }
+
+    /**
+     * 记录某连接当前所在的任务会话：切出远程页时调用，
+     * 下次切回该连接时自动跳转到此会话。
+     */
+    fun updateLastTaskId(connectionId: String, taskId: String) {
+        val list = getAllConnections()
+        val conn = list.find { it.id == connectionId } ?: return
+        conn.lastTaskId = taskId
+        saveList(list)
+        // 如果这是当前活跃连接，同步更新恢复信息
+        if (connectionId == activeConnectionId) {
+            prefs.edit().putString(KEY_LAST_ACTIVE_TASK_ID, taskId).apply()
         }
     }
+
+    /** 通过 URL 查找连接（用于 RemoteControlActivity 反查 connectionId）。 */
+    fun findByUrl(url: String): RemoteConnection? {
+        val normalized = normalizeUrl(url)
+        return getAllConnections().firstOrNull { normalizeUrl(it.url) == normalized }
+    }
+
+    /** 获取最近一次活跃连接的 URL（用于进程被杀后自动恢复远程页）。 */
+    fun getLastActiveUrl(): String? = prefs.getString(KEY_LAST_ACTIVE_URL, null)
+
+    /** 获取最近一次活跃连接的名称。 */
+    fun getLastActiveName(): String? = prefs.getString(KEY_LAST_ACTIVE_NAME, null)
+
+    /** 获取最近一次活跃连接的任务会话 ID。 */
+    fun getLastActiveTaskId(): String = prefs.getString(KEY_LAST_ACTIVE_TASK_ID, "") ?: ""
 
     private fun saveList(list: List<RemoteConnection>) {
         val json = gson.toJson(list)
@@ -106,6 +163,9 @@ class ConnectionRepository(context: Context) {
     companion object {
         private const val PREFS_NAME = "zcode_remote_prefs"
         private const val KEY_CONNECTIONS = "key_connections"
+        private const val KEY_LAST_ACTIVE_URL = "key_last_active_url"
+        private const val KEY_LAST_ACTIVE_NAME = "key_last_active_name"
+        private const val KEY_LAST_ACTIVE_TASK_ID = "key_last_active_task_id"
 
         @Volatile
         private var instance: ConnectionRepository? = null

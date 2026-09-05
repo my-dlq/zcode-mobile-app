@@ -13,6 +13,8 @@ import android.view.ViewGroup
 import android.widget.PopupWindow
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.LinearLayoutManager
 import ai.zcode.remote.R
 import ai.zcode.remote.data.model.RemoteConnection
@@ -47,6 +49,24 @@ class MainActivity : AppCompatActivity() {
             finish()
             return
         }
+
+        // singleTask 已移除（改 standard 以保住后台 Remote 的 WebView）。
+        // 需要手动单实例去重 + launcher 切回恢复：
+        // - 从 Remote 返回列表启动的本实例：清理旧 Main 实例，保留自己
+        // - launcher 切回（用户上次停留在远程页）：自删，让栈顶 Remote 自然显示
+        val fromRemoteReturn = intent.getBooleanExtra(EXTRA_FROM_REMOTE, false)
+        val remoteAlive = RemoteControlActivity.hasLiveInstance()
+        if (!fromRemoteReturn && intent.action == Intent.ACTION_MAIN &&
+            intent.data == null && remoteAlive && lastVisiblePage == "remote"
+        ) {
+            // 用户上次停留在远程页时切出：新 Main 自删，恢复显示远程页
+            finish()
+            return
+        }
+        // 单实例去重：清理栈中旧的 Main（可能被 Remote 或其他页面压住）
+        current?.takeIf { it !== this }?.finish()
+        current = this
+
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -57,18 +77,59 @@ class MainActivity : AppCompatActivity() {
         initListeners()
         handleIncomingIntent(intent)
         updateFlow.check(manual = false)
+
+        // 进程被系统回收后从 launcher 恢复：intent 无 data 且无存活远程页
+        // → 自动重新打开远程页并跳转到上次的任务会话
+        if (savedInstanceState == null && intent.data == null &&
+            intent.action == Intent.ACTION_MAIN && !remoteAlive
+        ) {
+            val lastUrl = repository.getLastActiveUrl()
+            if (lastUrl != null) {
+                val lastName = repository.getLastActiveName() ?: ""
+                val lastTaskId = repository.getLastActiveTaskId()
+                ai.zcode.remote.ui.remote.RemoteControlActivity.start(
+                    this, lastUrl, lastName, taskId = lastTaskId
+                )
+            }
+        }
     }
 
     override fun onResume() {
         super.onResume()
+        lastVisiblePage = "main"
         refreshList()
         checkClipboardForZCodeUrl()
+    }
+
+    override fun onDestroy() {
+        if (current === this) current = null
+        mainMenuPopup?.dismiss()
+        mainMenuPopup = null
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         handleIncomingIntent(intent)
+    }
+
+    companion object {
+        /** 从远程页"返回列表"启动 Main 时的标记（standard 模式下区分来源）。 */
+        const val EXTRA_FROM_REMOTE = "extra_from_remote"
+
+        /** 唯一的 MainActivity 实例引用（standard 模式单实例去重）。 */
+        @Volatile
+        private var current: MainActivity? = null
+
+        /** 上次前台页面（main/remote），供 launcher 切回时恢复。 */
+        @Volatile
+        private var lastVisiblePage: String = "main"
+
+        /** 各页面在 onResume 时更新"当前可见页面"。 */
+        fun markVisiblePage(page: String) {
+            lastVisiblePage = page
+        }
     }
 
     private fun handleIncomingIntent(intent: Intent?) {
@@ -93,10 +154,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun initRecyclerView() {
         adapter = ConnectionAdapter(
-            items = emptyList(),
+            items = mutableListOf(),
             onConnectClick = { connection ->
                 repository.updateLastConnected(connection.id)
-                RemoteControlActivity.start(this, connection.url, connection.name, startInSettingsMode = false)
+                // 正常点击连接不传 taskId：停留在任务列表页，让用户自己选会话
+                RemoteControlActivity.start(
+                    this, connection.url, connection.name,
+                    startInSettingsMode = false
+                )
             },
             onSettingsClick = { connection ->
                 repository.updateLastConnected(connection.id)
@@ -108,12 +173,102 @@ class MainActivity : AppCompatActivity() {
             },
             onDeleteClick = { connection ->
                 showDeleteConfirmDialog(connection)
+            },
+            onStartDrag = { viewHolder ->
+                itemTouchHelper?.startDrag(viewHolder)
+            },
+            onOrderChanged = { orderedIds ->
+                repository.saveOrder(orderedIds)
             }
         )
 
         binding.rvConnections.layoutManager = LinearLayoutManager(this)
         binding.rvConnections.adapter = adapter
+
+        // 长按拖动排序：用户手动调整连接顺序，APP 不自动重排
+        // 现代拖动样式：选中项抬高+阴影+微放大，结束后回弹归位
+        itemTouchHelper = ItemTouchHelper(
+            object : ItemTouchHelper.SimpleCallback(
+                ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0
+            ) {
+                override fun onMove(
+                    recyclerView: RecyclerView,
+                    viewHolder: RecyclerView.ViewHolder,
+                    target: RecyclerView.ViewHolder,
+                ): Boolean {
+                    adapter.onItemMove(viewHolder.adapterPosition, target.adapterPosition)
+                    return true
+                }
+
+                override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
+
+                override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
+                    super.onSelectedChanged(viewHolder, actionState)
+                    when (actionState) {
+                        ItemTouchHelper.ACTION_STATE_DRAG -> {
+                            viewHolder?.itemView?.let { v ->
+                                // 浮起卡片样式：主题色描边浅底（设在 background，绘制于内容之下
+                                // 不遮挡文字），配合抬高 + 阴影 + 轻微放大，呈现"被拿起来"的效果
+                                v.background = ContextCompat.getDrawable(
+                                    this@MainActivity, R.drawable.bg_connection_dragging
+                                )
+                                v.animate()
+                                    .translationZ(12f * resources.displayMetrics.density)
+                                    .scaleX(1.02f)
+                                    .scaleY(1.02f)
+                                    .setDuration(150)
+                                    .start()
+                            }
+                        }
+                    }
+                }
+
+                override fun clearView(
+                    recyclerView: RecyclerView,
+                    viewHolder: RecyclerView.ViewHolder,
+                ) {
+                    super.clearView(recyclerView, viewHolder)
+                    val v = viewHolder.itemView
+                    // 回弹归位：阴影与缩放复位
+                    v.animate()
+                        .translationZ(0f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(150)
+                        .start()
+                    // 浮起卡片背景淡出后移除，条目融回透明列表
+                    v.background?.mutate()?.let { bg ->
+                        android.animation.ValueAnimator.ofInt(255, 0).apply {
+                            duration = 150
+                            addUpdateListener { bg.alpha = it.animatedValue as Int }
+                            addListener(object : android.animation.AnimatorListenerAdapter() {
+                                override fun onAnimationEnd(animation: android.animation.Animator) {
+                                    v.background = null
+                                }
+                            })
+                            start()
+                        }
+                    }
+                    // 拖动抬高的 translationZ 会让 View 生成独立合成层，松手后该层
+                    // 残留为一块白色浮起底色（透明根卡片上尤为明显）。动画结束后
+                    // 强制清 Z 并刷新，确保合成层随 Z=0 一起销毁、底色彻底去除。
+                    v.postDelayed({
+                        v.animate().cancel()
+                        v.translationZ = 0f
+                        v.scaleX = 1f
+                        v.scaleY = 1f
+                        v.invalidate()
+                    }, 160)
+                    adapter.onMoveFinished()
+                }
+
+                override fun isLongPressDragEnabled(): Boolean = true // ItemTouchHelper 自动处理长按
+            }
+        )
+        itemTouchHelper?.attachToRecyclerView(binding.rvConnections)
     }
+
+    private var itemTouchHelper: ItemTouchHelper? = null
 
     private fun initListeners() {
         binding.btnMenu.setOnClickListener {
@@ -151,11 +306,13 @@ class MainActivity : AppCompatActivity() {
             binding.connectionHeader.visibility = View.GONE
             binding.layoutEmpty.visibility = View.VISIBLE
             binding.cardConnectionList.visibility = View.GONE
+            binding.tvDragSortHint.visibility = View.GONE
             binding.tvConnectionCount.text = "共 0 台设备"
         } else {
             binding.connectionHeader.visibility = View.VISIBLE
             binding.layoutEmpty.visibility = View.GONE
             binding.cardConnectionList.visibility = View.VISIBLE
+            binding.tvDragSortHint.visibility = View.VISIBLE
             binding.tvConnectionCount.text = "共 ${list.size} 台设备"
         }
     }
@@ -240,11 +397,5 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.action_cancel, null)
             .show()
-    }
-
-    override fun onDestroy() {
-        mainMenuPopup?.dismiss()
-        mainMenuPopup = null
-        super.onDestroy()
     }
 }

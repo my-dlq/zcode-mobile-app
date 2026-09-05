@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 会话健康胶囊背景：半透明圆角，亮暗主题均可读 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#CC1F1F1F" />
+    <corners android:radius="999dp" />
+    <stroke android:width="1dp" android:color="#33FFFFFF" />
+</shape>
