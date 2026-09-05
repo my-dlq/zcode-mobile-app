@@ -40,6 +40,7 @@ class RemoteControlActivity : AppCompatActivity() {
     private lateinit var appSettings: AppSettingsRepository
     private var targetUrl: String = ""
     private var deviceName: String = "ZCode 远程工作区"
+    private var pendingTaskId: String = ""
     private var isFullscreen = true
     private var isKeepScreenOn = true
     private var isDesktopMode = false
@@ -82,6 +83,7 @@ class RemoteControlActivity : AppCompatActivity() {
 
         targetUrl = intent.getStringExtra(EXTRA_URL) ?: ""
         deviceName = intent.getStringExtra(EXTRA_NAME) ?: "ZCode 远程工作区"
+        pendingTaskId = intent.getStringExtra(EXTRA_TASK_ID) ?: ""
         isSettingsModeRequested = intent.getBooleanExtra(EXTRA_SETTINGS_MODE, false)
 
         if (targetUrl.isBlank()) {
@@ -244,6 +246,16 @@ class RemoteControlActivity : AppCompatActivity() {
             },
             onPageFinish = { _ ->
                 binding.progressBar.visibility = View.GONE
+                // 通知点击带来的会话跳转：页面加载完成后注入 JS 定位并点击任务条目
+                if (pendingTaskId.isNotEmpty()) {
+                    val tid = pendingTaskId
+                    pendingTaskId = "" // 只跳一次，SPA 内部导航不再重复
+                    binding.webView.postDelayed({
+                        binding.webView.evaluateJavascript(
+                            ai.zcode.remote.ui.remote.event.SessionJumpScript.build(tid), null
+                        )
+                    }, 1500) // 等任务列表渲染完成
+                }
                 if (isSettingsModeRequested && binding.layoutErrorOverlay.visibility != View.VISIBLE) {
                     binding.webView.postDelayed({
                         if (!isSettingsModeRequested || binding.layoutErrorOverlay.visibility == View.VISIBLE) return@postDelayed
@@ -594,13 +606,21 @@ class RemoteControlActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_URL = "extra_url"
         const val EXTRA_NAME = "extra_name"
+        const val EXTRA_TASK_ID = "extra_task_id"
         private const val EXTRA_SETTINGS_MODE = "extra_settings_mode"
 
-        fun start(context: Context, url: String, name: String = "", startInSettingsMode: Boolean = false) {
+        fun start(
+            context: Context,
+            url: String,
+            name: String = "",
+            startInSettingsMode: Boolean = false,
+            taskId: String = "",
+        ) {
             val intent = Intent(context, RemoteControlActivity::class.java).apply {
                 putExtra(EXTRA_URL, url)
                 putExtra(EXTRA_NAME, name)
                 putExtra(EXTRA_SETTINGS_MODE, startInSettingsMode)
+                if (taskId.isNotEmpty()) putExtra(EXTRA_TASK_ID, taskId)
             }
             context.startActivity(intent)
         }

@@ -106,7 +106,8 @@ object TaskNotifier {
 
     /**
      * 构造通知点击后的启动 Intent：优先打开该设备对应的远程控制页（通过
-     * deviceName 从连接仓库反查 URL），查不到时退化为打开首页。
+     * deviceName 从连接仓库反查 URL），并携带 taskId 让页面加载完成后
+     * 自动跳转到对应任务会话；查不到连接时退化为打开首页。
      */
     private fun buildLaunchIntent(context: Context, event: TaskEventParser.TaskEvent): Intent {
         val url = findConnectionUrl(context, event.deviceName)
@@ -114,6 +115,9 @@ object TaskNotifier {
             Intent(context, RemoteControlActivity::class.java).apply {
                 putExtra(RemoteControlActivity.EXTRA_URL, url)
                 putExtra(RemoteControlActivity.EXTRA_NAME, event.deviceName)
+                if (event.taskId.isNotEmpty()) {
+                    putExtra(RemoteControlActivity.EXTRA_TASK_ID, event.taskId)
+                }
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
         } else {
