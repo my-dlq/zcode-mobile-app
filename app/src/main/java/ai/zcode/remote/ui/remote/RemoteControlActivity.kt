@@ -168,28 +168,8 @@ class RemoteControlActivity : AppCompatActivity() {
         requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 9001)
     }
 
-    /** 是否已显示过"已连接"提示：只在首次连接成功时显示一次，后续 WS 重连不再反复弹。 */
-    private var hasShownConnected = false
-
     private fun updateSessionHealth(up: Boolean) {
-        val tv = binding.sessionHealth.root
-        if (up) {
-            if (hasShownConnected) return // 已显示过，不再反复弹
-            hasShownConnected = true
-            tv.visibility = View.VISIBLE
-            tv.text = getString(R.string.session_state_connected)
-            handler.removeCallbacks(hideHealthRunnable)
-            handler.postDelayed(hideHealthRunnable, 5000)
-        } else {
-            // 断开时始终提示（用户需要知道连接断了）
-            hasShownConnected = false // 断开后恢复连接时再显示一次
-            tv.visibility = View.VISIBLE
-            tv.text = getString(R.string.session_state_disconnected)
-            handler.removeCallbacks(hideHealthRunnable)
-        }
-    }
-
-    private val hideHealthRunnable = Runnable {
+        // 用户不需要连接状态提示框，始终保持隐藏
         binding.sessionHealth.root.visibility = View.GONE
     }
 
