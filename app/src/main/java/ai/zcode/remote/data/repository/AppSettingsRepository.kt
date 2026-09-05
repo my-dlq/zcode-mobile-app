@@ -17,6 +17,13 @@ class AppSettingsRepository(context: Context) {
         prefs.edit().putBoolean(KEY_FULLSCREEN, enabled).apply()
     }
 
+    /** 后台保活：息屏时前台服务 + WakeLock 保持远程会话在线。 */
+    fun isKeepAliveEnabled(): Boolean = prefs.getBoolean(KEY_KEEP_ALIVE, false)
+
+    fun setKeepAliveEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_KEEP_ALIVE, enabled).apply()
+    }
+
     fun getThemeMode(): ThemeMode {
         return when (prefs.getString(KEY_THEME_MODE, ThemeMode.LIGHT.value)) {
             ThemeMode.DARK.value -> ThemeMode.DARK
@@ -113,6 +120,7 @@ class AppSettingsRepository(context: Context) {
     companion object {
         private const val PREFS_NAME = "zcode_remote_prefs"
         private const val KEY_FULLSCREEN = "key_fullscreen_enabled"
+        private const val KEY_KEEP_ALIVE = "key_keepalive_enabled"
         private const val KEY_THEME_MODE = "key_theme_mode"
         private const val KEY_PATTERN_SALT = "key_pattern_salt"
         private const val KEY_PATTERN_HASH = "key_pattern_hash"

@@ -202,6 +202,124 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="26dp"
                 android:layout_marginBottom="10dp"
+                android:text="@string/settings_section_general"
+                android:textColor="@color/text_muted"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="@color/bg_surface"
+                app:cardCornerRadius="18dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/border_color"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingTop="12dp"
+                    android:paddingBottom="12dp">
+
+                    <LinearLayout
+                        android:id="@+id/rowKeepAlive"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:minHeight="66dp"
+                        android:orientation="horizontal"
+                        android:paddingStart="16dp"
+                        android:paddingTop="12dp"
+                        android:paddingEnd="16dp"
+                        android:paddingBottom="12dp">
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_notification"
+                            app:tint="@color/primary" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="14dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/settings_keepalive_title"
+                                android:textColor="@color/text_primary"
+                                android:textSize="15sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/tvKeepAliveSummary"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="3dp"
+                                android:text="@string/settings_keepalive_summary_off"
+                                android:textColor="@color/text_muted"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <Switch
+                            android:id="@+id/switchKeepAlive"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="12dp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/rowBattery"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:alpha="0.8"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:minHeight="52dp"
+                        android:orientation="horizontal"
+                        android:paddingStart="16dp"
+                        android:paddingTop="8dp"
+                        android:paddingEnd="16dp"
+                        android:paddingBottom="8dp"
+                        android:visibility="gone">
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:alpha="0.5"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_notification"
+                            app:tint="@color/text_muted" />
+
+                        <TextView
+                            android:id="@+id/tvBatteryGuide"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="14dp"
+                            android:layout_weight="1"
+                            android:text="@string/settings_keepalive_battery_guide"
+                            android:textColor="@color/text_muted"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="26dp"
+                android:layout_marginBottom="10dp"
                 android:text="@string/settings_section_security"
                 android:textColor="@color/text_muted"
                 android:textSize="12sp"

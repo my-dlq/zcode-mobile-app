@@ -38,6 +38,16 @@
     <string name="settings_theme_dark">暗色主题</string>
     <string name="settings_section_app">应用</string>
     <string name="settings_section_security">安全与隐私</string>
+    <string name="settings_section_general">通用</string>
+    <string name="settings_keepalive_title">后台保活</string>
+    <string name="settings_keepalive_summary_on">息屏时保持远程会话在线（状态栏显示常驻通知）</string>
+    <string name="settings_keepalive_summary_off">关闭后切后台或息屏可能断开远程会话</string>
+    <string name="settings_keepalive_battery_ok">已忽略电池优化</string>
+    <string name="settings_keepalive_battery_guide">建议关闭电池优化，避免系统回收后台连接</string>
+    <string name="keepalive_channel_name">后台保活</string>
+    <string name="keepalive_channel_desc">保持远程会话运行所需的常驻通知</string>
+    <string name="keepalive_notif_title">ZMobile 后台守护中</string>
+    <string name="keepalive_notif_text">正在保持远程会话在线</string>
     <string name="settings_update_title">更新设置</string>
     <string name="settings_update_summary">启动检查更新</string>
     <string name="settings_security_title">安全设置</string>

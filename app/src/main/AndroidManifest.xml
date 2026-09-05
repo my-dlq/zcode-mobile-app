@@ -19,6 +19,11 @@
 
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- 后台保活：前台服务常驻通知（Android 14 要求声明具体类型）与电池优化白名单引导 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <!-- 应用内更新：拉起系统安装器安装下载的 APK -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
@@ -103,6 +108,16 @@
             android:name=".ui.about.AboutActivity"
             android:exported="false"
             android:theme="@style/Theme.ZCodeRemote" />
+
+        <!-- 后台保活前台服务：息屏时保持远程会话进程与连接存活 -->
+        <service
+            android:name=".service.KeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="保持远程控制会话在线，避免息屏后连接中断" />
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"

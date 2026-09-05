@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 闪电：状态栏小图标须为纯白（状态栏会按 alpha 通道着色） -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M11,21h-1l1,-7L7.5,14c-0.58,0 -0.57,-0.32 -0.38,-0.66c0.19,-0.34 0.05,-0.08 0.07,-0.12C8.48,11.06 10.86,6.99 13.02,3.16c0.07,-0.12 0.17,-0.16 0.29,-0.16c0.22,0 0.69,0.21 0.69,0.69c0,0.16 -0.51,3.28 -1.07,6.86L16.5,10.55c0.38,0 0.62,0.09 0.62,0.42c0,0.16 -0.05,0.3 -0.13,0.45C13.94,16.55 12.55,18.94 11.3,21.16C11.22,21.3 11.12,21.35 11,21.35z" />
+</vector>
