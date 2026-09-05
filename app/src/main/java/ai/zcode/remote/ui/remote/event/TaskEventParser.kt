@@ -126,6 +126,9 @@ object TaskEventParser {
         node: JSONObject, type: String, deviceName: String,
     ): TaskEvent? {
         val taskId = firstString(node, "taskId", "task_id").orEmpty()
+        // 无 taskId 的显式事件无法定位到具体任务，不产生通知
+        // （避免远端泛化的 error/状态报文触发无意义的失败通知）
+        if (taskId.isEmpty()) return null
         val summary = firstString(node, "title", "description", "kind", "toolName").orEmpty()
         val mapped = when (type) {
             "permission_request" -> TaskEvent.Type.PERMISSION_REQUEST

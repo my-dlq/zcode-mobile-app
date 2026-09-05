@@ -103,6 +103,10 @@ object TaskNotifier {
             )
             else -> return
         }
+        // 新事件到来时先取消同任务的所有旧通知（跨通道），避免残留
+        if (event.taskId.isNotEmpty()) {
+            manager.cancel(event.taskId.hashCode())
+        }
         val contentIntent = PendingIntent.getActivity(
             context,
             0,
@@ -118,8 +122,9 @@ object TaskNotifier {
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .build()
-        // ID 按任务维度稳定：同任务后续事件覆盖同一条通知
-        val id = (event.taskId.ifEmpty { "general" } + ":" + event.type.name).hashCode()
+        // ID 按任务维度稳定：同任务的新事件覆盖旧通知（不带 type，
+        // 避免同一任务的失败和成功通知并存导致"上次的失败通知"残留）
+        val id = event.taskId.ifEmpty { "general" }.hashCode()
         try {
             manager.notify(id, notification)
         } catch (e: Exception) {
@@ -127,16 +132,11 @@ object TaskNotifier {
         }
     }
 
-    /** 撤销指定任务的审批/提问通知（用户已在别处处理）。 */
+    /** 撤销指定任务的通知（用户已在别处处理）。 */
     private fun cancelPending(context: Context, taskId: String) {
         if (taskId.isEmpty()) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        for (type in listOf(
-            TaskEventParser.TaskEvent.Type.PERMISSION_REQUEST,
-            TaskEventParser.TaskEvent.Type.ELICITATION_REQUEST,
-        )) {
-            manager.cancel((taskId + ":" + type.name).hashCode())
-        }
+        manager.cancel(taskId.hashCode())
     }
 
     /**
