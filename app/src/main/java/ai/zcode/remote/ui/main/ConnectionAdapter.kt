@@ -87,7 +87,8 @@ class ConnectionAdapter(
             val menu = popup.menu
 
             menu.add(0, 1, 0, anchorView.context.getString(R.string.action_edit))
-            menu.add(0, 2, 1, anchorView.context.getString(R.string.action_delete))
+            menu.add(0, 2, 1, anchorView.context.getString(R.string.action_copy_url))
+            menu.add(0, 3, 2, anchorView.context.getString(R.string.action_delete))
 
             popup.setOnMenuItemClickListener { menuItem ->
                 when (menuItem.itemId) {
@@ -96,6 +97,10 @@ class ConnectionAdapter(
                         true
                     }
                     2 -> {
+                        copyUrlToClipboard(anchorView, item)
+                        true
+                    }
+                    3 -> {
                         onDeleteClick(item)
                         true
                     }
@@ -103,6 +108,19 @@ class ConnectionAdapter(
                 }
             }
             popup.show()
+        }
+
+        /** 复制连接地址到剪贴板并提示。 */
+        private fun copyUrlToClipboard(anchorView: View, item: RemoteConnection) {
+            val context = anchorView.context
+            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                as android.content.ClipboardManager
+            clipboard.setPrimaryClip(
+                android.content.ClipData.newPlainText("url", item.url)
+            )
+            android.widget.Toast.makeText(
+                context, context.getString(R.string.toast_url_copied), android.widget.Toast.LENGTH_SHORT
+            ).show()
         }
 
     }
