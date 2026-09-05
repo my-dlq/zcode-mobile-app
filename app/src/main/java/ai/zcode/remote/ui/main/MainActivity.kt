@@ -207,7 +207,11 @@ class MainActivity : AppCompatActivity() {
                     when (actionState) {
                         ItemTouchHelper.ACTION_STATE_DRAG -> {
                             viewHolder?.itemView?.let { v ->
-                                // 抬高 + 阴影 + 轻微放大，呈现"被拿起来"的浮起效果
+                                // 浮起卡片样式：主题色描边浅底（设在 background，绘制于内容之下
+                                // 不遮挡文字），配合抬高 + 阴影 + 轻微放大，呈现"被拿起来"的效果
+                                v.background = ContextCompat.getDrawable(
+                                    this@MainActivity, R.drawable.bg_connection_dragging
+                                )
                                 v.animate()
                                     .translationZ(12f * resources.displayMetrics.density)
                                     .scaleX(1.02f)
@@ -232,6 +236,19 @@ class MainActivity : AppCompatActivity() {
                         .scaleY(1f)
                         .setDuration(150)
                         .start()
+                    // 浮起卡片背景淡出后移除，条目融回透明列表
+                    v.background?.mutate()?.let { bg ->
+                        android.animation.ValueAnimator.ofInt(255, 0).apply {
+                            duration = 150
+                            addUpdateListener { bg.alpha = it.animatedValue as Int }
+                            addListener(object : android.animation.AnimatorListenerAdapter() {
+                                override fun onAnimationEnd(animation: android.animation.Animator) {
+                                    v.background = null
+                                }
+                            })
+                            start()
+                        }
+                    }
                     // 拖动抬高的 translationZ 会让 View 生成独立合成层，松手后该层
                     // 残留为一块白色浮起底色（透明根卡片上尤为明显）。动画结束后
                     // 强制清 Z 并刷新，确保合成层随 Z=0 一起销毁、底色彻底去除。
