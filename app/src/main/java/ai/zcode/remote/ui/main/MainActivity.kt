@@ -13,6 +13,8 @@ import android.view.ViewGroup
 import android.widget.PopupWindow
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.LinearLayoutManager
 import ai.zcode.remote.R
 import ai.zcode.remote.data.model.RemoteConnection
@@ -162,27 +164,51 @@ class MainActivity : AppCompatActivity() {
         binding.rvConnections.adapter = adapter
 
         // 长按拖动排序：用户手动调整连接顺序，APP 不自动重排
-        itemTouchHelper = androidx.recyclerview.widget.ItemTouchHelper(
-            object : androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback(
-                androidx.recyclerview.widget.ItemTouchHelper.UP or
-                    androidx.recyclerview.widget.ItemTouchHelper.DOWN, 0
+        // 现代拖动样式：选中项抬高+阴影+微放大，结束后回弹归位
+        itemTouchHelper = ItemTouchHelper(
+            object : ItemTouchHelper.SimpleCallback(
+                ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0
             ) {
                 override fun onMove(
-                    recyclerView: androidx.recyclerview.widget.RecyclerView,
-                    viewHolder: androidx.recyclerview.widget.RecyclerView.ViewHolder,
-                    target: androidx.recyclerview.widget.RecyclerView.ViewHolder,
+                    recyclerView: RecyclerView,
+                    viewHolder: RecyclerView.ViewHolder,
+                    target: RecyclerView.ViewHolder,
                 ): Boolean {
                     adapter.onItemMove(viewHolder.adapterPosition, target.adapterPosition)
                     return true
                 }
 
-                override fun onSwiped(viewHolder: androidx.recyclerview.widget.RecyclerView.ViewHolder, direction: Int) {}
+                override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
+
+                override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
+                    super.onSelectedChanged(viewHolder, actionState)
+                    when (actionState) {
+                        ItemTouchHelper.ACTION_STATE_DRAG -> {
+                            viewHolder?.itemView?.let { v ->
+                                // 抬高 + 阴影 + 轻微放大，呈现"被拿起来"的浮起效果
+                                v.animate()
+                                    .translationZ(12f * resources.displayMetrics.density)
+                                    .scaleX(1.02f)
+                                    .scaleY(1.02f)
+                                    .setDuration(150)
+                                    .start()
+                            }
+                        }
+                    }
+                }
 
                 override fun clearView(
-                    recyclerView: androidx.recyclerview.widget.RecyclerView,
-                    viewHolder: androidx.recyclerview.widget.RecyclerView.ViewHolder,
+                    recyclerView: RecyclerView,
+                    viewHolder: RecyclerView.ViewHolder,
                 ) {
                     super.clearView(recyclerView, viewHolder)
+                    // 回弹归位：阴影与缩放复位
+                    viewHolder.itemView.animate()
+                        .translationZ(0f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(150)
+                        .start()
                     adapter.onMoveFinished()
                 }
 
@@ -192,7 +218,7 @@ class MainActivity : AppCompatActivity() {
         itemTouchHelper?.attachToRecyclerView(binding.rvConnections)
     }
 
-    private var itemTouchHelper: androidx.recyclerview.widget.ItemTouchHelper? = null
+    private var itemTouchHelper: ItemTouchHelper? = null
 
     private fun initListeners() {
         binding.btnMenu.setOnClickListener {
@@ -230,11 +256,13 @@ class MainActivity : AppCompatActivity() {
             binding.connectionHeader.visibility = View.GONE
             binding.layoutEmpty.visibility = View.VISIBLE
             binding.cardConnectionList.visibility = View.GONE
+            binding.tvDragSortHint.visibility = View.GONE
             binding.tvConnectionCount.text = "共 0 台设备"
         } else {
             binding.connectionHeader.visibility = View.VISIBLE
             binding.layoutEmpty.visibility = View.GONE
             binding.cardConnectionList.visibility = View.VISIBLE
+            binding.tvDragSortHint.visibility = View.VISIBLE
             binding.tvConnectionCount.text = "共 ${list.size} 台设备"
         }
     }

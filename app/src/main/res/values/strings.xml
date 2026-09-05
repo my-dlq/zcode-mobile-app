@@ -2,6 +2,7 @@
     <string name="app_name">ZMobile</string>
     <string name="title_connections">连接列表</string>
     <string name="subtitle_connections">轻松连接并管理您的 ZCode 工作区</string>
+    <string name="hint_drag_to_sort">长按拖动进行排序</string>
     
     <!-- 首页操作 -->
     <string name="action_scan_qr">扫描连接</string>
