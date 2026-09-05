@@ -7,6 +7,14 @@ import android.content.SharedPreferences
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
+/**
+ * 连接仓库：SharedPreferences + Gson 持久化。
+ *
+ * 多连接并行模型：每个连接独立记录 lastConnectedTime / lastTaskId，
+ * 列表页按最近使用时间排序，"已连接"状态由 isConnected 标记（内存态）。
+ * 进程被杀后通过 lastActiveUrl/lastActiveName/lastActiveTaskId 恢复
+ * 最近一次活跃的连接及其任务会话。
+ */
 class ConnectionRepository(context: Context) {
 
     private val prefs: SharedPreferences =
@@ -80,6 +88,7 @@ class ConnectionRepository(context: Context) {
         target.mid = mid
         target.sid = sid
         target.lastConnectedTime = lastConnectedTime
+        // lastTaskId 不在 copyInto 中覆盖——它由 updateLastTaskId 独立更新
     }
 
     fun deleteConnection(id: String) {
@@ -90,16 +99,43 @@ class ConnectionRepository(context: Context) {
 
     fun updateLastConnected(id: String) {
         val list = getAllConnections()
-        val conn = list.find { it.id == id }
-        if (conn != null) {
-            activeConnectionId = id
-            conn.lastConnectedTime = System.currentTimeMillis()
-            saveList(list)
-            // 持久化活跃连接 URL：进程被系统回收后，从 launcher 切回时
-            // MainActivity 可据此自动恢复远程页
-            prefs.edit().putString(KEY_LAST_ACTIVE_URL, conn.url)
-                .putString(KEY_LAST_ACTIVE_NAME, conn.name).apply()
+        val conn = list.find { it.id == id } ?: return
+        activeConnectionId = id
+        conn.lastConnectedTime = System.currentTimeMillis()
+        saveList(list)
+        // 持久化活跃连接：进程被系统回收后恢复用
+        prefs.edit()
+            .putString(KEY_LAST_ACTIVE_URL, conn.url)
+            .putString(KEY_LAST_ACTIVE_NAME, conn.name)
+            .putString(KEY_LAST_ACTIVE_TASK_ID, conn.lastTaskId)
+            .putString(KEY_LAST_ACTIVE_CONN_ID, conn.id)
+            .apply()
+    }
+
+    /**
+     * 记录某连接当前所在的任务会话：切出远程页时调用，
+     * 下次切回该连接时自动跳转到此会话。
+     */
+    fun updateLastTaskId(connectionId: String, taskId: String) {
+        val list = getAllConnections()
+        val conn = list.find { it.id == connectionId } ?: return
+        conn.lastTaskId = taskId
+        saveList(list)
+        // 如果这是当前活跃连接，同步更新恢复信息
+        if (connectionId == activeConnectionId) {
+            prefs.edit().putString(KEY_LAST_ACTIVE_TASK_ID, taskId).apply()
         }
+    }
+
+    /** 获取某连接最后活跃的任务会话 ID。 */
+    fun getLastTaskId(connectionId: String): String {
+        return getAllConnections().find { it.id == connectionId }?.lastTaskId ?: ""
+    }
+
+    /** 通过 URL 查找连接（用于 RemoteControlActivity 反查 connectionId）。 */
+    fun findByUrl(url: String): RemoteConnection? {
+        val normalized = normalizeUrl(url)
+        return getAllConnections().firstOrNull { normalizeUrl(it.url) == normalized }
     }
 
     /** 获取最近一次活跃连接的 URL（用于进程被杀后自动恢复远程页）。 */
@@ -108,10 +144,21 @@ class ConnectionRepository(context: Context) {
     /** 获取最近一次活跃连接的名称。 */
     fun getLastActiveName(): String? = prefs.getString(KEY_LAST_ACTIVE_NAME, null)
 
+    /** 获取最近一次活跃连接的任务会话 ID。 */
+    fun getLastActiveTaskId(): String = prefs.getString(KEY_LAST_ACTIVE_TASK_ID, "") ?: ""
+
+    /** 获取最近一次活跃连接的 ID。 */
+    fun getLastActiveConnId(): String? = prefs.getString(KEY_LAST_ACTIVE_CONN_ID, null)
+
     /** 清除活跃连接标记（用户主动退出远程页时调用）。 */
     fun clearLastActive() {
         activeConnectionId = null
-        prefs.edit().remove(KEY_LAST_ACTIVE_URL).remove(KEY_LAST_ACTIVE_NAME).apply()
+        prefs.edit()
+            .remove(KEY_LAST_ACTIVE_URL)
+            .remove(KEY_LAST_ACTIVE_NAME)
+            .remove(KEY_LAST_ACTIVE_TASK_ID)
+            .remove(KEY_LAST_ACTIVE_CONN_ID)
+            .apply()
     }
 
     private fun saveList(list: List<RemoteConnection>) {
@@ -124,6 +171,8 @@ class ConnectionRepository(context: Context) {
         private const val KEY_CONNECTIONS = "key_connections"
         private const val KEY_LAST_ACTIVE_URL = "key_last_active_url"
         private const val KEY_LAST_ACTIVE_NAME = "key_last_active_name"
+        private const val KEY_LAST_ACTIVE_TASK_ID = "key_last_active_task_id"
+        private const val KEY_LAST_ACTIVE_CONN_ID = "key_last_active_conn_id"
 
         @Volatile
         private var instance: ConnectionRepository? = null

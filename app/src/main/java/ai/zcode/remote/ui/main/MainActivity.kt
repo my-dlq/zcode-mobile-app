@@ -59,14 +59,17 @@ class MainActivity : AppCompatActivity() {
         updateFlow.check(manual = false)
 
         // 进程被系统回收后从 launcher 恢复：intent 无 data 且存在活跃连接
-        // → 自动重新打开远程页，避免用户看到连接列表而不是之前的会话
+        // → 自动重新打开远程页并跳转到上次的任务会话
         if (savedInstanceState == null && intent.data == null &&
             intent.action == Intent.ACTION_MAIN
         ) {
             val lastUrl = repository.getLastActiveUrl()
             if (lastUrl != null) {
                 val lastName = repository.getLastActiveName() ?: ""
-                ai.zcode.remote.ui.remote.RemoteControlActivity.start(this, lastUrl, lastName)
+                val lastTaskId = repository.getLastActiveTaskId()
+                ai.zcode.remote.ui.remote.RemoteControlActivity.start(
+                    this, lastUrl, lastName, taskId = lastTaskId
+                )
             }
         }
     }
@@ -130,7 +133,11 @@ class MainActivity : AppCompatActivity() {
             items = emptyList(),
             onConnectClick = { connection ->
                 repository.updateLastConnected(connection.id)
-                RemoteControlActivity.start(this, connection.url, connection.name, startInSettingsMode = false)
+                RemoteControlActivity.start(
+                    this, connection.url, connection.name,
+                    startInSettingsMode = false,
+                    taskId = connection.lastTaskId
+                )
             },
             onSettingsClick = { connection ->
                 repository.updateLastConnected(connection.id)

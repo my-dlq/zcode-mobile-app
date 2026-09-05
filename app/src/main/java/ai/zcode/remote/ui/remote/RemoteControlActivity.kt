@@ -41,6 +41,7 @@ class RemoteControlActivity : AppCompatActivity() {
     private var targetUrl: String = ""
     private var deviceName: String = "ZCode 远程工作区"
     private var pendingTaskId: String = ""
+    private var connectionId: String = ""
     private var isFullscreen = true
     private var isKeepScreenOn = true
     private var isDesktopMode = false
@@ -91,6 +92,9 @@ class RemoteControlActivity : AppCompatActivity() {
             finish()
             return
         }
+
+        // 反查 connectionId：用于 onPause 时保存当前任务会话到对应连接
+        connectionId = ConnectionRepository.getInstance(this).findByUrl(targetUrl)?.id ?: ""
 
         setupImmersiveAndScreen()
         setupKeyboardInsets()
@@ -588,6 +592,45 @@ class RemoteControlActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         binding.webView.onPause()
+        // 切出时记录当前任务会话：通过 JS 从页面 DOM 提取 task-item 的
+        // data-testid（选中态/展开态），持久化到对应连接，下次切回时恢复
+        saveCurrentTaskId()
+    }
+
+    /** 从页面 DOM 提取当前所在的任务会话 ID 并保存到连接仓库。 */
+    private fun saveCurrentTaskId() {
+        if (connectionId.isEmpty()) return
+        binding.webView.evaluateJavascript("""
+            (function() {
+                // 优先：会话页的 data-session-id（v4-session-pane 元素上）
+                var pane = document.querySelector('[data-session-id]');
+                if (pane) {
+                    var sid = pane.getAttribute('data-session-id');
+                    if (sid && sid.length > 0) return sid;
+                }
+                // 其次：task-item 列表中的选中态
+                var items = document.querySelectorAll('[data-testid^="task-item-"]');
+                for (var i = 0; i < items.length; i++) {
+                    var el = items[i];
+                    if (el.getAttribute('aria-current') === 'true' ||
+                        el.getAttribute('data-state') === 'active' ||
+                        el.getAttribute('data-state') === 'selected' ||
+                        (el.className || '').match(/active|selected|current/)) {
+                        var tid = el.getAttribute('data-testid') || '';
+                        if (tid.indexOf('task-item-') === 0) return tid.substring(10);
+                    }
+                }
+                // fallback：URL hash 中的 sessionId
+                var m = (location.hash || '').match(/sess_[a-f0-9-]+/);
+                if (m) return m[0];
+                return '';
+            })()
+        """.trimIndent()) { result ->
+            val taskId = result?.trim('"')?.trim() ?: ""
+            if (taskId.isNotEmpty()) {
+                ConnectionRepository.getInstance(this).updateLastTaskId(connectionId, taskId)
+            }
+        }
     }
 
     override fun onDestroy() {
