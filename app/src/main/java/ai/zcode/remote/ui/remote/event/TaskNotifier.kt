@@ -30,6 +30,13 @@ object TaskNotifier {
     private const val DEDUP_WINDOW_MS = 30_000L
     private val recentNotified = HashMap<String, Long>()
 
+    /**
+     * RESOLVED 冷却窗口：远端 WS 重连/刷新快照时会短暂把 permissionCount 从 N→0 再补回，
+     * 触发"假 resolved"把刚弹出的审批通知撤掉。冷却期内的 resolved 视为抖动忽略。
+     * 用户真正点同意/拒绝通常发生在通知弹出几秒之后，不会被误伤。
+     */
+    private const val RESOLVE_COOLDOWN_MS = 5_000L
+
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -49,7 +56,15 @@ object TaskNotifier {
     @Synchronized
     fun notify(context: Context, event: TaskEventParser.TaskEvent) {
         // resolved 是撤回信号：撤销该任务的审批/提问通知，不发新通知
+        // 但需冷却窗口保护：通知刚弹出 5s 内的 resolved 判定为远端快照抖动的假撤回，忽略
         if (event.type == TaskEventParser.TaskEvent.Type.RESOLVED) {
+            val lastRequestTime = recentNotified[event.taskId + ":PERMISSION_REQUEST"]
+                ?: recentNotified[event.taskId + ":ELICITATION_REQUEST"]
+                ?: 0L
+            val sinceRequest = System.currentTimeMillis() - lastRequestTime
+            if (sinceRequest < RESOLVE_COOLDOWN_MS) {
+                return // 冷却期内忽略，避免假撤回
+            }
             cancelPending(context, event.taskId)
             return
         }
