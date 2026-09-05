@@ -37,12 +37,22 @@ object TaskNotifier {
 
     /** 发布任务事件通知；重复事件（同任务同类型）只刷新不重复弹。 */
     fun notify(context: Context, event: TaskEventParser.TaskEvent) {
+        // resolved 是撤回信号：撤销该任务的审批/提问通知，不发新通知
+        if (event.type == TaskEventParser.TaskEvent.Type.RESOLVED) {
+            cancelPending(context, event.taskId)
+            return
+        }
         ensureChannels(context)
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val (title, text, channel) = when (event.type) {
             TaskEventParser.TaskEvent.Type.PERMISSION_REQUEST -> Triple(
                 context.getString(R.string.notif_approval_title),
                 buildText(context, event, R.string.notif_approval_text),
+                CHANNEL_APPROVALS
+            )
+            TaskEventParser.TaskEvent.Type.ELICITATION_REQUEST -> Triple(
+                context.getString(R.string.notif_elicitation_title),
+                buildText(context, event, R.string.notif_elicitation_text),
                 CHANNEL_APPROVALS
             )
             TaskEventParser.TaskEvent.Type.TASK_COMPLETED -> Triple(
@@ -80,6 +90,18 @@ object TaskNotifier {
             manager.notify(id, notification)
         } catch (e: Exception) {
             // 通知权限被关闭等情况静默
+        }
+    }
+
+    /** 撤销指定任务的审批/提问通知（用户已在别处处理）。 */
+    private fun cancelPending(context: Context, taskId: String) {
+        if (taskId.isEmpty()) return
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        for (type in listOf(
+            TaskEventParser.TaskEvent.Type.PERMISSION_REQUEST,
+            TaskEventParser.TaskEvent.Type.ELICITATION_REQUEST,
+        )) {
+            manager.cancel((taskId + ":" + type.name).hashCode())
         }
     }
 

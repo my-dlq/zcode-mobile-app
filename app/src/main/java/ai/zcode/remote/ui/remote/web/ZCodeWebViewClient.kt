@@ -33,21 +33,9 @@ class ZCodeWebViewClient(
         onPageStart()
         // 尽早注入防误触样式
         view?.let { injectAntiMisoperation(it) }
-        // 捕获脚本必须在页面脚本之前运行（document-start）：WebSocket 连接在页面
-        // 引导阶段建立，onPageFinished 才注入会错过 open 事件——实测真实审批事件
-        // 恰好走注入前的旧 WS 而绕过镜像。document-start 由 webkit 库保证时序，
-        // 脚本自身幂等（__zcodeEventCapture 标记），与 onPageFinished 兜底双保险
-        view?.let {
-            try {
-                androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
-                    it,
-                    EventCaptureScript.build(TaskEventBridge.BRIDGE_NAME),
-                    setOf("https://zcode.z.ai")
-                )
-            } catch (e: Exception) {
-                android.util.Log.w("ZCodeWeb", "document-start inject failed: ${e.message}")
-            }
-        }
+        // document-start 的事件捕获脚本已在 RemoteControlActivity.setupEventCapture()
+        // 中调用（loadUrl 之前），这里不再重复——onPageStarted 时页面已开始加载，
+        // addDocumentStartJavaScript 对当前这次加载可能来不及生效
     }
 
     override fun onPageFinished(view: WebView?, url: String?) {

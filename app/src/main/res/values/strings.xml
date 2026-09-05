@@ -56,6 +56,8 @@
     <string name="notif_channel_events_desc">任务完成或失败时提醒</string>
     <string name="notif_approval_title">任务等待审批</string>
     <string name="notif_approval_text">「%1$s」需要你批准后才能继续</string>
+    <string name="notif_elicitation_title">任务等待确认</string>
+    <string name="notif_elicitation_text">「%1$s」需要你提供信息后才能继续</string>
     <string name="notif_completed_title">任务已完成</string>
     <string name="notif_completed_text">「%1$s」已执行完成</string>
     <string name="notif_failed_title">任务失败</string>

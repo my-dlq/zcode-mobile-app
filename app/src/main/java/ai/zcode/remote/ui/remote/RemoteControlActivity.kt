@@ -23,6 +23,7 @@ import androidx.core.view.WindowInsetsCompat
 import ai.zcode.remote.R
 import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.databinding.ActivityRemoteControlBinding
+import ai.zcode.remote.ui.remote.event.EventCaptureScript
 import ai.zcode.remote.ui.remote.event.TaskEventBridge
 import ai.zcode.remote.ui.remote.event.TaskNotifier
 import ai.zcode.remote.ui.remote.web.ZCodeWebChromeClient
@@ -122,6 +123,17 @@ class RemoteControlActivity : AppCompatActivity() {
             }
         )
         binding.webView.addJavascriptInterface(eventBridge, TaskEventBridge.BRIDGE_NAME)
+        // document-start 注入必须在 loadUrl 之前调用一次——onPageStarted 回调时页面
+        // 已开始加载，脚本可能赶不上页面引导阶段建立的 WebSocket 连接
+        try {
+            androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
+                binding.webView,
+                EventCaptureScript.build(TaskEventBridge.BRIDGE_NAME),
+                setOf("https://zcode.z.ai")
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("ZCodeWeb", "document-start inject failed: ${e.message}")
+        }
     }
 
     /** Android 13+ 通知需要运行时授权；拒绝后不再重复打扰（系统会记住选择）。 */

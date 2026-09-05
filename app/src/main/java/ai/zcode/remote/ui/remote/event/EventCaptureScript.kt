@@ -48,7 +48,11 @@ object EventCaptureScript {
                         if (typeof d === 'string') {
                             send(d);
                         } else if (d && typeof d.text === 'function') {
+                            // Blob
                             d.text().then(send).catch(function() {});
+                        } else if (d && d.byteLength > 0 && d.byteLength < MAX) {
+                            // ArrayBuffer（二进制帧）
+                            try { send(new TextDecoder('utf-8', {fatal: false}).decode(d)); } catch (e2) {}
                         }
                     } catch (e) {}
                 });
