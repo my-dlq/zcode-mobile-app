@@ -36,10 +36,24 @@ class ConnectionAdapter(
         val item = items.removeAt(fromPosition)
         items.add(toPosition, item)
         notifyItemMoved(fromPosition, toPosition)
+        // 分隔线可见性随 isLastItem 重新计算：拖动后实时刷新首尾受影响条目，
+        // 避免拖到最底时旧位置仍显示分隔线、新位置却缺分隔线的"多一条线"现象
+        val lo = minOf(fromPosition, toPosition)
+        val hi = maxOf(fromPosition, toPosition)
+        for (pos in lo..hi) {
+            notifyItemChanged(pos, PAYLOAD_DIVIDER)
+        }
+        // 末位变化时刷新相邻旧末位与新末位
+        if (hi == items.lastIndex || lo == items.lastIndex) {
+            notifyItemChanged(items.lastIndex, PAYLOAD_DIVIDER)
+            if (items.lastIndex - 1 >= 0) notifyItemChanged(items.lastIndex - 1, PAYLOAD_DIVIDER)
+        }
     }
 
     /** ItemTouchHelper 拖动结束：通知外部保存新顺序。 */
     fun onMoveFinished() {
+        // 拖动结束兜底：整列刷新一次分隔线，应对快速连续拖动可能漏刷的边界
+        notifyItemRangeChanged(0, items.size, PAYLOAD_DIVIDER)
         onOrderChanged(items.map { it.id })
     }
 
@@ -56,7 +70,25 @@ class ConnectionAdapter(
         holder.bind(items[position], position == items.lastIndex)
     }
 
+    /** 局部刷新：只更新分隔线可见性，避免拖动过程中整项重绑闪烁。 */
+    override fun onBindViewHolder(holder: ViewHolder, position: Int, payloads: MutableList<Any>) {
+        if (payloads.isEmpty()) {
+            super.onBindViewHolder(holder, position, payloads)
+            return
+        }
+        for (p in payloads) {
+            if (p == PAYLOAD_DIVIDER) {
+                holder.updateDivider(position == items.lastIndex)
+            }
+        }
+    }
+
     override fun getItemCount(): Int = items.size
+
+    companion object {
+        /** 拖动过程中只刷新分隔线的 payload 标记。 */
+        private const val PAYLOAD_DIVIDER = "divider_only"
+    }
 
     inner class ViewHolder(private val binding: ItemConnectionBinding) :
         RecyclerView.ViewHolder(binding.root) {
@@ -94,6 +126,11 @@ class ConnectionAdapter(
             binding.btnMore.setOnClickListener { view ->
                 showPopupMenu(view, item)
             }
+        }
+
+        /** 拖动过程中只更新分隔线可见性（不动其它绑定，避免闪烁）。 */
+        fun updateDivider(isLastItem: Boolean) {
+            binding.connectionDivider.visibility = if (isLastItem) View.GONE else View.VISIBLE
         }
 
         private fun showPopupMenu(anchorView: View, item: RemoteConnection) {
