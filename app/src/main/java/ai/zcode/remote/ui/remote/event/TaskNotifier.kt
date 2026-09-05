@@ -9,17 +9,26 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import ai.zcode.remote.R
+import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.data.repository.ConnectionRepository
 import ai.zcode.remote.ui.remote.RemoteControlActivity
 
 /**
  * 任务事件系统通知：审批请求（高优先级，横幅+声音）与任务完成/失败（默认优先级）。
- * 通知点击回到应用主界面；同一任务的新事件覆盖旧通知（按 taskId+type 定 ID）。
+ * 通知点击进入对应连接的远程控制页并跳转到任务会话。
+ *
+ * 通知偏好：总开关关闭后所有事件不通知；各事件类型（审批/提问/完成/失败）
+ * 可独立开关。前台 WebView 和后台 WS 共享同一差分快照（TaskEventParser
+ * 单例），同一事件可能被两个通道各触发一次，因此做时间窗口去重。
  */
 object TaskNotifier {
 
     private const val CHANNEL_EVENTS = "zcode_task_events"
     private const val CHANNEL_APPROVALS = "zcode_task_approvals"
+
+    /** 同 taskId+type 的通知去重窗口（前台 WS 和后台 WS 可能各触发一次）。 */
+    private const val DEDUP_WINDOW_MS = 30_000L
+    private val recentNotified = HashMap<String, Long>()
 
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
@@ -37,12 +46,38 @@ object TaskNotifier {
     }
 
     /** 发布任务事件通知；重复事件（同任务同类型）只刷新不重复弹。 */
+    @Synchronized
     fun notify(context: Context, event: TaskEventParser.TaskEvent) {
         // resolved 是撤回信号：撤销该任务的审批/提问通知，不发新通知
         if (event.type == TaskEventParser.TaskEvent.Type.RESOLVED) {
             cancelPending(context, event.taskId)
             return
         }
+
+        // 通知偏好检查：总开关 + 事件类型开关
+        val settings = AppSettingsRepository.getInstance(context)
+        if (!settings.isNotificationEnabled()) return
+        val typeEnabled = when (event.type) {
+            TaskEventParser.TaskEvent.Type.PERMISSION_REQUEST -> settings.isNotifApprovalEnabled()
+            TaskEventParser.TaskEvent.Type.ELICITATION_REQUEST -> settings.isNotifElicitationEnabled()
+            TaskEventParser.TaskEvent.Type.TASK_COMPLETED -> settings.isNotifCompletedEnabled()
+            TaskEventParser.TaskEvent.Type.TASK_FAILED -> settings.isNotifFailedEnabled()
+            else -> false
+        }
+        if (!typeEnabled) return
+
+        // 时间窗口去重：前台 WS 和后台 WS 可能各触发一次同一事件
+        val dedupKey = event.taskId + ":" + event.type.name
+        val now = System.currentTimeMillis()
+        val lastTime = recentNotified[dedupKey] ?: 0L
+        if (now - lastTime < DEDUP_WINDOW_MS) return
+        recentNotified[dedupKey] = now
+        // 防御性清理：最多保留 100 条去重记录
+        if (recentNotified.size > 100) {
+            val oldest = recentNotified.minByOrNull { it.value }?.key
+            if (oldest != null) recentNotified.remove(oldest)
+        }
+
         ensureChannels(context)
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val (title, text, channel) = when (event.type) {

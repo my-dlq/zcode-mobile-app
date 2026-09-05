@@ -95,6 +95,12 @@
             android:exported="false"
             android:theme="@style/Theme.ZCodeRemote" />
 
+        <!-- 通知管理设置 -->
+        <activity
+            android:name=".ui.settings.NotificationSettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ZCodeRemote" />
+
         <activity
             android:name=".ui.settings.ThemeSettingsActivity"
             android:exported="false"
