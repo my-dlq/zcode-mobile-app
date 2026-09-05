@@ -32,10 +32,11 @@ object TaskNotifier {
 
     /**
      * RESOLVED 冷却窗口：远端 WS 重连/刷新快照时会短暂把 permissionCount 从 N→0 再补回，
-     * 触发"假 resolved"把刚弹出的审批通知撤掉。冷却期内的 resolved 视为抖动忽略。
-     * 用户真正点同意/拒绝通常发生在通知弹出几秒之后，不会被误伤。
+     * 触发"假 resolved"把刚弹出的审批通知撤掉；实测远端也会在用户未操作时 11s 后自发
+     * 发 RESOLVED（多端共用会话，任一端响应或状态刷新都会触发）。冷却期内的 resolved
+     * 视为抖动忽略——用户真正点同意/拒绝通常在 30s 内，超过 30s 的 resolved 才撤销。
      */
-    private const val RESOLVE_COOLDOWN_MS = 5_000L
+    private const val RESOLVE_COOLDOWN_MS = 30_000L
 
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return

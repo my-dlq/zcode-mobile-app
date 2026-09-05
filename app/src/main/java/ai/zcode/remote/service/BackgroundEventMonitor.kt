@@ -111,7 +111,9 @@ class BackgroundEventMonitor(private val context: Context) {
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.w(TAG, "background WS failure: $deviceName - ${t.message}")
+                // 打完整异常与响应码：t.message 常为 null，看不到真实失败原因
+                Log.w(TAG, "background WS failure: $deviceName code=${response?.code} " +
+                    "err=${t.javaClass.simpleName}: ${t.message}", t)
                 sockets.remove(connectionId)
                 parsers.remove(connectionId)
                 // 延迟重连
@@ -122,11 +124,16 @@ class BackgroundEventMonitor(private val context: Context) {
                     }
                 }, RECONNECT_MS)
             }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                Log.d(TAG, "background WS closed: $deviceName code=$code reason=$reason")
+            }
         }
 
     companion object {
         private const val TAG = "ZCodeEvent"
-        private const val RECONNECT_MS = 30_000L
+        /** WS 断开后重连延迟：5s 快速重连，缩短事件盲区（原 30s 太长）。 */
+        private const val RECONNECT_MS = 5_000L
 
         @Volatile
         private var instance: BackgroundEventMonitor? = null

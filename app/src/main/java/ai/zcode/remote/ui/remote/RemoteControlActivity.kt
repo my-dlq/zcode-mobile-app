@@ -103,6 +103,11 @@ class RemoteControlActivity : AppCompatActivity() {
         }
         android.util.Log.d("ZCodeEvent", "connectionId for $deviceName: ${connectionId.ifEmpty { "(not found)" }}")
 
+        // 打开任一连接即自动启动保活前台服务：
+        // 防止进程被系统冻结（Android 12+ cached-app freeze / MIUI 更甚），
+        // 冻结后所有 WebSocket、重连、事件接收全部停摆——通知收不到的致命原因
+        ai.zcode.remote.service.KeepAliveService.start(this)
+
         setupImmersiveAndScreen()
         setupKeyboardInsets()
         setupWebView()
