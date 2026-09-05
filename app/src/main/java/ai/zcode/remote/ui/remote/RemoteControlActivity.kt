@@ -22,6 +22,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import ai.zcode.remote.R
 import ai.zcode.remote.data.repository.AppSettingsRepository
+import ai.zcode.remote.data.repository.ConnectionRepository
 import ai.zcode.remote.databinding.ActivityRemoteControlBinding
 import ai.zcode.remote.ui.remote.event.EventCaptureScript
 import ai.zcode.remote.ui.remote.event.TaskEventBridge
@@ -512,7 +513,7 @@ class RemoteControlActivity : AppCompatActivity() {
                         val now = System.currentTimeMillis()
                         if (now - lastBackPressTime < 2000) {
                             lastBackPressTime = 0L
-                            finish()
+                            exitToDeviceList()
                         } else {
                             lastBackPressTime = now
                             ToastUtils.show(this@RemoteControlActivity, getString(R.string.press_again_to_exit))
@@ -528,7 +529,7 @@ class RemoteControlActivity : AppCompatActivity() {
 
                     val now = System.currentTimeMillis()
                     if (now - lastBackPressTime < 2000) {
-                        finish()
+                        exitToDeviceList()
                     } else {
                         lastBackPressTime = now
                         ToastUtils.show(this@RemoteControlActivity, getString(R.string.press_again_to_exit))
@@ -584,9 +585,15 @@ class RemoteControlActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    /** 用户主动退出（返回键两次确认）时清除活跃连接标记。 */
+    private fun exitToDeviceList() {
+        ConnectionRepository.getInstance(this).clearLastActive()
+        finish()
+    }
+
     companion object {
-        private const val EXTRA_URL = "extra_url"
-        private const val EXTRA_NAME = "extra_name"
+        const val EXTRA_URL = "extra_url"
+        const val EXTRA_NAME = "extra_name"
         private const val EXTRA_SETTINGS_MODE = "extra_settings_mode"
 
         fun start(context: Context, url: String, name: String = "", startInSettingsMode: Boolean = false) {

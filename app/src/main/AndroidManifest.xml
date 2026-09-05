@@ -47,10 +47,12 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
 
-        <!-- 首页：设备管理与快捷连接 -->
+        <!-- 首页：设备管理与快捷连接；singleTask 确保切出再切回时回到任务栈顶
+             （远程页）而不是重新创建首页 -->
         <activity
             android:name=".ui.main.MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustPan">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

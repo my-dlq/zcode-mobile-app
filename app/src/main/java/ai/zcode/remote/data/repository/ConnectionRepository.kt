@@ -95,7 +95,23 @@ class ConnectionRepository(context: Context) {
             activeConnectionId = id
             conn.lastConnectedTime = System.currentTimeMillis()
             saveList(list)
+            // 持久化活跃连接 URL：进程被系统回收后，从 launcher 切回时
+            // MainActivity 可据此自动恢复远程页
+            prefs.edit().putString(KEY_LAST_ACTIVE_URL, conn.url)
+                .putString(KEY_LAST_ACTIVE_NAME, conn.name).apply()
         }
+    }
+
+    /** 获取最近一次活跃连接的 URL（用于进程被杀后自动恢复远程页）。 */
+    fun getLastActiveUrl(): String? = prefs.getString(KEY_LAST_ACTIVE_URL, null)
+
+    /** 获取最近一次活跃连接的名称。 */
+    fun getLastActiveName(): String? = prefs.getString(KEY_LAST_ACTIVE_NAME, null)
+
+    /** 清除活跃连接标记（用户主动退出远程页时调用）。 */
+    fun clearLastActive() {
+        activeConnectionId = null
+        prefs.edit().remove(KEY_LAST_ACTIVE_URL).remove(KEY_LAST_ACTIVE_NAME).apply()
     }
 
     private fun saveList(list: List<RemoteConnection>) {
@@ -106,6 +122,8 @@ class ConnectionRepository(context: Context) {
     companion object {
         private const val PREFS_NAME = "zcode_remote_prefs"
         private const val KEY_CONNECTIONS = "key_connections"
+        private const val KEY_LAST_ACTIVE_URL = "key_last_active_url"
+        private const val KEY_LAST_ACTIVE_NAME = "key_last_active_name"
 
         @Volatile
         private var instance: ConnectionRepository? = null

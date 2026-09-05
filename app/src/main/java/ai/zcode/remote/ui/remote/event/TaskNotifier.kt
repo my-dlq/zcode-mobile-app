@@ -9,7 +9,8 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import ai.zcode.remote.R
-import ai.zcode.remote.ui.main.MainActivity
+import ai.zcode.remote.data.repository.ConnectionRepository
+import ai.zcode.remote.ui.remote.RemoteControlActivity
 
 /**
  * 任务事件系统通知：审批请求（高优先级，横幅+声音）与任务完成/失败（默认优先级）。
@@ -70,9 +71,7 @@ object TaskNotifier {
         val contentIntent = PendingIntent.getActivity(
             context,
             0,
-            Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            },
+            buildLaunchIntent(context, event),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification: Notification = NotificationCompat.Builder(context, channel)
@@ -102,6 +101,36 @@ object TaskNotifier {
             TaskEventParser.TaskEvent.Type.ELICITATION_REQUEST,
         )) {
             manager.cancel((taskId + ":" + type.name).hashCode())
+        }
+    }
+
+    /**
+     * 构造通知点击后的启动 Intent：优先打开该设备对应的远程控制页（通过
+     * deviceName 从连接仓库反查 URL），查不到时退化为打开首页。
+     */
+    private fun buildLaunchIntent(context: Context, event: TaskEventParser.TaskEvent): Intent {
+        val url = findConnectionUrl(context, event.deviceName)
+        return if (url != null) {
+            Intent(context, RemoteControlActivity::class.java).apply {
+                putExtra(RemoteControlActivity.EXTRA_URL, url)
+                putExtra(RemoteControlActivity.EXTRA_NAME, event.deviceName)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+        } else {
+            context.packageManager.getLaunchIntentForPackage(context.packageName)!!.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+        }
+    }
+
+    /** 按设备名从连接仓库反查最近一次连接的 URL。 */
+    private fun findConnectionUrl(context: Context, deviceName: String): String? {
+        if (deviceName.isBlank()) return null
+        return try {
+            val repo = ConnectionRepository.getInstance(context)
+            repo.getAllConnections().firstOrNull { it.name == deviceName }?.url
+        } catch (e: Exception) {
+            null
         }
     }
 

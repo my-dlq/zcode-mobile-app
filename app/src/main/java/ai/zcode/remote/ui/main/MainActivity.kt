@@ -57,6 +57,18 @@ class MainActivity : AppCompatActivity() {
         initListeners()
         handleIncomingIntent(intent)
         updateFlow.check(manual = false)
+
+        // 进程被系统回收后从 launcher 恢复：intent 无 data 且存在活跃连接
+        // → 自动重新打开远程页，避免用户看到连接列表而不是之前的会话
+        if (savedInstanceState == null && intent.data == null &&
+            intent.action == Intent.ACTION_MAIN
+        ) {
+            val lastUrl = repository.getLastActiveUrl()
+            if (lastUrl != null) {
+                val lastName = repository.getLastActiveName() ?: ""
+                ai.zcode.remote.ui.remote.RemoteControlActivity.start(this, lastUrl, lastName)
+            }
+        }
     }
 
     override fun onResume() {
@@ -67,8 +79,30 @@ class MainActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // 从桌面图标切回（launcher intent 无 data）：若任务栈中本 Activity 之上
+        // 还有其他页面（如远程控制页），直接 finish 让栈顶页面自然显示；
+        // 若栈中只有首页则正常处理（finish 会把用户弹回桌面）
+        if (intent.action == Intent.ACTION_MAIN && intent.data == null && hasActivityAbove()) {
+            finish()
+            return
+        }
         setIntent(intent)
         handleIncomingIntent(intent)
+    }
+
+    /** 检查任务栈中本 Activity 之上是否还有其他 Activity。 */
+    private fun hasActivityAbove(): Boolean {
+        val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+        val tasks = am.appTasks ?: return false
+        for (task in tasks) {
+            val info = task.taskInfo ?: continue
+            // 栈顶 Activity 不是自己 → 说明上面有其他页面
+            val top = info.topActivity ?: continue
+            if (top.className != javaClass.name && packageName in top.packageName) {
+                return true
+            }
+        }
+        return false
     }
 
     private fun handleIncomingIntent(intent: Intent?) {
