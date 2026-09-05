@@ -133,10 +133,10 @@ class MainActivity : AppCompatActivity() {
             items = emptyList(),
             onConnectClick = { connection ->
                 repository.updateLastConnected(connection.id)
+                // 正常点击连接不传 taskId：停留在任务列表页，让用户自己选会话
                 RemoteControlActivity.start(
                     this, connection.url, connection.name,
-                    startInSettingsMode = false,
-                    taskId = connection.lastTaskId
+                    startInSettingsMode = false
                 )
             },
             onSettingsClick = { connection ->
