@@ -47,12 +47,13 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
 
-        <!-- 首页：设备管理与快捷连接；singleTask 确保切出再切回时回到任务栈顶
-             （远程页）而不是重新创建首页 -->
+        <!-- 首页：设备管理与快捷连接；standard 模式（配合单实例去重）——
+             从远程页"返回列表"时新实例压栈，不触发 singleTask 的清栈行为，
+             从而保住后台 Remote 的 WebView（监听事件源继续存活）。
+             切回 launcher 时由 onCreate 的 "现有页面自删恢复" 逻辑回到上次页面 -->
         <activity
             android:name=".ui.main.MainActivity"
             android:exported="true"
-            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustPan">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

@@ -103,6 +103,11 @@ class RemoteControlActivity : AppCompatActivity() {
         }
         android.util.Log.d("ZCodeEvent", "connectionId for $deviceName: ${connectionId.ifEmpty { "(not found)" }}")
 
+        // 单连接监听：一次只保留一个远程页实例（新打开连接时关闭旧页面，
+        // 旧 WebView 随之销毁，事件监听切换到当前连接）
+        current?.takeIf { it !== this }?.finish()
+        current = this
+
         // 打开任一连接即自动启动保活前台服务：
         // 防止进程被系统冻结（Android 12+ cached-app freeze / MIUI 更甚），
         // 冻结后所有 WebSocket、重连、事件接收全部停摆——通知收不到的致命原因
@@ -141,13 +146,9 @@ class RemoteControlActivity : AppCompatActivity() {
                 runOnUiThread { updateSessionHealth(up) }
             },
             wsUrlCallback = { url ->
-                // 保存 WS URL 到连接：KeepAliveService 后台重连用
+                // WS 打开时仅记录日志：事件监听完全依赖页面 WebView 自身连接
+                // （页面带完整鉴权），原生不做独立 WS（裸连缺桥会话必然被踢）
                 android.util.Log.d("ZCodeEvent", "onWsUrl: connId=$connectionId url=$url")
-                if (connectionId.isNotEmpty()) {
-                    ConnectionRepository.getInstance(this).saveWsUrl(connectionId, url)
-                    // 通知后台事件监听刷新（新连接的 WS 也需要后台镜像）
-                    ai.zcode.remote.service.BackgroundEventMonitor.refreshInstance()
-                }
             }
         )
         binding.webView.addJavascriptInterface(eventBridge, TaskEventBridge.BRIDGE_NAME)
@@ -618,6 +619,7 @@ class RemoteControlActivity : AppCompatActivity() {
         } else {
             ImmersiveHelper.exitImmersiveFullscreen(this)
         }
+        ai.zcode.remote.ui.main.MainActivity.markVisiblePage("remote")
     }
 
     override fun onPause() {
@@ -667,16 +669,27 @@ class RemoteControlActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (current === this) current = null
         filePathCallback?.onReceiveValue(null)
         filePathCallback = null
         binding.webView.destroy()
         super.onDestroy()
     }
 
-    /** 用户返回到连接列表：保持连接状态（activeConnectionId 不清除），
-     *  方便用户快速切回或切换到其他连接。 */
+    /** 用户返回到连接列表：不销毁本页——把 MainActivity 启动到栈顶
+     *  （MainActivity 已改 standard，不再清栈），本页留在后台，
+     *  WebView 及页面 WS 继续存活：审批/完成事件继续镜像到系统通知。
+     *  保持连接状态：activeConnectionId 不清除，方便用户快速切回。 */
     private fun exitToDeviceList() {
-        finish()
+        lastBackPressTime = 0L
+        try {
+            startActivity(
+                Intent(this, ai.zcode.remote.ui.main.MainActivity::class.java)
+                    .putExtra(ai.zcode.remote.ui.main.MainActivity.EXTRA_FROM_REMOTE, true)
+            )
+        } catch (e: Exception) {
+            finish()
+        }
     }
 
     companion object {
@@ -684,6 +697,13 @@ class RemoteControlActivity : AppCompatActivity() {
         const val EXTRA_NAME = "extra_name"
         const val EXTRA_TASK_ID = "extra_task_id"
         private const val EXTRA_SETTINGS_MODE = "extra_settings_mode"
+
+        /** 当前存活的 RemoteControlActivity 实例（单连接监听：最多一个）。 */
+        @Volatile
+        private var current: RemoteControlActivity? = null
+
+        /** 是否已有远程页存活（供 MainActivity 切回判断/自动恢复去重）。 */
+        fun hasLiveInstance(): Boolean = current != null
 
         fun start(
             context: Context,

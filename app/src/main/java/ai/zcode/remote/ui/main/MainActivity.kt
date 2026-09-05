@@ -49,6 +49,24 @@ class MainActivity : AppCompatActivity() {
             finish()
             return
         }
+
+        // singleTask 已移除（改 standard 以保住后台 Remote 的 WebView）。
+        // 需要手动单实例去重 + launcher 切回恢复：
+        // - 从 Remote 返回列表启动的本实例：清理旧 Main 实例，保留自己
+        // - launcher 切回（用户上次停留在远程页）：自删，让栈顶 Remote 自然显示
+        val fromRemoteReturn = intent.getBooleanExtra(EXTRA_FROM_REMOTE, false)
+        val remoteAlive = RemoteControlActivity.hasLiveInstance()
+        if (!fromRemoteReturn && intent.action == Intent.ACTION_MAIN &&
+            intent.data == null && remoteAlive && lastVisiblePage == "remote"
+        ) {
+            // 用户上次停留在远程页时切出：新 Main 自删，恢复显示远程页
+            finish()
+            return
+        }
+        // 单实例去重：清理栈中旧的 Main（可能被 Remote 或其他页面压住）
+        current?.takeIf { it !== this }?.finish()
+        current = this
+
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -60,10 +78,10 @@ class MainActivity : AppCompatActivity() {
         handleIncomingIntent(intent)
         updateFlow.check(manual = false)
 
-        // 进程被系统回收后从 launcher 恢复：intent 无 data 且存在活跃连接
+        // 进程被系统回收后从 launcher 恢复：intent 无 data 且无存活远程页
         // → 自动重新打开远程页并跳转到上次的任务会话
         if (savedInstanceState == null && intent.data == null &&
-            intent.action == Intent.ACTION_MAIN
+            intent.action == Intent.ACTION_MAIN && !remoteAlive
         ) {
             val lastUrl = repository.getLastActiveUrl()
             if (lastUrl != null) {
@@ -78,36 +96,40 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        lastVisiblePage = "main"
         refreshList()
         checkClipboardForZCodeUrl()
     }
 
+    override fun onDestroy() {
+        if (current === this) current = null
+        mainMenuPopup?.dismiss()
+        mainMenuPopup = null
+        super.onDestroy()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        // 从桌面图标切回（launcher intent 无 data）：若任务栈中本 Activity 之上
-        // 还有其他页面（如远程控制页），直接 finish 让栈顶页面自然显示；
-        // 若栈中只有首页则正常处理（finish 会把用户弹回桌面）
-        if (intent.action == Intent.ACTION_MAIN && intent.data == null && hasActivityAbove()) {
-            finish()
-            return
-        }
         setIntent(intent)
         handleIncomingIntent(intent)
     }
 
-    /** 检查任务栈中本 Activity 之上是否还有其他 Activity。 */
-    private fun hasActivityAbove(): Boolean {
-        val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
-        val tasks = am.appTasks ?: return false
-        for (task in tasks) {
-            val info = task.taskInfo ?: continue
-            // 栈顶 Activity 不是自己 → 说明上面有其他页面
-            val top = info.topActivity ?: continue
-            if (top.className != javaClass.name && packageName in top.packageName) {
-                return true
-            }
+    companion object {
+        /** 从远程页"返回列表"启动 Main 时的标记（standard 模式下区分来源）。 */
+        const val EXTRA_FROM_REMOTE = "extra_from_remote"
+
+        /** 唯一的 MainActivity 实例引用（standard 模式单实例去重）。 */
+        @Volatile
+        private var current: MainActivity? = null
+
+        /** 上次前台页面（main/remote），供 launcher 切回时恢复。 */
+        @Volatile
+        private var lastVisiblePage: String = "main"
+
+        /** 各页面在 onResume 时更新"当前可见页面"。 */
+        fun markVisiblePage(page: String) {
+            lastVisiblePage = page
         }
-        return false
     }
 
     private fun handleIncomingIntent(intent: Intent?) {
@@ -347,11 +369,5 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.action_cancel, null)
             .show()
-    }
-
-    override fun onDestroy() {
-        mainMenuPopup?.dismiss()
-        mainMenuPopup = null
-        super.onDestroy()
     }
 }

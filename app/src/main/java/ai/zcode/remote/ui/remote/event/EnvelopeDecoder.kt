@@ -5,8 +5,7 @@ import org.json.JSONObject
 
 /**
  * Wire 信封解码器：从 TaskEventBridge 提取的独立解码逻辑，
- * 供 WebView 桥（TaskEventBridge）和后台 WebSocket（BackgroundEventMonitor）
- * 共用。
+ * 供 WebView 桥（TaskEventBridge）解析页面 WS 镜像报文。
  *
  * 远端 WS 报文为两层信封：外层 wireVersion 信封，内层 payload 可能直接
  * 携带事件/差分，或在 dataBase64 中 base64 编码。分片报文按 logicalFrameId
