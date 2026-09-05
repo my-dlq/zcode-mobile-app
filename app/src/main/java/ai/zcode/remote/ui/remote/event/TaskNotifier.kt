@@ -18,23 +18,25 @@ import ai.zcode.remote.ui.remote.RemoteControlActivity
  * 通知点击进入对应连接的远程控制页并跳转到任务会话。
  *
  * 通知偏好：总开关关闭后所有事件不通知；各事件类型（审批/提问/完成/失败）
- * 可独立开关。前台 WebView 和后台 WS 共享同一差分快照（TaskEventParser
- * 单例），同一事件可能被两个通道各触发一次，因此做时间窗口去重。
+ * 可独立开关。事件源为当前连接的 WebView 页面（单通道），同一事件理论上
+ * 只会触发一次；保留极短去重窗口仅防同一次 snapshot 镜像的重复推送，
+ * 不会过滤"短时间内连续的真实事件"（如 30 秒内同任务再次审批）。
  */
 object TaskNotifier {
 
     private const val CHANNEL_EVENTS = "zcode_task_events"
     private const val CHANNEL_APPROVALS = "zcode_task_approvals"
 
-    /** 同 taskId+type 的通知去重窗口（前台 WS 和后台 WS 可能各触发一次）。 */
-    private const val DEDUP_WINDOW_MS = 30_000L
+    /** 同 taskId+type 的事件的极小去重窗口（仅防 snapshot 镜像重复，不拦连续事件）。 */
+    private const val DEDUP_WINDOW_MS = 3_000L
     private val recentNotified = HashMap<String, Long>()
 
     /**
      * RESOLVED 冷却窗口：远端 WS 重连/刷新快照时会短暂把 permissionCount 从 N→0 再补回，
-     * 触发"假 resolved"把刚弹出的审批通知撤掉；实测远端也会在用户未操作时 11s 后自发
-     * 发 RESOLVED（多端共用会话，任一端响应或状态刷新都会触发）。冷却期内的 resolved
-     * 视为抖动忽略——用户真正点同意/拒绝通常在 30s 内，超过 30s 的 resolved 才撤销。
+     * 触发"假 resolved"把刚弹出的审批通知撤掉。冷却期内的 resolved 视为抖动忽略。
+     * 实测远端在用户未操作时 ~11s 后会自发发 RESOLVED（多端共用会话），
+     * 冷却窗取 30s 覆盖该窗口，避免"通知几秒消失"复发。
+     * 副作用：用户在 30s 内点同意/拒绝时旧通知暂不撤销，但不影响新通知弹出。
      */
     private const val RESOLVE_COOLDOWN_MS = 30_000L
 

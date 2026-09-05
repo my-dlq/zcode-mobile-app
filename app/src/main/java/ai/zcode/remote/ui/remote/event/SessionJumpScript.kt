@@ -39,8 +39,19 @@ object SessionJumpScript {
         return false;
     };
 
-    // 展开工作区分组（aria-expanded=false 的按钮）
+    // 是否处于任务列表页：存在 task-item 或存在 session item，且无 [data-session-id]
+    // 会话页（任务会话视图）没有任何 task-item，此时绝不能点任何按钮——
+    // 否则会误触会话页的"Git 工具/切换 Git 分支/状态面板"等折叠触发器，
+    // 出现"git 工具弹层 → 审批弹层 → 思考弹层 → 消失"的刷屏
+    var onListPage = function() {
+        return document.querySelector('[data-session-id]') == null &&
+            document.querySelectorAll('[data-testid^="task-item-"]').length > 0;
+    };
+
+    // 展开工作区分组（aria-expanded=false 的按钮）——仅限列表页：
+    // 不在列表页绝不点击任何按钮（会话页按钮全是弹层触发器）
     var expandNext = function() {
+        if (!onListPage()) return false;
         var heads = document.querySelectorAll('button[aria-expanded="false"]');
         for (var i = 0; i < heads.length; i++) {
             if (tried.has(heads[i])) continue;
@@ -52,8 +63,9 @@ object SessionJumpScript {
         return false;
     };
 
-    // 恢复我们展开的分组（跳转完成后收起，保持页面整洁）
+    // 恢复我们展开的分组（跳转完成后收起，保持页面整洁）——仅限列表页
     var restore = function() {
+        if (!onListPage()) return false;
         var heads = document.querySelectorAll('button[aria-expanded="true"]');
         for (var i = 0; i < heads.length; i++) {
             if (!mine.has(heads[i])) continue;
@@ -75,6 +87,11 @@ object SessionJumpScript {
         if (stale()) { restore(); stop(); return; }
         if (find()) { stop(); return; }
         if (Date.now() > deadline) { restore(); stop(); return; }
+        if (!onListPage() && document.querySelector('[data-session-id]') != null) {
+            // 页面已是会话视图：目标任务已打开，无需再找
+            stop();
+            return;
+        }
         expandNext();
     };
 
