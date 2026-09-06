@@ -5,7 +5,7 @@
 [![WebView](https://img.shields.io/badge/Chromium-WebView-4285F4?logo=googlechrome&logoColor=white)](https://developer.android.com/develop/ui/views/layout/webapps/webview)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[简体中文](README.md) | **English**
+[Simplified Chinese](README.md) | **English**
 
 ZCode Mobile App is an Android client for ZCode Remote Control.
 
@@ -22,77 +22,16 @@ ZCode Mobile App wraps the official remote control page in a native shell: it us
   </tr>
 </table>
 
-## Background
-
-[ZCode](https://zcode.z.ai) is an Agentic Development Environment (ADE) from Z.ai with a built-in **Remote Control** feature: open the "Mobile Remote Control" dialog on the desktop client, scan the QR code or copy the link with your phone, and you can track task progress and keep sending instructions to the agent.
-
-That page is designed for mobile browsers. When opened directly in a browser:
-
-- The address and tool bars consume limited screen space
-- Long-press selection and the system magnifier interfere with interaction
-- The tab may be reclaimed by the system, causing the session to reload or reconnect
-- Multiple remote addresses lack a unified management entry point
-- The mobile viewport, font scaling, and touch events cause layout and interaction issues
-- Full screen, refresh, and similar actions are not directly accessible
-
-This project replaces the mobile browser with an Android native container to host that page. The changes fall into three areas.
-
-### What Was Changed
-
-**Connection management** — Manage multiple remote connections in one place. Supports four entry points: QR scan, gallery recognition, clipboard detection, and deep links. URLs are normalized before deduplication so the same device is never saved twice.
-
-**Native container** — A dedicated Activity replaces the browser tab:
-
-- Immersive full screen; the page is raised when the soft keyboard appears so inputs stay visible
-- Back key is handled in stages: close panels and dialogs first, then navigate back, exit last
-- When the render process is reclaimed, a retry prompt is shown instead of crashing
-
-**Native settings & security** — Client-side capabilities outside the WebView container:
-
-- App settings: immersive full-screen toggle, light / dark theme, and automatic update check on startup
-- App lock: pattern and fingerprint (biometric) unlock; consecutive verification failures trigger a shared lockout countdown
-- In-app updates: detect new GitHub Releases versions, download the APK in the background, and upgrade via the system installer
-- About page: view version, manually check for updates, and open the GitHub project home
-
-**Page adaptation** — Injecting CSS/JS to fix how the remote page behaves on phones. This is the bulk of the work:
-
-- Spoof the desktop environment to avoid degrading to a limited feature set on narrow viewports
-- Suppress accidental long-press selection and the system magnifier, while keeping selection and paste working in inputs, terminals, and messages
-- Fix touch issues: drag sensors misjudging taps so switches won't toggle, and synthetic clicks stacking so state reverts
-- On narrow screens the remote page hides the settings entry; a desktop viewport is temporarily injected to open it, then switched back
-- Add the missing back button on secondary detail pages, and compact sidebars, forms, and charts for narrow screens
-
-> Page adaptation depends on the remote page's DOM structure and may need updating when the remote side changes.
-
 ## Features
 
-### Remote Connection
-
-- Scan the ZCode remote QR code from the desktop client
-- Recognize QR codes from the system gallery
-- Parse device name, `mid`, and `sid` from the remote URL
-- Connect quickly via clipboard detection
-- Launch via the `https://zcode.z.ai/remote` deep link
-- Store multiple remote devices locally
-- Edit, delete, set as default, and reconnect
-
-### Native Settings & Security
-
-- Switch between immersive full screen and the native window mode
-- Switch between light and dark themes
-- App lock: unlock the app with a pattern or fingerprint; too many failed attempts trigger a shared lockout
-- Automatic update check on startup (can be disabled); the About page supports manual checks
-- Detect new GitHub Releases versions and download with one tap to launch the system installer
-- Back key is handled in stages to reduce accidental exits
-
-### WebView Adaptation
-
-- Long-press paste works in the task session input
-- User prompts and model output support long-press selection and copy
-- Terminal and editor areas keep normal input and selection behavior
-- Improved display of model, provider, thinking level, and permission lists on mobile viewports
-- Fixed mobile layout issues in the settings sidebar, provider editing area, and Token activity heatmap
-- Targeted touch and layout issues are handled via CSS/JavaScript injection
+- **Security:** Adds fingerprint and pattern unlock.
+- **Theme:** Built-in light and dark themes, switchable in settings.
+- **Event notifications:** Supports four event types — task success, failure, approval, and question — each can be enabled independently.
+- **Session memory:** Remembers the last task session per device and restores that device and session after switching back or after the process is reclaimed by the system.
+- **In-app updates:** Silently checks GitHub Releases on startup, downloads the APK and launches the system installer, with an option to ignore a specific version.
+- **Connection management:** Add remote devices quickly via four entry points (QR scan, gallery recognition, clipboard detection, and deep links), with unified management of multiple connections and sorting support.
+- **Mobile interaction:** Immersive full screen, narrow-screen adaptation, mis-touch suppression, settings UI optimization, staged back-key handling, and auto-raising the page when the soft keyboard appears, for a better experience.
+- **Background keep-alive:** Keeps the connection alive with a foreground service plus a screen-off `WakeLock` during remote sessions, preventing the page from being reclaimed by the system, and provides battery optimization guidance.
 
 ## Tech Stack
 
@@ -116,8 +55,6 @@ This project replaces the mobile browser with an Android native container to hos
 - Android SDK Build Tools
 - An Android emulator or an Android device with USB debugging enabled
 
-> Before building from the command line, make sure the shell uses JDK 17. Set `JAVA_HOME` to your own JDK 17 path (for example `export JAVA_HOME=$(/usr/libexec/java_home -v 17)` on macOS). Run `./gradlew -v` or `java -version` to verify.
-
 ## Build and Test
 
 Run from the project root:
@@ -139,32 +76,11 @@ Run from the project root:
 ./gradlew lint
 ```
 
-> **Build repositories:** Dependency resolution is centralized in `settings.gradle.kts` (`RepositoriesMode.FAIL_ON_PROJECT_REPOS`), so module-level `build.gradle.kts` files must not declare their own `repositories`. It uses Aliyun Maven mirrors (`maven.aliyun.com/repository/google`, `maven.aliyun.com/repository/public`, `maven.aliyun.com/repository/gradle-plugin`) together with Google, Maven Central, and `jitpack.io`, letting the project build in restricted network environments where the default Google/Maven Central endpoints are slow or blocked.
-
 Debug APK output path:
 
 ```text
 app/build/outputs/apk/debug/app-debug.apk
 ```
-
-## Emulator Debugging
-
-This project provides two debugging channels for WebView-based apps:
-
-- Android native layer: `adb`, `uiautomator`, screenshots, and `logcat`
-- WebView page layer: Chrome DevTools Protocol (CDP)
-
-Debug builds enable WebView remote debugging. After connecting an emulator, map the WebView debugging port with:
-
-```bash
-PID=$(adb -s <serial> shell pidof ai.zcode.remote.debug)
-adb -s <serial> forward tcp:9222 localabstract:webview_devtools_remote_$PID
-curl http://127.0.0.1:9222/json
-```
-
-The `curl` command lists debuggable pages. You can then connect any CDP-capable tool (Chrome DevTools, chrome-devtools-mcp, etc.) to `http://127.0.0.1:9222` to inspect the DOM, run scripts, or take screenshots.
-
-> Note when debugging: the debug build's package name has a `.debug` suffix (`ai.zcode.remote.debug`), so use the full name in `pidof` / `am` commands. If multiple emulators are running, all adb commands need `-s <serial>` to target a device.
 
 ## Development Conventions
 
@@ -180,7 +96,7 @@ The `curl` command lists debuggable pages. You can then connect any CDP-capable 
 
 Issues, suggestions, and pull requests are welcome.
 
-### Reporting an Issue
+### Submitting an Issue
 
 Please include as much of the following as possible:
 
@@ -198,6 +114,14 @@ Please include as much of the following as possible:
 3. For Android UI changes, verify on an emulator or a real device.
 4. For WebView injection changes, verify both the native layer (adb / screenshots) and the CDP page layer, and describe your verification environment and results in the pull request.
 5. Provide a clear commit message and test results.
+
+## Disclaimer
+
+- This project is an independent, community-developed third-party open-source client with **no affiliation** to [ZCode](https://zcode.z.ai) / Z.ai, and has received no official authorization, sponsorship, or endorsement.
+- "ZCode", "Z.ai", and related names, trademarks, and logos belong to their respective owners; this project references them solely to denote the official product.
+- The task progress, charts, terminal output, and other page content shown in the app are generated and hosted by ZCode's official remote service. The ownership and operation of remote addresses (such as `https://zcode.z.ai/remote`) belong entirely to ZCode. This project does not store or relay any remote-side data.
+- This project adapts the official page for mobile display by injecting CSS/JS, which may break when the official page is redesigned; please do not attribute resulting display or usage issues to the official side.
+- When using this project to connect to remote services, please follow ZCode's official terms of service and license agreements. Use is at your own risk.
 
 ## License
 
