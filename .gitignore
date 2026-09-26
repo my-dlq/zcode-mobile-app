@@ -34,3 +34,4 @@ zcode-release.jks
 # 含签名密码的本地配置（已由 gradle.properties 持有真实值，不入库）
 gradle.properties
 !gradle.properties.example
+/.zcodeignore
