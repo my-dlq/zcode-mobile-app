@@ -7,13 +7,17 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.ui.remote.event.EventCaptureScript
 import ai.zcode.remote.ui.remote.event.TaskEventBridge
+import kotlin.math.roundToInt
 
 class ZCodeWebViewClient(
     private val onPageStart: () -> Unit,
     private val onPageFinish: (url: String) -> Unit,
-    private val onPageError: (errorCode: Int, description: String) -> Unit
+    private val onPageError: (errorCode: Int, description: String) -> Unit,
+    /** 当前页面缩放百分比（70~150），由设置页写入、此处读取以生成 viewport。 */
+    private val pageZoomProvider: () -> Int = { 100 }
 ) : WebViewClient() {
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
@@ -123,6 +127,8 @@ class ZCodeWebViewClient(
      * 侧边栏：优先选择"已完成"任务，只做导航查看，绝不触碰停止/取消类控件。
      */
     fun openWorkspaceSettings(webView: WebView, onDone: ((Boolean) -> Unit)? = null) {
+        // 回切移动端视口时用的内容（含当前页面缩放），在此算好注入，避免 JS 侧写死
+        val mobileViewportContent = viewportContent(webView, isDesktop = false)
         val js = """
             (function() {
                 if (window.__zcodeSettingsOpening) return;
@@ -237,12 +243,12 @@ class ZCodeWebViewClient(
                 function switchToMobileViewport() {
                     // 回切移动端视口：设置视图自带响应式（h-screen/h-dvh 等），
                     // 若停留在 initial-scale=0.32 的桌面视口，vh 会被放大到约 3 倍屏高，
-                    // 导致页面顶部出现大片背景空白，且整体呈电脑端样式
+                    // 导致页面顶部出现大片背景空白，且整体呈电脑端样式。
+                    // 内容由 Kotlin 侧按当前页面缩放生成，回切后缩放设置同样生效
                     try {
                         var m = document.querySelector('meta[name="viewport"]');
                         if (m) {
-                            m.setAttribute('content',
-                                'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+                            m.setAttribute('content', '$mobileViewportContent');
                             window.dispatchEvent(new Event('resize'));
                         }
                     } catch (e) {}
@@ -312,11 +318,53 @@ class ZCodeWebViewClient(
      * 动态切换桌面宽屏渲染模式与移动端自适应模式
      */
     fun setDesktopViewport(webView: WebView, isDesktop: Boolean) {
-        val viewportContent = if (isDesktop) {
-            "width=1280, initial-scale=0.32, user-scalable=yes"
-        } else {
-            "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+        applyViewportContent(webView, viewportContent(webView, isDesktop))
+    }
+
+    /**
+     * 按当前「页面缩放」设置应用移动端视口（供页面加载完成/从设置页返回时调用）。
+     * 100% 时与原生移动端行为完全一致。
+     */
+    fun applyPageZoom(webView: WebView) {
+        applyViewportContent(webView, viewportContent(webView, isDesktop = false))
+    }
+
+    /**
+     * 生成 viewport meta 内容。
+     *
+     * 缩放实现说明：远端页面从 #root 到会话区是连续 5 层 `height:100dvh + overflow:hidden`
+     * 的硬裁切链，中间没有可滚动祖先——因此 transform:scale / CSS zoom 会把溢出内容
+     * 直接裁掉且无滚动补偿（100dvh 不随缩放变化），不可用。这里改用改布局视口的办法：
+     *   width = 屏幕CSS宽 / Z、initial-scale = Z
+     * 布局视口高度随之变成 屏幕高/Z，100dvh × Z 正好铺满，不裁切；同时真正改变布局
+     * 视口宽度会触发远端响应式重排，等价于浏览器缩放（非捏合式纯放大）。
+     * 桌面模式（进设置中心临时态）忽略缩放，沿用原有 width=1280/initial-scale=0.32。
+     */
+    private fun viewportContent(webView: WebView, isDesktop: Boolean): String {
+        if (isDesktop) {
+            return "width=1280, initial-scale=0.32, user-scalable=yes"
         }
+        // 缩放范围用仓库常量，避免与设置页/菜单两处写死不一致
+        val zoomPercent = pageZoomProvider().coerceIn(
+            AppSettingsRepository.PAGE_ZOOM_MIN, AppSettingsRepository.PAGE_ZOOM_MAX
+        )
+        if (zoomPercent == 100) {
+            return "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+        }
+        // 屏幕 CSS 宽度：原生像素宽 / density，Kotlin 侧算好不依赖 JS 测量
+        val density = webView.resources.displayMetrics.density
+        val screenCssWidth = if (density > 0f && webView.width > 0) {
+            (webView.width / density).roundToInt()
+        } else {
+            // WebView 尚未测量完成时退化为屏幕宽（density 已含在 displayMetrics 里）
+            (webView.resources.displayMetrics.widthPixels / density).roundToInt()
+        }
+        val zoom = zoomPercent / 100f
+        val layoutWidth = (screenCssWidth / zoom).roundToInt().coerceAtLeast(1)
+        return "width=$layoutWidth, initial-scale=$zoom, maximum-scale=$zoom, user-scalable=no"
+    }
+
+    private fun applyViewportContent(webView: WebView, viewportContent: String) {
         val js = """
             (function() {
                 var meta = document.querySelector('meta[name="viewport"]');
@@ -367,11 +415,11 @@ class ZCodeWebViewClient(
             }
 
             /* 2. 任务会话模型选择器紧凑化：远端 Radix 两级 menu 在移动视口下
-               默认 14px/32px，二级模型菜单从供应商条目左侧展开，容易被底部
-               输入框或屏幕边缘遮挡。只作用于 z-[60] 的模型选择弹层，不影响聊天
-               消息、输入框和设置中心页面；menuitemradio 保留右侧选中标记空间。 */
+               默认 14px/32px。只作用于 z-[60] 的模型选择弹层，不影响聊天
+               消息、输入框和设置中心页面；menuitemradio 保留右侧选中标记空间。
+               一级供应商菜单保持 w-max（不写死宽度），避免把列宽压窄导致二级
+               子菜单被挤到屏幕左侧外。 */
             div[role="menu"].z-\\[60\\] {
-                max-width: calc(100vw - 16px) !important;
                 max-height: calc(100vh - 16px) !important;
                 overflow-x: hidden !important;
                 overflow-y: auto !important;
@@ -394,61 +442,160 @@ class ZCodeWebViewClient(
                 font-size: 12px !important;
                 line-height: 18px !important;
             }
+            /* 二级模型子菜单：源码是 w-max（按内容扩展），但移动端视口窄，模型名
+               （如 deepseek-v4.1-flash）显示不全。这里给足宽度（按可用空间撑开
+               且不超出视口）。子菜单的水平位置由 Radix 用 popper wrapper 的
+               transform:translate(...) 定位，默认从触发器左侧弹出、实测 left=-52
+               溢出左屏——CSS margin 无效（bounding rect 含 margin、transform 覆盖），
+               故水平夹取交给注入 JS（见 stabilizeModelTrigger 旁的 clampModelSubmenu）。
+               data-slot=dropdown-menu-sub-content 精确命中子菜单，不影响一级供应商列。 */
+            div[data-slot="dropdown-menu-sub-content"] {
+                min-width: 200px !important;
+                width: max-content !important;
+                max-width: calc(100vw - 24px) !important;
+            }
+            div[data-slot="dropdown-menu-sub-content"] .truncate {
+                /* 模型名允许用满子菜单宽度，不提前省略号截断 */
+                max-width: none !important;
+            }
 
             /* 任务会话底部"上下文容量"悬浮卡（Radix HoverCard）字体与模型菜单
                一致：label 为 text-ui-base 14px、数值为 text-ui-sm，统一 12px/18px。
-               限定 data-slot="hover-card-content"，不影响聊天消息与输入框。 */
+               限定 data-slot="hover-card-content"，不影响聊天消息与输入框。
+               ⚠️ 不要在这里加 transform 偏移——源码 HoverCardContent 用 align="center"
+               + w-72，Radix 本就按触发器动态居中。之前写死的 translateX(-46px) 是按
+               412 视口 + 320 卡宽算的常量，视口/卡宽变化就偏（实测反而把卡片推出
+               屏幕左侧），去掉后由 Radix 原生逻辑居中即可。 */
             div[data-slot="hover-card-content"],
             div[data-slot="hover-card-content"] * {
                 font-size: 12px !important;
                 line-height: 18px !important;
             }
-            /* 弹层默认右缘贴死屏幕边缘（x=92 宽 320 @视口 412），整体左移 46px 后
-               水平居中、左右留白均衡；transform 无需与浮层 wrapper 的 inline 定位耦合 */
-            div[data-slot="hover-card-content"] {
-                transform: translateX(-46px) !important;
-            }
 
-            /* 思考等级与权限控制使用 Radix Select listbox；
-               统一字体大小与模型选择列表一致（主标题 12px/16px，副描述 10.5px/14px）；
-               调小条目上下间隙并收窄左右宽度至 180~200px。 */
-            div[role="listbox"].z-\\[60\\],
-            div[data-slot="select-content"] {
-                max-width: 200px !important;
-                min-width: 170px !important;
-                width: auto !important;
-                max-height: calc(100vh - 16px) !important;
-                overflow-x: hidden !important;
-                overflow-y: auto !important;
+            /* 思考等级与权限控制实际渲染为 Radix DropdownMenu（role="menu" +
+               data-slot="dropdown-menu-radio-item"），并非 Select listbox；
+               条目是「图标 + 标题 + 副描述」两行结构，默认用宽松布局
+               （min-h-13 items-start gap-3 py-2），且标题 text-ui-base=14px、
+               副描述 text-ui-sm=12px——而模型选择器菜单被上面 373~388 行压到
+               12px/18px、min-h-8(32px)、gap-2、px-2 py-1，两者观感差异明显。
+               这里把权限/思考条目对齐到与模型菜单一致的紧凑规格：
+               - 布局：py-2→py-1.5、gap-3→gap-2、min-h-13→min-h-11，去掉 items-start；
+               - 字号：标题与模型条目一致 12px/18px，副描述 11px/15px 保留层级；
+               用 :has(.flex-col) 精确命中带副描述的两行条目，不影响模型菜单
+               自身的单行条目。宽度沿用菜单自身 w-64(256px)，避免再挤压换行。*/
+            /* 计划模式是 dropdown-menu-checkbox-item(role=menuitemcheckbox)，
+               变更前确认/自动编辑/完全访问是 dropdown-menu-radio-item(role=menuitemradio)，
+               思考等级是 dropdown-menu-item(role=menuitem)。统一按 role + :has(.flex-col)
+               命中带副描述的两行条目，避免按具体 data-slot 漏掉某一种形态。*/
+            div[role="menu"].z-\\[60\\] [role="menuitemcheckbox"]:has(.flex-col),
+            div[role="menu"].z-\\[60\\] [role="menuitemradio"]:has(.flex-col),
+            div[role="menu"].z-\\[60\\] [role="menuitem"]:has(.flex-col) {
+                min-height: 40px !important;
+                height: auto !important;
+                padding-top: 6px !important;
+                padding-bottom: 6px !important;
+                gap: 8px !important;
+                align-items: center !important;
+                box-sizing: border-box !important;
+                margin-bottom: 0 !important;
                 font-size: 12px !important;
-                line-height: 16px !important;
-                padding: 4px !important;
+                line-height: 18px !important;
             }
+            div[role="menu"].z-\\[60\\] [role="menuitemcheckbox"]:has(.flex-col) > svg,
+            div[role="menu"].z-\\[60\\] [role="menuitemradio"]:has(.flex-col) > svg,
+            div[role="menu"].z-\\[60\\] [role="menuitem"]:has(.flex-col) > svg {
+                width: 16px !important;
+                height: 16px !important;
+                margin-top: 0 !important;
+            }
+            div[role="menu"].z-\\[60\\] [role="menuitemcheckbox"]:has(.flex-col) .flex-col > span:first-child,
+            div[role="menu"].z-\\[60\\] [role="menuitemradio"]:has(.flex-col) .flex-col > span:first-child,
+            div[role="menu"].z-\\[60\\] [role="menuitem"]:has(.flex-col) .flex-col > span:first-child {
+                font-size: 12px !important;
+                line-height: 18px !important;
+            }
+            div[role="menu"].z-\\[60\\] [role="menuitemcheckbox"]:has(.flex-col) .flex-col > span.text-ui-sm,
+            div[role="menu"].z-\\[60\\] [role="menuitemradio"]:has(.flex-col) .flex-col > span.text-ui-sm,
+            div[role="menu"].z-\\[60\\] [role="menuitem"]:has(.flex-col) .flex-col > span.text-ui-sm {
+                font-size: 11px !important;
+                line-height: 15px !important;
+                margin-top: 0 !important;
+                opacity: 0.75 !important;
+            }
+            /* Radix Select listbox 形态（部分页面）同样对齐 12px/18px */
             div[role="listbox"].z-\\[60\\] [role="option"],
             div[data-slot="select-content"] [data-slot="select-item"] {
+                font-size: 12px !important;
+                line-height: 18px !important;
                 min-height: 32px !important;
                 height: auto !important;
-                padding: 3px 22px 3px 6px !important;
-                font-size: 12px !important;
-                line-height: 16px !important;
+                padding: 4px 22px 4px 8px !important;
                 box-sizing: border-box !important;
-                margin-bottom: 1px !important;
-            }
-            div[role="listbox"].z-\\[60\\] [role="option"]:last-child,
-            div[data-slot="select-content"] [data-slot="select-item"]:last-child {
-                margin-bottom: 0 !important;
             }
             div[role="listbox"].z-\\[60\\] [role="option"] span[class*="truncate"],
             div[data-slot="select-content"] [data-slot="select-item"] span[class*="truncate"] {
                 font-size: 12px !important;
-                line-height: 16px !important;
+                line-height: 18px !important;
             }
             div[role="listbox"].z-\\[60\\] [role="option"] span[class*="line-clamp"],
             div[data-slot="select-content"] [data-slot="select-item"] span[class*="line-clamp"] {
-                font-size: 10.5px !important;
-                line-height: 14px !important;
+                font-size: 11px !important;
+                line-height: 15px !important;
                 margin-top: 0 !important;
                 opacity: 0.75 !important;
+            }
+
+            /* 底部「+」添加上下文弹层是 Radix Popover（data-slot="popover-content"），
+               默认 14px/21px、图标 16px、条目 h-8(32px)，明显大于模型列表菜单
+               (12px/18px)。此处整体缩小对齐模型菜单视觉规格：字号 12px/18px、
+               图标 14px、条目高 28px。限定 popover-content，不影响聊天消息与输入框。
+               ⚠️ **不要给弹层写死 max-width/width**（曾写死 max-width:300px）：远端本就用
+               `w-(--radix-popover-trigger-width)` 让弹层宽度跟随触发器，Radix 实测把
+               `--radix-popover-trigger-width` 置为输入框宽度(366.5px)、并把弹层定位在
+               left=16，**左右边缘天然与输入框对齐**。写死 300px 会把右边缘截短 66px
+               （实测 left=16/right=316 vs 输入框 right=382.5），正是"+ 列表没和输入框
+               对齐"的根因。宽度与水平位置一律交回远端 + JS 兜底（见 alignComposerPopover）。*/
+            div[data-slot="popover-content"] {
+                font-size: 12px !important;
+                line-height: 18px !important;
+            }
+            div[data-slot="popover-content"] [data-slot*="item"],
+            div[data-slot="popover-content"] [role="menuitem"],
+            div[data-slot="popover-content"] [role="option"] {
+                min-height: 28px !important;
+                height: 28px !important;
+                padding-top: 0 !important;
+                padding-bottom: 0 !important;
+                font-size: 12px !important;
+                line-height: 18px !important;
+            }
+            div[data-slot="popover-content"] [data-slot*="item"] *,
+            div[data-slot="popover-content"] [role="menuitem"] *,
+            div[data-slot="popover-content"] [role="option"] * {
+                font-size: 12px !important;
+                line-height: 18px !important;
+            }
+            div[data-slot="popover-content"] [data-slot*="item"] svg,
+            div[data-slot="popover-content"] [role="menuitem"] svg,
+            div[data-slot="popover-content"] [role="option"] svg {
+                width: 14px !important;
+                height: 14px !important;
+            }
+
+            /* 任务会话顶部标题在窄屏被源码主动收窄：
+               h1[data-testid="workspace-title"] 带 @max-[560px]:max-w-[30vw] 与
+               @max-[420px]:max-w-[22vw]，手机视口 412px 命中后者 → 标题仅 22vw≈91px，
+               长标题（如"安装安卓15模拟器测试项目"）只剩"安装安卓15…"，右侧却白白
+               空出 200 多像素。这里改为"预留右侧按钮空间"的显式上限：
+               max-width: calc(100vw - 130px) —— 130px = 右侧"更多"按钮(28) + 面板
+               切换按钮(28) + 两侧内边距与间距，实测三种视口(412/380/360)下「更多」与
+               面板切换按钮都完整可见且保持 22px 间隔。
+               ⚠️ 不要用 max-width:none：标题会贪心吃满整行，把「更多」按钮挤到面板
+               切换按钮旁(实测间隔仅 8px)，视觉上"顶没"收起按钮。
+               ⚠️ 不要给 h1 加 flex-grow、也不要用 min()/fit-content() 包 max-content
+               （在 max-width 里属无效值会被丢弃，回落到源码 22vw 上限）。 */
+            h1[data-testid="workspace-title"] {
+                max-width: calc(100vw - 130px) !important;
             }
 
             /* 16. 每日 Token 趋势图日期标签由 Recharts 生成在 SVG 中，移动端
@@ -457,6 +604,11 @@ class ZCodeWebViewClient(
             svg text.recharts-cartesian-axis-tick-value {
                 font-size: 10px !important;
             }
+
+            /* 模型触发按钮「管理模型」过渡态：由注入 JS 缓存最后一个有效模型标签，
+               目录刷新空窗（按钮短暂只显示「管理模型」）时直接写回缓存标签。这里无需
+               额外 CSS——文本由 JS 直接维护，避免 font-size:0 之类的折中把真实模型名
+               一并隐藏造成布局抖动。*/
 
             /* 3. 消除所有按钮与交互元素的 300ms 点击延迟与双击拦截 */
             button, [role="button"], [role="tab"], a, select, input, [tabindex],
@@ -508,11 +660,26 @@ class ZCodeWebViewClient(
                 -webkit-tap-highlight-color: transparent !important;
             }
 
-            /* 5. 优雅纯净的原生级按压反馈（轻柔透明度过渡，无任何突兀蓝色闪烁） */
+            /* 5. 优雅纯净的原生级按压反馈（轻柔透明度过渡，无任何突兀蓝色闪烁）
+               ⚠️ 2026-09-26 排除两种"整行/整张卡片"大按钮（2026-09-26 模拟器实测）：
+                 - 工作区卡片主体 button（点它=展开/收起任务列表）：:active scale(0.96)
+                   会让整张卡片连同标题字体一起瞬间缩小 4%，字体抖动；
+                 - 任务项 button[data-testid^="task-item-"]：同样是整行按钮，按下时
+                   整行内容（标题/徽章）缩放抖动。
+               这两条按钮的 :active 不缩放、不变淡，保留默认视觉。其它小按钮（+ 添加、
+               chevron、设置等）保持 scale(0.96) 反馈。 */
             button:active, [role="button"]:active, [role="tab"]:active, a:active {
                 opacity: 0.75 !important;
                 transform: scale(0.96) !important;
                 transition: transform 0.05s ease, opacity 0.05s ease !important;
+            }
+            /* 排除规则（优先级需高于上面那条，:not 不增加特异性故用独立选择器） */
+            ul.mt-3.space-y-2 > li.rounded-lg.border.border-card-border.bg-card
+                > div > button.flex.min-w-0.flex-1.items-center.gap-2:active,
+            button[data-testid^="task-item-"]:active {
+                opacity: 1 !important;
+                transform: none !important;
+                transition: none !important;
             }
 
             /* 6. 确保设置面板在移动端可自由上下滑动，且不截断横向内容 */
@@ -599,6 +766,45 @@ class ZCodeWebViewClient(
                 order: 2 !important;
                 align-self: flex-start !important;
                 margin-top: 4px !important;
+            }
+
+            /* 3b. 键盘快捷键设置页表格行豁免（2026-09-26 模拟器 412px 实测根因）：
+               表格行 div 同时带 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_80px_72px]
+               与 border-t border-border py-3，被规则 3「设置卡片纵向表单流」的
+               display:flex !important + flex-direction:column 命中——grid 列定义
+               在 flex 布局下完全失效，4 列（命令/键帽/作用域/删除）塌陷成单列竖排，
+               与保持 grid 的 4 列表头严重错位（表头无 border-t 不被规则 3 命中）。
+               此处按 data-testid 精确定位快捷键行恢复 grid，让列定义重新生效，
+               并清掉规则 3 强加给子元素的 order/width:100%（flex 排序在 grid 下
+               无意义且 width:100% 会把每个单元格撑满整行）。
+               列宽依据实测内容分配（412px 视口容器 321px、行 padding 左右各 14px，
+               可用 293px；各列内容自然宽：命令 135 / 键帽 111 / 作用域 37 / 删除 18）：
+               命令列 1fr 吃剩余空间、键帽列固定 112px（实测最宽内容 111px 上限）、
+               作用域/删除收窄——与桌面端 4 列横排布局保持一致，仅按窄屏等比收紧。
+               ⚠️ 键帽列用固定像素而非 auto：表头与行是两个独立 grid，列宽各按自身
+               内容计算；若键帽列 auto，表头按「按键绑定」文字算（48px）、行按真实
+               键帽算（111px），两个 grid 各算各的导致表头标题与键帽错位，固定值
+               才能让两个 grid 逐列严格对齐。 */
+            /* ⚠️ 特异性必须压过规则 3 的 div[class*="border-t"][class*="py-3"]（0,2,1）。
+               裸 div[data-testid^=...] 只有 (0,1,1) 会被覆盖——因此叠加 border-t/py-3
+               两个 class 选择器提到 (0,3,1)，display:grid 才能真正生效（实测裸 testid
+               选择器写入样式表但 computed 仍被规则 3 压成 flex）。 */
+            div[data-testid^="settings-shortcut-row-"][class*="border-t"][class*="py-3"] {
+                display: grid !important;
+                grid-template-columns: minmax(0, 1fr) 112px 44px 32px !important;
+                align-items: center !important;
+                column-gap: 6px !important;
+            }
+            /* 同理子元素选择器也要压过规则 3 的 > *{width:100%}（0,2,2），提到 (0,3,2) */
+            div[data-testid^="settings-shortcut-row-"][class*="border-t"][class*="py-3"] > * {
+                order: initial !important;
+                width: auto !important;
+                min-width: 0 !important;
+            }
+            /* 表头列宽与行用同一套固定值，逐列严格对齐 */
+            div[data-testid="settings-shortcuts-section"] .grid[class*="grid-cols"] {
+                grid-template-columns: minmax(0, 1fr) 112px 44px 32px !important;
+                column-gap: 6px !important;
             }
 
             /* 4. 下拉框、输入框自适应满宽，去除 PC 端 260px/320px 导致的挤压 */
@@ -926,19 +1132,376 @@ aside[class*="min-w-0"] nav {
             }
 
             /* 18. Radix UI / Floating-UI 下拉菜单与 Popover 在移动端的防闪烁与平滑展开优化。
-               解决 Floating-UI 测量两阶段（第一帧在上方闪现、第二帧掉到下方）的翻转闪烁问题：
-               - 开启 GPU 硬件加速并约束 transform 平滑渲染；
-               - 抑制未就绪时的突变跳跃动画。 */
+               根因（实测确认，与注入字号无关）：Radix Select/DropdownMenu 的 popper
+               会先以 transform:translate(0,-200%) 挂到屏幕外做测量，下一帧再瞬移到
+               锚点位置——屏幕外那一帧在 WebView 里被渲染出来，表现为菜单"先闪一下再
+               归位"的抖动。处理：
+               - 屏幕外测量帧（style 含 -200%）时把内容设为不可见，消除位移帧的可见性；
+               - 关掉 popper 自身的 transition/animation，避免 transform 平滑插值把
+                 瞬移过程渲染成滑动；
+               - 保留 GPU 合成与背面剔除，减少重绘闪烁。 */
             [data-radix-popper-content-wrapper] {
                 will-change: transform, opacity !important;
             }
-            [data-radix-popper-content-wrapper] [data-slot="popover-content"],
+            /* 屏幕外测量帧隐藏内容（Select/DropdownMenu/Popover 通用） */
+            [data-radix-popper-content-wrapper][style*="-200%"] [data-slot="select-content"],
+            [data-radix-popper-content-wrapper][style*="-200%"] [data-slot="dropdown-menu-content"],
+            [data-radix-popper-content-wrapper][style*="-200%"] [data-slot="popover-content"],
+            [data-radix-popper-content-wrapper][style*="-200%"] [role="menu"],
+            [data-radix-popper-content-wrapper][style*="-200%"] [role="listbox"],
+            [data-radix-popper-content-wrapper][style*="-200%"] [role="dialog"] {
+                visibility: hidden !important;
+            }
+            /* 关闭浮层位移/缩放动画，瞬移直接到位，避免中间插值帧造成的滑动感 */
+            [data-radix-popper-content-wrapper] [data-slot="select-content"],
             [data-radix-popper-content-wrapper] [data-slot="dropdown-menu-content"],
+            [data-radix-popper-content-wrapper] [data-slot="popover-content"],
             [data-radix-popper-content-wrapper] [role="menu"],
+            [data-radix-popper-content-wrapper] [role="listbox"],
             [data-radix-popper-content-wrapper] [role="dialog"] {
+                transition: none !important;
+                animation: none !important;
                 transform-origin: top !important;
-                backface-visibility: hidden !important;
-                -webkit-backface-visibility: hidden !important;
+                backface-visibility: hidden;
+                -webkit-backface-visibility: hidden;
+            }
+
+            /* 19. 隐藏任务列表页顶部说明横幅，让任务列表上移。
+               目标文案：「本次连接可以查看当前设备上已打开的项目、任务和会话；二维码失效后
+               需要回到桌面端重新连接。」
+               DOM 定位（真机 992e8e14，2026-09-26 实测）：
+               - 该横幅是滚动容器 `div.min-h-0.flex-1.overflow-y-auto` 的**首子元素**，
+                 完整类名组合 `rounded-lg border border-card-border bg-card p-3
+                 text-ui-base/relaxed text-foreground-subtle`；
+               - 紧随其后的兄弟是「当前设备上的工作区和任务」标题
+                 `div.mt-4.flex.items-start.justify-between`，再往下才是任务列表 `ul`。
+               选择器用「滚动容器 > 该横幅」结构锚点，且该 class 组合全页仅此一处
+               （实测 count=1），不误伤其它卡片。隐藏后标题/列表随文档流自然上移
+               约 71px（横幅高度），无需额外位移。
+               ⚠️ 不叠加 `:has(+ div.mt-4)` 兄弟锚点：一旦标题改版或缺省，横幅反而
+                  会意外复现；class 组合本身已唯一，足够精确。 */
+            div.min-h-0.flex-1.overflow-y-auto
+                > div.rounded-lg.border.border-card-border.bg-card.text-foreground-subtle:first-child {
+                display: none !important;
+            }
+
+            /* 20. 任务列表页 header 整条隐藏（2026-09-26 需求，替代原"精简化"）：
+               原生 App 已在 layout 中渲染「ZMobile LOGO + 名称 + 调色板按钮」顶部栏，
+               网页内 header（标题 + 副标题 + 调色板按钮）整条冗余，直接 display:none。
+               DOM 结构（真机 992e8e14 & 模拟器 emulator-5554 实测）：
+                 header.shrink-0.border-b.bg-header.px-4.py-3     ← 整页唯一 <header>
+                   └ div.flex.min-w-0.items-start.justify-between
+                       ├ div.min-w-0（标题 + 副标题）
+                       └ button[aria-label="选择主题"]（调色板，原生按钮转发点击到这里）
+               ⚠️ 网页调色板按钮的 click 处理逻辑保留（远端 React 监听仍挂在该 button
+                  上），只是按钮随 header 一起 display:none。原生按钮通过 JS 找到它
+                  并派发完整 pointer event 序列触发菜单。 */
+            header.shrink-0.border-b.bg-header {
+                display: none !important;
+            }
+
+            /* 21. 收紧任务列表页滚动容器顶部空白（2026-09-26 需求）。
+               间距来源（真机 992e8e14 / 模拟器 emulator-5554 实测）：
+               - header 底 y=37；
+               - 滚动容器 `div.min-h-0.flex-1.overflow-y-auto.px-3.py-3` 的 pt=12px → 49；
+               - 首可见子元素 `div.mt-4`（「当前设备上的工作区和任务」标题行）mt=16px → 65。
+               即标题离 header 底 28px 的空白，主要来自这两层 padding/margin。
+               处理：scroller 上 padding 12px→4px，标题行上 margin 16px→8px，
+               标题离 header 底 28px→12px；下 padding 12px→8px 保持上下节奏。
+               ⚠️ 不能用 `:first-child`——编号 19 隐藏的 banner 虽然 display:none
+                  但仍是 firstElementChild，`:first-child` 是结构伪类不会跳过它。
+                  因此用「banner 的相邻兄弟」选择器，精确命中标题行。 */
+            div.min-h-0.flex-1.overflow-y-auto.px-3.py-3 {
+                padding-top: 4px !important;
+                padding-bottom: 8px !important;
+            }
+            div.min-h-0.flex-1.overflow-y-auto.px-3.py-3
+                > div.rounded-lg.border.border-card-border.bg-card.text-foreground-subtle:first-child
+                + .mt-4 {
+                margin-top: 8px !important;
+            }
+
+            /* 22. 设置面板左侧栏顶部空白收紧（2026-09-26 需求）。
+               左侧栏 DOM（模拟器 emulator-5554 实测）：
+                 [data-testid="settings-page"] > aside.min-w-0 > div.flex.h-full.flex-col
+                   ├ div.h-12 [app-region:drag]           ← 顶部 48px 拖拽区（桌面端窗口
+                   │                                         拖动把手，移动端无意义）
+                   ├ div.px-2.pb-3.pt-3                   ← 「返回工作区」按钮容器（70px）
+                   └ nav.flex-1.overflow-y-auto.px-2.pb-3 ← 图标列（y=118）
+               实测 nav 内容高度 ~561px < 可视 748px，本无需滚动；左侧竖线其实是
+               aside 的 border-r，并非真滚动条。但顶部 118px 空白确实浪费：
+               拖拽区 48px 在移动端纯占位（无窗口可拖），返回区上下 padding 12px
+               也偏松。
+               处理：拖拽区 48→8px、返回区上下 padding 12→6px，整列上移约 52px。
+               选择器要点：
+               - `[app-region:drag]` 在 DOM 里是**类名**（class="h-12 [app-region:drag]"），
+                 不是属性——属性选择器命中不到，必须用**类选择器**；
+               - ⚠️ **最大坑**：CSS 选择器里 Tailwind 自定义类的冒号必须用 `\\:`
+                 转义（单反斜杠在浏览器里被当伪类前缀，整条规则被丢弃——实测注入的
+                 stylesheet 里 height 规则完全缺失，只剩 padding 规则）。又因为
+                 本注入器 `.replace("\n", " ")` 会去掉换行，CSS 里写 `\\:` 即可
+                 （Kotlin 三引号字符串里写 `\\:`）；
+               - 更稳的兜底是结构选择器「`div.flex.h-full.flex-col` 的首子 div」，
+                 不依赖那条 Tailwind 自定义类名是否变化；
+               - 用 `[data-testid="settings-page"] aside.min-w-0` 限定在设置面板
+                 左侧栏内，避免误伤其它 h-12 / px-2 元素。 */
+            [data-testid="settings-page"] aside.min-w-0 .h-12.app-region\\:drag,
+            [data-testid="settings-page"] aside.min-w-0 > div.flex.h-full.flex-col > div:first-child {
+                height: 8px !important;
+            }
+            [data-testid="settings-page"] aside.min-w-0 .px-2.pb-3.pt-3 {
+                padding-top: 6px !important;
+                padding-bottom: 6px !important;
+            }
+
+            /* 23. 模型列表行修复（2026-09-26 真机 992e8e14 实测）：
+               问题 A：模型行按钮（测试/编辑/删除/switch）点击无响应。
+               根因：模型行容器 `[data-model-provider-model-id]` 是 dnd-kit 的
+               sortable 拖拽项（`role="button"` + `cursor-grab` + `touch-pan-y`），
+               未激活拖拽时其**所有后代 computed pointer-events 全为 none**
+               （行容器自身 auto，但 space-y-2/flex gap-2/button 等子孙全部 none），
+               导致按钮 hit-test 直接落到行容器上、click 不触发。
+               实测：`document.elementFromPoint(按钮中心)` 返回 DIV 而非 BUTTON，
+               而 switch（`role="switch"`）的 pointer-events 却是 auto ——dnd-kit
+               似乎对 switch 网开一面，其它按钮一律屏蔽。
+               处理：强制按钮与 switch 的 pointer-events 恢复为 auto。
+               ⚠️ 不能给整个 `[data-model-provider-model-id]` 设 auto——那会让
+                  行容器本身也吞掉所有 touch，破坏 dnd-kit 拖拽排序手势。
+                  只精准放行按钮/switch 这种**真正需要点击**的元素。
+
+               问题 B：模型名称被截断成 `d...`（中列仅 207px，单行拥挤）。
+               处理：把行内容器从「单行 flex」改为「两行 flex-wrap」，
+               让名称+徽章区与按钮区各自独占一行：
+                 - `div.space-y-2.px-3.py-2 > div.flex.items-center.gap-2`
+                   原：flex-nowrap，名称+徽章+按钮挤一行；
+                   改：flex-wrap，名称区 `flex-basis: 100%` 独占一行，
+                       按钮区（含 switch 的 `div.flex.items-center.gap-2`）
+                       另起一行右对齐。 */
+            [data-model-provider-model-id] button,
+            [data-model-provider-model-id] [role="switch"] {
+                pointer-events: auto !important;
+            }
+            [data-model-provider-model-id] > div.space-y-2.px-3.py-2
+                > div.flex.items-center.gap-2 {
+                flex-wrap: wrap !important;
+                row-gap: 6px !important;
+            }
+            [data-model-provider-model-id] > div.space-y-2.px-3.py-2
+                > div.flex.items-center.gap-2
+                > div.flex.min-w-0.flex-1.items-center.gap-2 {
+                flex-basis: 100% !important;
+                min-width: 0 !important;
+            }
+            [data-model-provider-model-id] > div.space-y-2.px-3.py-2
+                > div.flex.items-center.gap-2
+                > div.flex.items-center.gap-2:not(.min-w-0) {
+                margin-left: auto !important;
+            }
+
+            /* 26. 模型名称字号调小（2026-09-26 模拟器 emulator-5554 实测）。
+               需求：让长模型名（如 `deepseek-v4-flash-vision-exp`，28 字符）尽可能
+               完整显示。
+               实测：模型名容器可用宽 173px（zone 206px - 徽章 33px），
+               名称 `deepseek-v4-flash-vision-exp` 在各字号下宽：
+                 14px→235 / 13px→218 / 12px→202 / 11px→185 / 10px→168。
+               仅 10px 能完整显示。
+               处理：`span[data-testid^="model-provider-model-input-"]` 字号
+               14px→10px，行高 1.4 保持可读。
+               ⚠️ 该 span 是 `truncate`，截断宽度由 flex 父容器 min-w-0 决定，
+                  所以 `getBoundingClientRect().width` 一直是 173——判断是否能
+                  完整显示要用「创建临时 span 测量自然宽度」而非 getBounding。 */
+            [data-model-provider-model-id] span[data-testid^="model-provider-model-input-"] {
+                font-size: 10px !important;
+                line-height: 1.4 !important;
+            }
+
+            /* 24. 设置面板左侧栏右侧空白回收（2026-09-26 真机 992e8e14 实测）。
+               根因：`[data-testid="settings-page"]` 用 `grid-cols-[68px_minmax(0,1fr)]`
+               布局，第一列固定 68px；但 aside 内容（图标列）实测只有 44px，
+               于是 68-44=24px 留在 aside 右侧成为永久空白带，把中列起点推到
+               x=68，浪费宝贵的横向空间（真机屏宽 412px，中列仅 344px）。
+               处理：把 grid 第一列从 68px 缩到 44px，中列从 x=44 开始，
+               中列宽 344→368（多 24px）。类选择器用 `[data-testid="settings-page"]`
+               而非 class——`grid-cols-[68px_minmax(0,1fr)]` 这种带方括号的
+               Tailwind 任意值类写到 CSS 选择器里需要复杂转义，用 testid 更稳。
+               ⚠️ Tailwind 的 `lg:grid-cols-[268px_minmax(0,1fr)]` 是 lg 断点的，
+                  移动端不命中，我们改的是基础 grid-template-columns，对移动端
+                  生效；桌面端 WebView 不会触发（项目只在移动端注入）。 */
+            [data-testid="settings-page"] {
+                grid-template-columns: 44px minmax(0, 1fr) !important;
+            }
+
+            /* 25. 任务列表工作区卡片精简（2026-09-26 需求，两行布局）：
+               第一行：项目标题 + 更新于 + 本地标签
+               第二行：项目路径 + N 个任务（任务数量字号与路径一致）
+               - 隐藏左侧文件夹/对话图标（span.size-8）；
+               - 「更新于 xx 分」从独立一行挪到标题行右侧（与标题同行）；
+               - 「本地」标签在标题行最右；
+               - 「N 个任务」从原第三行挪到路径行右侧，字号/颜色与路径一致。
+               卡片 DOM（真机 992e8e14 实测）：
+                 li.rounded-lg.border.border-card-border.bg-card
+                 └ div.flex.min-w-0.items-center.gap-2.px-3.py-3
+                    ├ button.flex.min-w-0.flex-1.items-center.gap-2
+                    │   ├ span.flex.size-8（图标，隐藏对象）
+                    │   ├ span.min-w-0.flex-1
+                    │   │   ├ span.flex.items-center.gap-2（标题行：标题+本地）
+                    │   │   ├ span.mt-1.block.truncate.font-mono（路径，14px）
+                    │   │   └ span.mt-1.block.text-ui-base.text-foreground-subtle（更新于）
+                    │   └ span.flex.shrink-0.items-center.gap-2.text-ui-base（N 个任务+chevron）
+                    └ button.group/button（+ 添加按钮，right≈24+32）
+               做法：li 设 position:relative 作锚点；「更新于」「本地」absolute 到第一行
+               右侧（top≈12-14，与标题同基线，right=68/108 避开 + 按钮）；
+               「N 个任务」absolute 到第二行右侧（top=38，与路径同基线）；
+               标题行 padding-right 200px（给「更新于」「本地」让位）；
+               路径 padding-right 130px（给「N 个任务」让位）；
+               li min-height 62px 保底（absolute 元素脱离文档流）。
+               ⚠️ 「N 个任务」的字号（默认 text-ui-base=14px）和颜色（默认
+                  text-foreground-subtle≈60% 透明度）都要改成与路径一致——
+                  路径是 14px / oklab(0.87 0 0 / 0.3)（30% 弱色），否则
+                  视觉上「N 个任务」会比路径更显眼。 */
+            ul.mt-3.space-y-2 > li.rounded-lg.border.border-card-border.bg-card {
+                position: relative !important;
+                min-height: 62px !important;
+            }
+            ul.mt-3.space-y-2 > li.rounded-lg.border.border-card-border.bg-card
+                span.size-8.shrink-0 {
+                display: none !important;
+            }
+            /* 第一行右侧：更新于 + 本地（与标题同行，垂直居中对齐） */
+            ul.mt-3.space-y-2 > li.rounded-lg.border.border-card-border.bg-card
+                span.mt-1.block.text-ui-base.text-foreground-subtle:last-child {
+                position: absolute !important;
+                top: 14px !important;
+                right: 108px !important;
+                margin-top: 0 !important;
+                font-size: 10px !important;
+                line-height: 1.4 !important;
+                white-space: nowrap !important;
+                z-index: 1 !important;
+            }
+            /* 「本地」：top 14（不是 12），让徽章与标题/时间垂直居中对齐。
+               实测标题 cy=130 / 时间 cy=131，badge 原 top=12 cy=127 偏上 3px；
+               top=14 后 badge cy=129，三者基线一致。字号缩到 10px 与「更新于」一致。 */
+            ul.mt-3.space-y-2 > li.rounded-lg.border.border-card-border.bg-card
+                span.rounded-full.border.border-border.bg-surface {
+                position: absolute !important;
+                top: 14px !important;
+                right: 68px !important;
+                z-index: 1 !important;
+                font-size: 10px !important;
+                padding-left: 4px !important;
+                padding-right: 4px !important;
+            }
+            /* 标题：默认 text-ui-base=14px，与「更新于」13px 不一致；改 12px 统一*/
+            ul.mt-3.space-y-2 > li.rounded-lg.border.border-card-border.bg-card
+                span.truncate.text-ui-base.font-medium {
+                font-size: 12px !important;
+            }
+            /* 路径：长路径（如 D:\oss-install-windows-flow-assias-aiagent 38 字符）
+               默认 14px 会被截断；缩到 9px 让长路径完整显示（实测 9px 自然宽 ~232
+               ≤ 可用 233）。**⚠️ 测量陷阱**：path 是 truncate，截断宽度由 flex
+               父容器 min-w-0 决定，getBoundingClientRect().width 一直是 323，
+               不能用来判断是否能完整显示——必须创建临时 span 测自然宽度。 */
+            ul.mt-3.space-y-2 > li.rounded-lg.border.border-card-border.bg-card
+                span.mt-1.block.truncate.font-mono {
+                padding-right: 90px !important;
+                font-size: 9px !important;
+            }
+            /* 第二行右侧：N 个任务。
+               ⚠️ top 取值要与路径行垂直中心对齐（2026-09-26 CDP 实测）：
+               路径 cy = 卡片 top + 41.5；本元素含 chevron 整体高 16，
+               故 top = 41.5 - 16/2 = 33.5（取 33），cy 落在 41.5 与路径同行中心。
+               旧值 top=38 会让 cy 偏下 5.2px，与路径明显不在同一水平线。
+               ⚠️ **不要在这里写死 color**（2026-09-27 修复）：原值 `oklab(0.87 0 0 / 0.3)`
+               是照抄**深色主题**下路径的实测值，浅色主题下 0.87 的浅灰落在白色卡片上
+               几乎不可见（用户截图反馈"白色下看不清"）。该元素远端自带
+               `text-foreground-subtle` 类，实测浅色=oklab(0.269 0 0/0.6)、
+               深色=oklab(0.87 0 0/0.6)，**两种主题都自适应**——删掉写死的 color
+               让它走远端主题变量即可，字体大小仍由本规则统一。 */
+            ul.mt-3.space-y-2 > li.rounded-lg.border.border-card-border.bg-card
+                span.flex.shrink-0.items-center.gap-2.text-ui-base {
+                position: absolute !important;
+                top: 33px !important;
+                right: 68px !important;
+                font-size: 9px !important;
+                line-height: 1 !important;
+            }
+            /* 标题行/路径：让出右侧空间给「更新于」「本地」「N 个任务」。
+               ⚠️ 用 :has() 区分有/无「更新于」：
+                 - 有「更新于」（旧工作区）：标题行 130px（让「更新于」+「本地」），
+                   路径 90px（让「N 个任务」）；
+                 - 无「更新于」（新工作区，如刚扫二维码添加的）：只让「本地」，
+                   标题行 56px、路径 84px。
+               ⚠️ 数值依据（2026-09-26 页面缩放功能实测补充）：右侧保留元素与
+               路径元素右缘相对卡片右缘都是**恒定偏移**（+ 按钮与各 padding 都是
+               固定像素），不随卡片宽度变化——实测路径右缘 = 卡片右缘 − 52px，
+               「N 个任务」左缘 = 卡片右缘 − 126px，故路径所需 padding 恒为 74px。
+               原「无更新于」分支写 50px，在 100% 视口下仅剩 22px 余量，一旦页面
+               放大（≥110%，如「页面缩放」调到 120%）立即出现路径文字与「N 个任务」
+               重叠（实测 110% 余量 −15px、150% 余量 −25px）。故提到 84px 留出
+               10px 安全余量；标题行同理 50→56px（其所需 47px，原值仅 3px 余量）。 */
+            ul.mt-3.space-y-2 > li.rounded-lg.border.border-card-border.bg-card:has(span.mt-1.block.text-ui-base.text-foreground-subtle:last-child)
+                span.flex.min-w-0.items-center.gap-2 {
+                padding-right: 130px !important;
+            }
+            ul.mt-3.space-y-2 > li.rounded-lg.border.border-card-border.bg-card:not(:has(span.mt-1.block.text-ui-base.text-foreground-subtle:last-child))
+                span.flex.min-w-0.items-center.gap-2 {
+                padding-right: 56px !important;
+            }
+            ul.mt-3.space-y-2 > li.rounded-lg.border.border-card-border.bg-card:not(:has(span.mt-1.block.text-ui-base.text-foreground-subtle:last-child))
+                span.mt-1.block.truncate.font-mono {
+                padding-right: 84px !important;
+            }
+
+            /* 27. 任务项标题截断修复（2026-09-26 模拟器 emulator-5554 实测）。
+               嵌套在工作区卡片 ul.border-t 内的任务项，⚠️ **真结构**是
+               `li > button[data-testid^="task-item-"] > span.min-w-0.flex-1 > span.block.truncate.text-ui-base`
+               ——**`data-testid` 挂在 button 上，不是 li 上**！第一次写
+               `li[data-testid^="task-item-"]` 选择器根本没命中（li 上没有这个属性）。
+               标题默认 14px，长标题「安装安卓15模拟器测试项目拟器测试项目多少度111」
+               （28 字符）需要 319px 但仅 259px 可用，被截断为「…测试项…」。
+               量化：14px=319 / 13px=296 / 12px=274，仍差；只有 12px + 腾出更多空间才够。
+               处理：
+                 - item padding px-2.5=10px → 6px（左右各 -4，+8px 可用）；
+                 - item gap 8 → 6（两个 gap 各 -2，+4px）；
+                 - 状态点 size-4=16 → 12（-4px）；
+                 - 状态徽章（已完成/运行中）字号 10 → 9px、padding 缩（约 +8px）；
+                 - 标题字号 14 → 12px。
+               综合可用宽 259→约 285，12px 长标题 274 ≤ 285 完整显示。 */
+            button[data-testid^="task-item-"] {
+                padding-left: 6px !important;
+                padding-right: 6px !important;
+                gap: 6px !important;
+            }
+            button[data-testid^="task-item-"] > span.relative.flex.size-4 {
+                width: 12px !important;
+                height: 12px !important;
+            }
+            button[data-testid^="task-item-"] > span.min-w-0.flex-1
+                > span.block.truncate.text-ui-base {
+                font-size: 12px !important;
+                line-height: 1.4 !important;
+            }
+            button[data-testid^="task-item-"] > span.inline-flex.shrink-0.rounded-full {
+                font-size: 9px !important;
+                padding-left: 4px !important;
+                padding-right: 4px !important;
+            }
+
+            /* 28. 设置中心侧边栏按钮的 hover tooltip 屏蔽（2026-09-26 需求，模拟器实测）。
+               现象：在设置中心点侧边栏图标（外观/记忆/MCP/命令/...），手指按下瞬间
+               会先弹出按钮的 aria-label 文字气泡（如「记忆」白底气泡）再切到对应
+               模块，视觉上"闪一下"。
+               根因：远端按钮是 `button[data-slot="tooltip-trigger"][aria-label]`，
+               配对的视觉 tooltip 容器是挂在 body 末尾 popper wrapper 里的
+               `div[data-slot="tooltip-content"][data-side="right"][data-state="delayed-open"]`。
+               Radix Tooltip 内部状态触发，与 aria-describedby 无关——移除
+               aria-describedby 不能阻止弹出（已实测）。
+               处理：CSS 全局 `display:none` 隐藏所有 tooltip-content，
+               JS 白名单（编号 16）放行工作区气泡（含「最近活动」/路径分隔符「:\\」「:/」），
+               不影响其它依赖 tooltip 的功能。 */
+            div[data-slot="tooltip-content"] {
+                display: none !important;
             }
         """.trimIndent().replace("\n", " ").replace("\"", "\\\"")
 
@@ -1046,8 +1609,13 @@ aside[class*="min-w-0"] nav {
                                         if (Date.now() - lastNativeClickAt < 80) return;
                                         // 具有状态切换特性的组件（开关、可折叠面板、手风琴、下拉触发器等）必须完全由浏览器原生受信任 click 处理：
                                         // 手动合成 untrusted click 会与稍后到达的原生 click 构成“双击”，导致展开马上收回（闪烁一下）
-                                        if (clickable.matches('button[role="switch"], [role="switch"], [data-slot*="collapsible"], [data-slot*="trigger"], [data-slot*="accordion"], [aria-expanded], details summary') ||
-                                            clickable.closest('button[role="switch"], [role="switch"], [data-slot*="collapsible"], [data-slot*="trigger"], [data-slot*="accordion"], [aria-expanded], details summary')) return;
+                                        // ⚠️ `[data-zcode-inject="1"]`：App 注入的 dashboard 调色板按钮（规则 17）。
+                                        //    它转发给 zcodeTriggerThemeToggle() 打开 Radix DropdownMenu——
+                                        //    与原生 trigger 同为 **toggle 语义**，被点偶数次就开→关（表现为"闪一下就消失"）。
+                                        //    实测（模拟器）原生 click 到达可能晚至 ~190ms，超过下方 80ms 守卫，
+                                        //    FastTouch 会额外合成 1~3 次 click，把菜单反复开关。故必须整体跳过。
+                                        if (clickable.matches('button[role="switch"], [role="switch"], [data-slot*="collapsible"], [data-slot*="trigger"], [data-slot*="accordion"], [aria-expanded], [data-zcode-inject="1"], details summary') ||
+                                            clickable.closest('button[role="switch"], [role="switch"], [data-slot*="collapsible"], [data-slot*="trigger"], [data-slot*="accordion"], [aria-expanded], [data-zcode-inject="1"], details summary')) return;
                                         try {
                                             clickable.click();
                                         } catch(err) {}
@@ -1079,19 +1647,796 @@ aside[class*="min-w-0"] nav {
                     if (!trendRAF) trendRAF = requestAnimationFrame(formatTrendDates);
                 }).observe(document.body, { childList: true, subtree: true });
 
-                // 5. 设置中心与表单输入框聚焦时自动平滑滚动居中（上探至键盘正上方，排除任务聊天输入框）
-                document.addEventListener('focusin', function(e) {
-                    var target = e.target;
-                    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-                        if (!target.closest('.chat-composer-region, .chat-composer-input-surface')) {
-                            setTimeout(function() {
-                                try {
-                                    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                } catch(err) {}
-                            }, 300);
+                // 6. 模型触发按钮「管理模型」闪现兜底。
+                // 根因（Web 端 V4ComposerToolbar/modelTriggerDisplay）：选思考级别会触发一次
+                // 模型目录(modelSelectGroups)刷新，目录短暂为空时 resolveV4ModelTriggerDisplay
+                // 找不到选中项 → 回退显示「管理模型」占位符，刷新完成又恢复，表现为按钮文本
+                // 闪一下「管理模型」。这里缓存最后一个"有效"模型标签（含斜杠且不含管理模型），
+                // 当按钮过渡态只显示「管理模型」时用缓存标签覆盖可见文本，刷新恢复后交由页面
+                // 自身渲染；按钮本就显示真实模型名时同步更新缓存。
+                var zcodeLastModelLabel = null;
+                function stabilizeModelTrigger() {
+                    var btn = document.querySelector('button[data-testid="chat-model-select-trigger"]');
+                    if (!btn) return;
+                    var text = (btn.textContent || '').trim();
+                    var hasManage = text.indexOf('管理模型') !== -1;
+                    var residual = text.replace(/管理模型/g, '').trim();
+                    if (hasManage && residual.length === 0) {
+                        // 过渡空窗：只剩占位符 → 用缓存的有效标签覆盖可见文本。
+                        // ⚠️ 只能改「已存在的文本节点」(nodeValue)，**绝不能**对容器赋
+                        // textContent：远端 RollingToolbarLabel 把 provider 前缀与模型名
+                        // 渲染成两个独立子 span，并用 AnimatePresence 以 label 为 key
+                        // 整体替换这棵子树。赋 textContent 会先摧毁该子树，之后 React
+                        // 渲染新模型名时只能写进**已脱离文档的孤儿节点**，可见标签于是
+                        // 永久卡在旧模型——实测现象：切模型后子菜单勾选已变、输入框下方
+                        // 标签不变，且控制台无任何报错，极易误判为"模型没选上"。
+                        if (zcodeLastModelLabel) {
+                            var tnodes = [];
+                            (function collect(n) {
+                                for (var i = 0; i < n.childNodes.length; i++) {
+                                    var c = n.childNodes[i];
+                                    if (c.nodeType === 3) { if ((c.nodeValue || '').trim()) tnodes.push(c); }
+                                    else if (c.nodeType === 1) collect(c);
+                                }
+                            })(btn);
+                            // 仅当当前是「单一占位文本节点」时改写；双 span（前缀+模型名）
+                            // 结构下不改，宁可留着占位符也不破坏 React 的 DOM 结构。
+                            if (tnodes.length === 1 && tnodes[0].nodeValue.trim() === '管理模型') {
+                                tnodes[0].nodeValue = zcodeLastModelLabel;
+                            }
+                        }
+                    } else if (!hasManage && text.length > 0) {
+                        // 正常态：记录有效标签（含 provider/model 结构）
+                        zcodeLastModelLabel = text;
+                    }
+                    // hasManage && residual>0（占位+模型名混排）视为恢复中，不动
+                }
+                stabilizeModelTrigger();
+                var modelTrigRAF = null;
+                new MutationObserver(function() {
+                    if (!modelTrigRAF) modelTrigRAF = requestAnimationFrame(function(){ modelTrigRAF = null; stabilizeModelTrigger(); });
+                }).observe(document.body, { childList: true, subtree: true, characterData: true });
+
+                // 7. 模型二级子菜单水平夹取。
+                // Radix 子菜单由 popper wrapper 的 transform:translate(x,y) 定位，默认从
+                // 供应商触发器左侧弹出，移动端实测 left=-52 溢出左屏（CSS margin 无效——
+                // getBoundingClientRect 含 margin 且位置被 transform 决定）。这里在子菜单
+                // 打开/尺寸变化后，把其 popper wrapper 的 translateX 夹取到 [8, vw-w-8]
+                // 区间：左移出屏则右移至贴左 8px，右移出屏则左移至贴右 8px，保证模型名
+                // 完整可见且不超屏。供应商一级列不动，实现"二级列表右移一点点"的效果。
+                function clampModelSubmenu() {
+                    var sub = document.querySelector('div[data-slot="dropdown-menu-sub-content"]');
+                    if (!sub) return;
+                    var wrapper = sub.closest('[data-radix-popper-content-wrapper]');
+                    if (!wrapper) return;
+                    var rect = sub.getBoundingClientRect();
+                    if (rect.width === 0) return;
+                    var vw = window.innerWidth;
+                    var GUTTER = 8;
+                    var overflowLeft = rect.left < GUTTER;
+                    var overflowRight = rect.right > vw - GUTTER;
+                    if (!overflowLeft && !overflowRight) return;
+                    // 解析现有 transform: translate(x, y)
+                    var style = wrapper.style.transform || '';
+                    var m = style.match(/translate\((-?[\d.]+)px[,\s]+(-?[\d.]+)px\)/);
+                    if (!m) return;
+                    var curX = parseFloat(m[1]), curY = m[2];
+                    var delta = 0;
+                    if (overflowLeft) delta = GUTTER - rect.left;
+                    else if (overflowRight) delta = (vw - GUTTER) - rect.right;
+                    var newX = curX + delta;
+                    wrapper.style.transform = 'translate(' + newX + 'px, ' + curY + 'px)';
+                }
+                clampModelSubmenu();
+                var submenuRAF = null;
+                new MutationObserver(function() {
+                    if (!submenuRAF) submenuRAF = requestAnimationFrame(function(){ submenuRAF = null; clampModelSubmenu(); });
+                }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+
+                // 8. 上下文容量悬浮卡按视口动态水平居中。
+                // Radix HoverCard 默认以"触发器"为基准定位（实测 data-side="right" /
+                // align="start"），而触发器在输入框工具栏最左侧（left≈4），卡片
+                // (w-72/w-80=320px) 于是整体偏右（实测卡中心 216 vs 视口中心 206）。
+                // 这里不用写死偏移（视口/卡宽变化即失效），而是每次卡片出现/尺寸变化时
+                // 读取其真实宽度，按 (vw - w) / 2 动态算出左边界，改写 popper wrapper 的
+                // translateX，使卡片正中央对齐视口正中；两侧不足时夹取到 8px 内边距。
+                // ⚠️ 页面同时存在多个 hover-card（消息预览等），必须逐个遍历、只处理
+                // 容量卡——否则 querySelector 会命中第一个（消息预览卡）而漏掉容量卡。
+                // 容量卡特征：文本含「上下文容量」/「平均缓存命中率」。
+                function isContextCard(el) {
+                    var t = (el.textContent || '');
+                    return t.indexOf('上下文容量') !== -1 || t.indexOf('平均缓存命中率') !== -1;
+                }
+                function centerContextCard() {
+                    var cards = document.querySelectorAll('div[data-slot="hover-card-content"]');
+                    for (var i = 0; i < cards.length; i++) {
+                        var card = cards[i];
+                        if (!isContextCard(card)) continue;
+                        var wrapper = card.closest('[data-radix-popper-content-wrapper]');
+                        if (!wrapper) continue;
+                        var rect = card.getBoundingClientRect();
+                        if (rect.width === 0) continue;
+                        var vw = window.innerWidth;
+                        var GUTTER = 8;
+                        // 目标左边界：视口居中；宽度超出可用空间时退回 8px 内边距
+                        var targetLeft = Math.max(GUTTER, Math.min((vw - rect.width) / 2, vw - rect.width - GUTTER));
+                        var delta = targetLeft - rect.left;
+                        if (Math.abs(delta) < 0.5) continue;
+                        var style = wrapper.style.transform || '';
+                        var m = style.match(/translate\((-?[\d.]+)px[,\s]+(-?[\d.]+)px\)/);
+                        if (!m) continue;
+                        var newX = parseFloat(m[1]) + delta;
+                        wrapper.style.transform = 'translate(' + newX + 'px, ' + m[2] + 'px)';
+                    }
+                }
+                centerContextCard();
+                var ctxCardRAF = null;
+                new MutationObserver(function() {
+                    if (!ctxCardRAF) ctxCardRAF = requestAnimationFrame(function(){ ctxCardRAF = null; centerContextCard(); });
+                }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+                window.addEventListener('resize', function() { centerContextCard(); });
+
+                // 9.「+」添加上下文弹层与输入框左右对齐。
+                // 远端该弹层是 Radix Popover，宽度声明为 w-(--radix-popover-trigger-width)
+                // 并由 Radix 按触发器定位，理论宽度已等于输入框；但注入 CSS 曾写死
+                // max-width 截短右边缘（已移除），且视口/键盘/横竖屏变化时 Radix 的
+                // 测量可能滞后于输入框。这里每次弹层出现或尺寸变化时**实测输入框的
+                // 左右边缘**，把弹层的宽度与水平位置夹取到与之对齐，不依赖远端实现细节。
+                // ⚠️ 只处理带「+」特征（含 附件 且含 插件/添加上下文）的 popover，
+                // 避免误伤页面其它 popover（如消息操作、设置项）。
+                function isComposerPopover(el) {
+                    var t = el.textContent || '';
+                    return t.indexOf('附件') !== -1 && (t.indexOf('插件') !== -1 || t.indexOf('添加上下文') !== -1);
+                }
+                function alignComposerPopover() {
+                    // 先查弹层（多数时候不存在，尽早返回，避免流式输出时每帧做多余查询）
+                    var pops = document.querySelectorAll('div[data-slot="popover-content"]');
+                    if (pops.length === 0) return;
+                    var composer = document.querySelector('.chat-composer-region, .chat-composer-input-surface');
+                    if (!composer) return;
+                    var cr = composer.getBoundingClientRect();
+                    if (cr.width === 0) return;
+                    var vw = window.innerWidth;
+                    var GUTTER = 8;
+                    // 目标区间与输入框一致；输入框贴边时留 8px 兜底
+                    var targetLeft = Math.max(GUTTER, cr.left);
+                    var targetRight = Math.min(vw - GUTTER, cr.right);
+                    var targetWidth = targetRight - targetLeft;
+                    if (targetWidth <= 0) return;
+                    for (var i = 0; i < pops.length; i++) {
+                        var pop = pops[i];
+                        if (!isComposerPopover(pop)) continue;
+                        var wrapper = pop.closest('[data-radix-popper-content-wrapper]');
+                        if (!wrapper) continue;
+                        // 先定宽（覆盖任何写死宽度），再实测位置算水平位移
+                        var curW = pop.getBoundingClientRect().width;
+                        if (Math.abs(curW - targetWidth) > 0.5) {
+                            pop.style.setProperty('width', targetWidth + 'px', 'important');
+                            pop.style.setProperty('max-width', targetWidth + 'px', 'important');
+                        }
+                        var rect = pop.getBoundingClientRect();
+                        var delta = targetLeft - rect.left;
+                        if (Math.abs(delta) < 0.5) continue;   // 已对齐，避免写回触发观察器自激
+                        var style = wrapper.style.transform || '';
+                        var m = style.match(/translate\((-?[\d.]+)px[,\s]+(-?[\d.]+)px\)/);
+                        if (!m) continue;
+                        wrapper.style.transform = 'translate(' + (parseFloat(m[1]) + delta) + 'px, ' + m[2] + 'px)';
+                    }
+                }
+                alignComposerPopover();
+                var composerPopRAF = null;
+                new MutationObserver(function() {
+                    if (!composerPopRAF) composerPopRAF = requestAnimationFrame(function(){ composerPopRAF = null; alignComposerPopover(); });
+                }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+                window.addEventListener('resize', function() { alignComposerPopover(); });
+
+                // 10. 侧边抽屉（审查/终端）打开时，在会话标题行最右端补一枚「返回」按钮。
+                // 背景：窄屏下抽屉打开时 header 右侧的侧边面板切换按钮会消失（线上版
+                // !isSidePaneOpen 才渲染），用户缺少可见的收起/返回入口；抽屉关闭时
+                // 远端 header 自带的左上角"返回任务首页"已够用。
+                // 因此按钮**仅在抽屉打开时创建**，关闭时移除——不给正常会话页加多余按钮。
+                // 判定：遮罩 [data-mobile-side-pane-overlay="true"] 是否处于打开态。
+                // ⚠️ 不能用 computed opacity 判定：抽屉开合是 Tailwind class 切换
+                // （opacity-100 ↔ pointer-events-none opacity-0）+ 200ms opacity 过渡，
+                // 过渡期间 computed opacity 仍是旧值（实测点击打开后 20ms 仍为 0、
+                // 120ms 才 0.26），而同步逻辑在 class 变更后一帧就执行，读到的 opacity
+                // 必然 <0.1 → 误判"未打开"并放弃创建，且不会重试——这正是"按钮时有时无
+                // 甚至根本不出现"的根因。改用**与 class 同步翻转**的 aria-hidden /
+                // pointer-events-none 判据（实测打开态 aria-hidden="false" 且无
+                // pointer-events-none，关闭态 aria-hidden="true" 且带 pointer-events-none）。
+                // 位置：追加到标题行右侧按钮组（h1.closest('header') > div > 第2个子元素）末尾，
+                // 随 header 布局自然排在最后，不覆盖/不挤压既有按钮。
+                // 点击**只在页面内收起抽屉**，不调用原生返回键分层（见下方 click 处理器注释：
+                // 走原生分层会在抽屉已收起时落到"返回任务首页"层，把用户误带回会话列表）。
+                (function() {
+                    if (window.__zcodeTitleBackInstalled) return;
+                    window.__zcodeTitleBackInstalled = true;
+                    function isSidePaneActive() {
+                        var overlay = document.querySelector('[data-mobile-side-pane-overlay="true"]');
+                        if (!overlay) return false;
+                        // 只看与 class 同步翻转的信号，不看过渡中的 computed opacity（见上方注释）
+                        if (overlay.getAttribute('aria-hidden') === 'true') return false;
+                        var cls = overlay.getAttribute('class') || '';
+                        if (cls.indexOf('pointer-events-none') >= 0) return false;
+                        return true;
+                    }
+                    function syncTitleBackButton() {
+                        var existing = document.getElementById('__zcode_title_back');
+                        // 仅抽屉打开时显示；其余情况（含非会话页）一律移除
+                        if (!isSidePaneActive()) {
+                            if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+                            return;
+                        }
+                        var h1 = document.querySelector('h1[data-testid="workspace-title"]');
+                        if (!h1) {
+                            if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+                            return;
+                        }
+                        var header = h1.closest('header');
+                        if (!header) return;
+                        var outer = header.querySelector(':scope > div');
+                        if (!outer) return;
+                        var rightGroup = outer.children[1];
+                        if (!rightGroup) return;
+                        // 已在正确位置则不重复创建
+                        if (existing && existing.parentNode === rightGroup) return;
+                        if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+                        var el = document.createElement('button');
+                        el.id = '__zcode_title_back';
+                        el.setAttribute('aria-label', '返回');
+                        el.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>';
+                        el.style.cssText = 'flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;border:0;background:transparent;color:inherit;cursor:pointer;padding:0;-webkit-tap-highlight-color:transparent;';
+                        el.addEventListener('click', function(ev) {
+                            ev.preventDefault(); ev.stopPropagation();
+                            // 本按钮只在抽屉打开时存在，语义严格等于"收起抽屉"，因此**只在页面内
+                            // 收起、绝不交回原生返回键分层**。
+                            // 原因：原生返回分层里抽屉收起只占第 1A 层，且该层命中后无条件 return；
+                            // 一旦抽屉已收起（连点两下/收起动画期间再点），1A 不再命中，分层会继续
+                            // 落到第 5 层"返回任务首页"，把用户直接带回会话列表——这正是实测的 bug。
+                            // 收起失败时什么都不做（用户仍可用系统返回键），保证不会误跳列表。
+                            function paneStillActive() {
+                                var ov = document.querySelector('[data-mobile-side-pane-overlay="true"]');
+                                if (!ov) return false;
+                                if (ov.getAttribute('aria-hidden') === 'true') return false;
+                                var c = ov.getAttribute('class') || '';
+                                return c.indexOf('pointer-events-none') < 0;
+                            }
+                            function closePane() {
+                                if (!paneStillActive()) return;   // 已收起：直接结束，不触发任何返回
+                                var attempts = 0;
+                                (function tryClose() {
+                                    if (!paneStillActive()) return;
+                                    attempts++;
+                                    var ov = document.querySelector('[data-mobile-side-pane-overlay="true"]');
+                                    if (!ov) return;
+                                    var target = ov.querySelector('button') || ov;
+                                    try { target.click(); } catch (err) {}
+                                    // 收起过渡约 200ms；仍激活则重试，最多 4 次。
+                                    // 连点/动画期间再点都不会误跳列表：每次进入都先判 paneStillActive，
+                                    // 已收起即直接返回，全程不调用原生返回键。
+                                    if (attempts < 4) setTimeout(tryClose, 260);
+                                })();
+                            }
+                            closePane();
+                        }, true);
+                        rightGroup.appendChild(el);
+                    }
+                    syncTitleBackButton();
+                    var titleBackRAF = null;
+                    new MutationObserver(function() {
+                        if (!titleBackRAF) titleBackRAF = requestAnimationFrame(function(){ titleBackRAF = null; syncTitleBackButton(); });
+                    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'aria-hidden'] });
+                })();
+
+                // 11. 任务标题占位兜底。
+                // 现象：从任务列表点进一个已存在的任务会话时，顶部标题先显示「新建任务」
+                // 占位文案，通常几百毫秒后自行纠正；但实测有概率**永久停在占位文案**
+                // （远端在"列表侧 meta 已存在但标题为空"时会跳过异步快照兜底，见
+                // useWorkspaceActiveTaskState / useActiveTaskSnapshotMeta）。用户观感即
+                // "进入任务后标题变成了新建任务"。
+                // ⚠️ 这是远端固有竞态，**不是本 App 注入引起的**：A/B 实测把注入的标题
+                // CSS 全部移除后，占位仍每轮出现（3/3，585~832ms）。App 侧只能做显示兜底。
+                // 做法：任务列表渲染时缓存 sid→真实标题；会话页用 [data-session-id] 定位
+                // 当前任务，h1 文本命中占位文案时用缓存标题替换。
+                // ⚠️ 只改**已存在的文本节点** nodeValue，绝不对容器赋 textContent——
+                // 远端 h1 由 React 渲染（内部是 <span class="min-w-0 truncate">），赋
+                // textContent 会摧毁其子树、让 React 后续更新写进孤儿节点（同
+                // stabilizeModelTrigger 踩过的坑）。结构不符时宁可不动。
+                var zcodeTaskTitleCache = {};
+                var ZCODE_TITLE_PLACEHOLDERS = ['新建任务', '新任务', 'New session', '新建会话'];
+                function isPlaceholderTitle(t) {
+                    if (!t) return false;
+                    for (var i = 0; i < ZCODE_TITLE_PLACEHOLDERS.length; i++) {
+                        if (t === ZCODE_TITLE_PLACEHOLDERS[i]) return true;
+                    }
+                    return false;
+                }
+                function cacheTaskTitles() {
+                    var rows = document.querySelectorAll('[data-testid^="task-item-"]');
+                    for (var i = 0; i < rows.length; i++) {
+                        var tid = rows[i].getAttribute('data-testid') || '';
+                        if (tid.indexOf('task-item-') !== 0) continue;
+                        var sid = tid.slice('task-item-'.length);
+                        if (!sid) continue;
+                        // 行内第一个嵌套 span 是任务标题（更深的 span 是耗时/状态文案）
+                        var titleEl = rows[i].querySelector('span span');
+                        var t = titleEl ? (titleEl.textContent || '').trim() : '';
+                        if (t && !isPlaceholderTitle(t)) zcodeTaskTitleCache[sid] = t;
+                    }
+                }
+                function resolveActiveTaskTitle() {
+                    var els = document.querySelectorAll('[data-session-id]');
+                    for (var i = 0; i < els.length; i++) {
+                        var sid = els[i].getAttribute('data-session-id') || '';
+                        if (sid && zcodeTaskTitleCache[sid]) return zcodeTaskTitleCache[sid];
+                    }
+                    return null;
+                }
+                function fixTaskTitle() {
+                    var h1 = document.querySelector('h1[data-testid="workspace-title"]');
+                    if (!h1) return;
+                    var span = h1.querySelector('span');
+                    if (!span) return;
+                    var node = span.firstChild;
+                    if (!node || node.nodeType !== 3) return;    // 结构不符：不动
+                    var cur = (node.nodeValue || '').trim();
+                    if (!isPlaceholderTitle(cur)) return;        // 非占位：不动
+                    var real = resolveActiveTaskTitle();
+                    if (!real || real === cur) return;
+                    node.nodeValue = real;
+                }
+                cacheTaskTitles();
+                fixTaskTitle();
+                var titleFixRAF = null;
+                new MutationObserver(function() {
+                    if (!titleFixRAF) titleFixRAF = requestAnimationFrame(function() {
+                        titleFixRAF = null;
+                        cacheTaskTitles();
+                        fixTaskTitle();
+                    });
+                }).observe(document.body, { childList: true, subtree: true, characterData: true });
+
+                // 12. 标题行「工作区路径」按钮首次点击只闪一下气泡（不打开）→ 根治。
+                // 现象：进入任务会话后**第一次**点击标题行最左侧的文件夹按钮
+                // （button[data-testid="workspace-path"]），只闪一下提示气泡、工作区信息
+                // 面板并不打开，需再点一次才生效。
+                // 实测（真机 992e8e14，2026-09-26）：
+                //   - 首次点击后浮层数为 0（面板未打开）；事件序列正常，仅 1 次受信任 click；
+                //   - 逐帧看：先以「折叠态」内容闪出（40 字符/288x93/opacity=1），随即淡出；
+                //     第二次点击才是展开态（126 字符，含完整路径与「最近活动」）；
+                //   - 程序化 btn.click() 首次即成功 → 与触摸序列（pointerdown→focus→click）相关；
+                //   - A/B：移除全部注入 CSS 后现象依旧 → **远端固有行为**，非本 App 注入引起。
+                // 机制：该按钮被远端 ControlHintTooltip 包裹（open 受 workspaceContextOpen 控制）。
+                // 触摸时 **focus 先于 click ~30ms**（实测 focus@4753 / click@4784），focus 先以
+                // open=false 打开气泡（折叠态），随后 Radix 在触摸下的 onOpenChange(false)
+                // 覆盖掉 onClick 设置的 open=true，于是"闪一下即关"。
+                // ⚠️ 早期版本用"补点击"兜底（若未打开则再 click 一次），实测虽能打开但**仍有
+                //    双段闪烁**（先闪折叠态→关闭→再打开完整态），治标不治本。
+                // 根治：触摸把 open 从 false 翻成 true 的指令是 React 通过 **focusin 委托**
+                // 下发的（focus 不冒泡、focusin 冒泡），在**面板尚未打开时**拦截该按钮的
+                // focusin，让折叠态根本不出现，首次点击即直接展开完整态（实测 0 帧折叠态、
+                // 直接 len=126）。
+                // ⚠️ **必须让位"已打开要关闭"的点击**：第二次点击的 focusin 负责把 open 翻回
+                //    false，若一律拦截会导致面板关不掉（实测全拦截后第 2 次点击面板仍 open）。
+                //    因此只在「面板未打开」时拦截，已打开时放行。
+                (function() {
+                    if (window.__zcodeWorkspaceBtnFix) return;
+                    window.__zcodeWorkspaceBtnFix = true;
+                    // 展开态判据：气泡内容含「最近活动」或路径分隔符（折叠态只有工作区名，
+                    // 实测折叠 40 字符 vs 展开 126 字符，可靠区分）
+                    function workspacePanelOpen() {
+                        var w = document.querySelector('[data-radix-popper-content-wrapper]');
+                        if (!w) return false;
+                        var inner = w.firstElementChild;
+                        if (!inner || inner.getAttribute('data-slot') !== 'tooltip-content') return false;
+                        var t = inner.textContent || '';
+                        return t.indexOf('最近活动') !== -1 || t.indexOf(':\\') !== -1 || t.indexOf(':/') !== -1;
+                    }
+                    // 用 focusin（React 委托通道）而非 focus：React 在根节点挂 focusin 监听，
+                    // focus 本身不冒泡、拦不到；focusin 冒泡，capture 阶段可拦。
+                    document.addEventListener('focusin', function(e) {
+                        var b = e.target && e.target.closest
+                            ? e.target.closest('button[data-testid="workspace-path"]') : null;
+                        if (!b) return;
+                        if (workspacePanelOpen()) return;   // 已打开：放行，让第 2 次点击能关闭
+                        e.stopImmediatePropagation();
+                        e.stopPropagation();
+                        e.preventDefault();
+                    }, true);
+                })();
+
+                // 13. 「+」添加上下文弹层不应唤起输入法。
+                // 现象（真机 992e8e14，2026-09-26）：点「+」弹出列表时输入法跟着弹出；
+                // 在列表里选中一个条目后输入法又弹一次。用户诉求：只有**直接点输入框**
+                // 才弹输入法，弹层开合一律不弹。
+                // 实测机制：输入框是 contenteditable 的 DIV（`.chat-composer-region` 内）。
+                // 键盘打开时视口高度 860→524；此时点「+」，document.activeElement 仍是
+                // 那个 contenteditable（`DIV ce=true`）、视口维持 524 —— 即**焦点一直留在
+                // 输入框上**，输入法因此保持/重新弹出；而从干净状态（焦点在 BODY）点「+」
+                // 则不会弹（实测 vh=860）。所以修复点就是：弹层开合期间不让输入框保持焦点。
+                // 做法（保守，不干扰正常输入）：
+                //   ① 点「+」时收起输入框焦点；② 弹层打开期间若有间接聚焦输入框则再收起；
+                //   ③ 在弹层内选中条目后同样收起。
+                // ⚠️ 只处理 `.chat-composer-region / .chat-composer-input-surface` 内的
+                //    contenteditable，且**不拦截用户直接点输入框**（用最近一次真实指针目标
+                //    判定），避免影响正常打字。
+                (function() {
+                    if (window.__zcodeComposerImeFix) return;
+                    window.__zcodeComposerImeFix = true;
+                    var lastPointerTarget = null;
+                    document.addEventListener('pointerdown', function(e) { lastPointerTarget = e.target; }, true);
+                    document.addEventListener('touchstart', function(e) { lastPointerTarget = e.target; }, true);
+                    function composerEditable() {
+                        var ae = document.activeElement;
+                        if (!ae || !ae.isContentEditable) return null;
+                        return ae.closest('.chat-composer-region, .chat-composer-input-surface') ? ae : null;
+                    }
+                    function blurComposer() {
+                        var ed = composerEditable();
+                        if (!ed) return;
+                        try { ed.blur(); } catch (err) {}
+                    }
+                    function composerPopoverOpen() {
+                        var pops = document.querySelectorAll('div[data-slot="popover-content"]');
+                        for (var i = 0; i < pops.length; i++) {
+                            var t = pops[i].textContent || '';
+                            if (t.indexOf('附件') !== -1) return true;
+                        }
+                        return false;
+                    }
+                    // ① 点「+」：收起焦点；Radix 可能在稍后再移动焦点，故延迟补一次
+                    document.addEventListener('click', function(ev) {
+                        var btn = ev.target && ev.target.closest
+                            ? ev.target.closest('button[data-testid="chat-attachment-button"]') : null;
+                        if (!btn) return;
+                        blurComposer();
+                        setTimeout(blurComposer, 120);
+                        setTimeout(blurComposer, 320);
+                    }, true);
+                    // ② 弹层打开期间：仅当焦点不是用户直接点输入框带来的，才收起
+                    document.addEventListener('focusin', function(e) {
+                        var t = e.target;
+                        if (!t || !t.isContentEditable) return;
+                        if (!t.closest('.chat-composer-region, .chat-composer-input-surface')) return;
+                        if (!composerPopoverOpen()) return;          // 弹层没开：不管
+                        if (lastPointerTarget && (lastPointerTarget === t || t.contains(lastPointerTarget))) return;  // 用户直接点：放行
+                        try { t.blur(); } catch (err) {}
+                    }, true);
+                    // ③ 在弹层内选中条目后收起（选中动作不应唤起输入法）
+                    document.addEventListener('click', function(ev) {
+                        var t = ev.target;
+                        if (!t || !t.closest) return;
+                        if (!t.closest('div[data-slot="popover-content"]')) return;
+                        if (!t.closest('[role="menuitem"],[role="option"],[data-slot*="item"],button')) return;
+                        setTimeout(blurComposer, 150);
+                    }, true);
+                })();
+
+                // 14. （已删除）原"任务列表页 header 标题改写"逻辑——2026-09-26 起网页
+                // header 整条 display:none（CSS 规则 20），标题改写与 MutationObserver
+                // 持续纠偏失去意义，移除以省一份运行时开销。原生顶部栏的标题/LOGO/主题
+                // 按钮由 App 自行渲染（activity_remote_control.xml@layoutNativeTopBar）。
+
+                // 15. dashboard 调色板按钮的 JS 桥：window.zcodeTriggerThemeToggle()。
+                // 流程：找到网页里**原生**的调色板 trigger（data-slot="dropdown-menu-trigger"）
+                // → 派发完整 pointer 事件序列打开 Radix DropdownMenu → 把菜单位置修正到
+                // 注入按钮下方。**菜单打开后不再自动切换主题**，由用户自己点选
+                // （2026-09-27 用户反馈"闪一下就消失了"）。
+                // ⚠️ 历史沿革：该函数原为「点一下自动切到下一个主题」——当时按钮在原生顶栏、
+                //    只是个图标没有配套下拉菜单。2026-09-26 按钮移到 dashboard 后，用户期望
+                //    像正常按钮那样弹出菜单自己选，自动切换会让菜单只闪现约 190ms 即关闭
+                //    （实测时间线：352ms 出现、544ms 消失、主题被改成下一项）。故移除自动切换。
+                // ⚠️ 两条硬约束：
+                //   ① 必须用 fireFullClick（完整 pointer 序列），trigger.click() 这种
+                //      synthetic untrusted click 无法触发 Radix 打开菜单（实测）；
+                //   ② 菜单是 Radix 动态挂载到 body 末尾的 z-[60] div，实测约 875~1205ms
+                //      才出现，等待挂载必须用 MutationObserver（见下方）。
+                (function() {
+                    if (window.zcodeTriggerThemeToggle) return;
+                    function fireFullClick(el) {
+                        if (!el) return false;
+                        var r = el.getBoundingClientRect();
+                        var x = r.left + r.width / 2, y = r.top + r.height / 2;
+                        ['pointerover','pointerenter','mouseover','mouseenter',
+                         'pointerdown','mousedown','pointerup','mouseup','click'].forEach(function(type) {
+                            var isPointer = type.indexOf('pointer') === 0;
+                            var Ctor = isPointer ? PointerEvent : MouseEvent;
+                            try {
+                                el.dispatchEvent(new Ctor(type, {
+                                    bubbles: true, cancelable: true, view: window,
+                                    button: 0, buttons: type.indexOf('down') >= 0 ? 1 : 0,
+                                    clientX: x, clientY: y,
+                                    pointerType: 'mouse', isPrimary: true
+                                }));
+                            } catch (e) { /* PointerEvent 老内核可能不支持 */ }
+                        });
+                        return true;
+                    }
+                    /**
+                     * 把主题菜单移到注入按钮下方。
+                     * 根因：Radix 以原生 trigger 的 rect 为锚点定位，而该 trigger 在被规则 4
+                     * 隐藏的 header 里，rect 全 0（实测 --radix-popper-anchor-width: 0px、
+                     * transform: translate(0px, 1.9px)），菜单因此跑到屏幕左上角。
+                     * 做法：菜单挂载后用 MutationObserver 抓到 wrapper，按其自身尺寸把
+                     * transform 改写成「注入按钮右对齐、下方 8px」，并同步修正
+                     * transform-origin 让展开动画从右上角开始（与原生观感一致）。
+                     * ⚠️ 只改 transform、不改 left/top——Radix 内部用 transform 做定位，
+                     * 覆盖 left/top 会被其后续写入覆盖掉。
+                     */
+                    function alignThemeMenu() {
+                        var anchor = document.querySelector(
+                            'button[aria-label="选择主题"][data-zcode-inject="1"]');
+                        if (!anchor) return;
+                        // 只挑「主题菜单」那个 wrapper：内部含 role=menuitemradio。
+                        // 页面上可能同时有其它 popper wrapper（tooltip/popover），
+                        // 直接 querySelector 取第一个会误改别的浮层。
+                        var items = document.querySelectorAll('[role="menuitemradio"]');
+                        if (!items.length) return;
+                        var wrapper = items[0].closest('[data-radix-popper-content-wrapper]');
+                        if (!wrapper) return;
+                        var a = anchor.getBoundingClientRect();
+                        var w = wrapper.getBoundingClientRect();
+                        // 尺寸尚未测量出来时先跳过（Radix 首帧可能还是 0），等下次 mutation 再试
+                        if (w.width <= 0) return;
+                        // 右对齐按钮、垂直贴按钮下方 8px；越界时夹回视口内
+                        var left = Math.max(8, Math.min(a.right - w.width, window.innerWidth - w.width - 8));
+                        var top = a.bottom + 8;
+                        var desired = 'translate(' + Math.round(left) + 'px, ' + Math.round(top) + 'px)';
+                        // ⚠️ 自激防护：本函数写在 style 上会再次触发观察器，
+                        // 值已就位时直接返回，否则会陷入无限循环
+                        if (wrapper.style.transform === desired) return;
+                        wrapper.style.setProperty('transform', desired, 'important');
+                        wrapper.style.setProperty('--radix-popper-transform-origin', '100% 0px', 'important');
+                    }
+
+                    window.zcodeTriggerThemeToggle = function() {
+                        // ⚠️ 必须点**原生** trigger（data-slot="dropdown-menu-trigger"），
+                        // 不能用 aria-label 全局 querySelector：页面里 aria-label="选择主题"
+                        // 有两个，且规则 17 注入的那个也在其中，点到它会递归调用本函数。
+                        // 原生 trigger 位于被规则 4 隐藏的 header 里（rect 全 0），
+                        // Radix 以它为锚点会把菜单定位到左上角——位置由 alignThemeMenu() 修正。
+                        var trigger = document.querySelector(
+                            'button[data-slot="dropdown-menu-trigger"][aria-label="选择主题"]')
+                            || document.querySelector('button[aria-label="选择主题"]');
+                        if (!trigger) return 'no-trigger';
+                        fireFullClick(trigger);
+                        // 菜单由 Radix 动态挂载（实测约 875~1205ms 后才出现），固定帧数/短延时
+                        // 都会错过挂载时机——用 MutationObserver 等 [role=menuitemradio] 出现。
+                        // ⚠️ 挂载后不能只纠偏固定几帧就收手：实测 Radix 会在稍后**再次回写**
+                        //    transform（真机上出现过纠偏完成后又被写回 (0,2) 左上角的竞态）。
+                        //    改为「等菜单挂载 → 只观察该 wrapper 自身的 style 变化 → 位置被
+                        //    改写就立即纠正」。alignThemeMenu 内部有「值已就位则 return」的
+                        //    自激防护，故观察自身写入不会死循环。
+                        // ⚠️ 只观察 wrapper 自身而非整个 body：观察 body 子树会被页面动画的
+                        //    style 变化频繁触发，每次都跑 querySelector + getBoundingClientRect，
+                        //    开销不必要。
+                        var mountObs = new MutationObserver(function() {
+                            var items = document.querySelectorAll('[role="menuitemradio"]');
+                            if (!items.length) return;
+                            var wrapper = items[0].closest('[data-radix-popper-content-wrapper]');
+                            if (!wrapper) return;
+                            mountObs.disconnect();      // 已找到 wrapper，停止等挂载
+                            alignThemeMenu();
+                            var styleObs = new MutationObserver(function() {
+                                // 菜单已关闭则停止纠偏
+                                if (!wrapper.isConnected) {
+                                    styleObs.disconnect();
+                                    releaseBodyPointerLock();
+                                    return;
+                                }
+                                alignThemeMenu();
+                            });
+                            styleObs.observe(wrapper, { attributes: true, attributeFilter: ['style'] });
+                            // 兜底：用户长时间不选时也要能清理，避免长期观察
+                            setTimeout(function() { styleObs.disconnect(); releaseBodyPointerLock(); }, 30000);
+                        });
+                        mountObs.observe(document.body, { childList: true, subtree: true });
+                        setTimeout(function() { mountObs.disconnect(); }, 5000);
+                        return 'ok';
+                    };
+
+                    /**
+                     * 释放 Radix 残留在 body 上的 pointer-events 锁。
+                     *
+                     * 根因（2026-09-27 实测）：Radix 打开 DropdownMenu 时会给
+                     * `document.body` 写入内联样式 `pointer-events: none`（阻止浮层
+                     * 外的交互），正常关闭时移除。但若菜单以非标准路径关闭（程序化点击
+                     * 菜单项、快速开关等），清理逻辑可能不执行，锁就**永久残留**——
+                     * 后果是整个页面不可点击：`elementFromPoint` 全部穿透到 <html>，
+                     * 手指触摸落不到按钮上（实测按钮 pointerEvents 计算值为 none），
+                     * 表现为「点了菜单闪一下就没了」且之后再点也无效。
+                     *
+                     * ⚠️ 只在**没有浮层**时才清理：菜单/弹层打开期间 body 的锁是
+                     * Radix 有意为之，提前移除会让浮层外点击穿透、行为异常。
+                     */
+                    function releaseBodyPointerLock() {
+                        // 仍有任何 popper 浮层（菜单/下拉/弹层）存在时不清理
+                        if (document.querySelector('[data-radix-popper-content-wrapper]')) return;
+                        var inline = document.body.style.pointerEvents;
+                        if (inline === 'none') {
+                            document.body.style.pointerEvents = '';
                         }
                     }
-                }, true);
+                })();
+
+                // 16. tooltip 白名单（与 CSS 规则 28 配套，2026-09-26 模拟器实测）。
+                // CSS 已全局 display:none 所有 div[data-slot="tooltip-content"]——这
+                // 会同时屏蔽工作区气泡（dashboard 上点 zcode-mobile-app 等工作区名时
+                // 弹出的「最近活动 / 路径」气泡，也是 tooltip-content slot）。这里用
+                // MutationObserver 监听 tooltip-content 出现，内容含「最近活动」标题
+                // 或路径分隔符「:\\」「:/」时清空 display 恢复显示。
+                // ⚠️ 不能依赖"按 trigger 位置反查"——tooltip 通过 popper wrapper 挂到
+                // body 末尾，DOM 上不在 trigger 旁边，只能靠内容特征区分。
+                (function() {
+                    if (window.__zcodeTooltipWhitelist) return;
+                    window.__zcodeTooltipWhitelist = true;
+                    function restore(el) {
+                        var t = el.textContent || '';
+                        if (t.indexOf('最近活动') !== -1 ||
+                            t.indexOf(':\\') !== -1 ||
+                            t.indexOf(':/') !== -1) {
+                            // 用 setProperty('display','block','important') 而非
+                            // setProperty('display','','important')——空值不一定能
+                            // 覆盖外部 CSS 的 display:none !important（实测无效）。
+                            el.style.setProperty('display', 'block', 'important');
+                        }
+                    }
+                    function scan() {
+                        var tips = document.querySelectorAll('div[data-slot="tooltip-content"]');
+                        for (var i = 0; i < tips.length; i++) restore(tips[i]);
+                    }
+                    new MutationObserver(scan).observe(document.body, { childList: true, subtree: true });
+                    scan();
+                })();
+
+                // 17. dashboard 标题行注入「选择主题」按钮（2026-09-26 需求）。
+                // 用户反馈原生 App 顶部栏的调色板按钮位置不合适，要求移到 dashboard
+                // 的「当前设备上的工作区和任务」标题行右侧——与「折叠全部工作区 /
+                // 整理任务 / 刷新工作区和任务」三个按钮同一行。
+                // 实现：找到按钮组容器 `div.mt-4.flex.items-start > div.flex.shrink-0.items-center`
+                // （精确特征是内部含 `button[aria-label="刷新工作区和任务"]`），在其末尾
+                // append 一个 class/SVG 完全复用现有按钮的 <button aria-label="选择主题">。
+                // 点击调规则 15 的 zcodeTriggerThemeToggle() 打开主题菜单（由用户自己选）。
+                // ⚠️ SPA 重渲染会重建按钮组（如切换任务/工作区后），需 MutationObserver
+                //    持续监听并补注入；observer 回调里发现按钮已存在则跳过，避免重复。
+                (function() {
+                    if (window.__zcodeThemeBtnInject) return;
+                    window.__zcodeThemeBtnInject = true;
+                    var BTN_CLASS = 'group/button inline-flex shrink-0 items-center justify-center ' +
+                        'rounded-md border border-transparent bg-clip-padding text-ui-base/relaxed ' +
+                        'whitespace-nowrap transition-colors outline-none select-none ' +
+                        'disabled:pointer-events-none disabled:opacity-50 ' +
+                        'aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 ' +
+                        'dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 ' +
+                        '[&_svg]:pointer-events-none [&_svg]:shrink-0 text-foreground ' +
+                        'hover:bg-hover hover:text-foreground aria-expanded:bg-hover aria-expanded:text-foreground ' +
+                        'size-6 [&_svg:not([class*="size-"])]:size-3';
+                    var PALETTE_SVG =
+                        '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" ' +
+                        'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" ' +
+                        'stroke-linejoin="round" class="lucide lucide-palette size-3.5" aria-hidden="true">' +
+                        '<path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z"></path>' +
+                        '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"></circle>' +
+                        '<circle cx="17.5" cy="10.5" r=".5" fill="currentColor"></circle>' +
+                        '<circle cx="6.5" cy="12.5" r=".5" fill="currentColor"></circle>' +
+                        '<circle cx="8.5" cy="7.5" r=".5" fill="currentColor"></circle></svg>';
+                    function findRowGroup() {
+                        // 通过「刷新工作区和任务」按钮反查按钮组容器
+                        var refresh = document.querySelector('button[aria-label="刷新工作区和任务"]');
+                        return refresh ? refresh.parentElement : null;
+                    }
+                    function inject() {
+                        var grp = findRowGroup();
+                        if (!grp) return false;
+                        // 兜底：清理 Radix 残留在 body 上的 pointer-events 锁。
+                        // 该锁若残留会让**整页不可点击**（触摸穿透到 <html>），
+                        // 连本按钮都点不到，因此必须在每次注入时顺手检查。
+                        // 仍有浮层时不清理（锁是 Radix 有意为之）。
+                        if (!document.querySelector('[data-radix-popper-wrapper], [data-radix-popper-content-wrapper]')) {
+                            if (document.body.style.pointerEvents === 'none') {
+                                document.body.style.pointerEvents = '';
+                            }
+                        }
+                        // 已注入过且仍连着 DOM 则跳过
+                        if (grp.querySelector('button[aria-label="选择主题"][data-zcode-inject="1"]')) return true;
+                        // 旧逻辑可能注入到别处（header 已隐藏），先清掉
+                        var orphans = document.querySelectorAll('button[aria-label="选择主题"][data-zcode-inject="1"]');
+                        for (var k = 0; k < orphans.length; k++) orphans[k].remove();
+                        var btn = document.createElement('button');
+                        btn.setAttribute('type', 'button');
+                        btn.setAttribute('aria-label', '选择主题');
+                        btn.setAttribute('data-zcode-inject', '1');
+                        btn.setAttribute('data-slot', 'button');
+                        btn.setAttribute('data-variant', 'ghost');
+                        btn.setAttribute('data-size', 'icon-sm');
+                        btn.className = BTN_CLASS;
+                        // ⚠️ 显式恢复可命中：CSS 规则 3 的 `button > *` 穿透规则本意是让
+                        // 图标内元素不拦截点击，但它作用范围广；实测本按钮的
+                        // computed pointer-events 曾为 none（触摸落不到按钮上），
+                        // 这里按最高优先级把按钮自身钉回 auto。
+                        btn.style.setProperty('pointer-events', 'auto', 'important');
+                        btn.innerHTML = PALETTE_SVG;
+                        btn.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (window.zcodeTriggerThemeToggle) window.zcodeTriggerThemeToggle();
+                        });
+                        grp.appendChild(btn);
+                        return true;
+                    }
+                    inject();
+                    new MutationObserver(function() { inject(); })
+                        .observe(document.body, { childList: true, subtree: true });
+                })();
+
+                // 5. （已删除，2026-09-26）原"输入框聚焦自动滚动居中"规则——
+                // 在模型设置供应商详情页点 Base URL/API Key 输入框时，
+                // scrollIntoView({block:'center'}) 会把整个供应商模块往上推 45px+，
+                // 用户反馈"模块不要上移"。键盘避让已由原生 setupKeyboardInsets
+                // （动态调整 WebView bottomMargin）统一处理，网页层不再 scroll。
+
+                // 18. 模态框打开时屏蔽自动 focus（2026-09-26 需求，模拟器实测）。
+                // 在模型设置点「编辑模型配置」（铅笔图标）→ 编辑模态框（[role="dialog"]）
+                // 弹出瞬间，远端 React 会调 HTMLElement.focus() 把焦点设到第一个可交互
+                // 元素。两种情况：
+                // ① 若第一个可交互元素是 INPUT/TEXTAREA/contenteditable（实测是上下文
+                //    窗口大小 input type=text value="500000"）→ 真机上立即弹出系统输入法。
+                // ② 若第一个可交互元素是 button[data-slot="popover-trigger"]（如模态框
+                //    里"智能配置"旁的「?」按钮 aria-label="智能配置说明"）→ Radix
+                //    Popover 的 trigger 在 focus 时会自动展开 popover（实测弹出
+                //    「根据模型 ID、Base URL 和 API 格式...」说明气泡），用户没点
+                //    「?」却被迫看到气泡。
+                // 处理：hook HTMLElement.prototype.focus——若调用方目标在 [role="dialog"]
+                // 内是 INPUT/TEXTAREA/contenteditable 或 button[data-slot="popover-trigger"]，
+                // 且**没有对应的用户指针行为**（500ms 内 pointerdown/touchstart/mousedown
+                // 落在该元素或 dialog 内），**直接 return 不调原 focus**。focus() 无返回
+                // 值，React 不知道被拦。
+                // 用户在模态框里**主动点输入框/按钮**仍能正常 focus + 触发对应行为——
+                // pointerdown 的 target 会被记录，hook 命中"有对应指针行为"分支直接放行。
+                // ⚠️ 不用 blur 方案——blur 会触发 focusout/blur 事件，React 的 autoFocus
+                //    状态机可能感知到焦点丢失后再次 focus，形成"拦了又被重设"的死循环。
+                //    hook focus 直接拒绝调用，对 React 来说"focus 调用没产生任何事件"，
+                //    状态机以为已经聚焦成功（虽然实际没），但不会重试。
+                (function() {
+                    if (window.__zcodeModalAutofocusFix) return;
+                    window.__zcodeModalAutofocusFix = true;
+                    var lastPointerTarget = null;
+                    var lastPointerTime = 0;
+                    function recordPointer(e) {
+                        lastPointerTarget = e.target;
+                        lastPointerTime = Date.now();
+                    }
+                    document.addEventListener('pointerdown', recordPointer, true);
+                    document.addEventListener('touchstart', recordPointer, true);
+                    document.addEventListener('mousedown', recordPointer, true);
+
+                    var origFocus = HTMLElement.prototype.focus;
+                    HTMLElement.prototype.focus = function(options) {
+                        var ae = this;
+                        var tag = ae.tagName;
+                        var isInput = tag === 'INPUT' || tag === 'TEXTAREA' || ae.isContentEditable;
+                        var isPopoverTrigger = tag === 'BUTTON' && ae.getAttribute &&
+                            ae.getAttribute('data-slot') === 'popover-trigger';
+                        if (isInput || isPopoverTrigger) {
+                            var dlg = ae.closest && ae.closest('[role="dialog"]');
+                            if (dlg) {
+                                // 用户手势：500ms 内有 pointerdown 落在 ae 内或 dialog 内
+                                var isUserGesture = false;
+                                if (lastPointerTarget && (Date.now() - lastPointerTime) < 500) {
+                                    if (lastPointerTarget === ae || ae.contains(lastPointerTarget) ||
+                                        (lastPointerTarget.closest && lastPointerTarget.closest('[role="dialog"]') === dlg)) {
+                                        isUserGesture = true;
+                                    }
+                                }
+                                if (!isUserGesture) {
+                                    // 程序化 auto focus → 拒绝，不调原 focus
+                                    return;
+                                }
+                            }
+                        }
+                        return origFocus.call(this, options);
+                    };
+                })();
             })();
         """.trimIndent()
 

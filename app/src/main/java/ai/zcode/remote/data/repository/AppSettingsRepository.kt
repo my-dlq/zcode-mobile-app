@@ -99,6 +99,20 @@ class AppSettingsRepository(context: Context) {
     fun isSecurityVerificationEnabled(): Boolean =
         isPatternEnabled() || isFingerprintEnabled()
 
+    // ---- 显示缩放 ----
+
+    /**
+     * 远程页面整体缩放百分比（70~150）。
+     * 作用于 WebView 的 viewport meta：改布局视口宽度 + initial-scale，
+     * 等价于浏览器缩放（会触发远端响应式重排），而非纯渲染放大。
+     */
+    fun getPageZoom(): Int =
+        prefs.getInt(KEY_PAGE_ZOOM, PAGE_ZOOM_DEFAULT).coerceIn(PAGE_ZOOM_MIN, PAGE_ZOOM_MAX)
+
+    fun setPageZoom(percent: Int) {
+        prefs.edit().putInt(KEY_PAGE_ZOOM, percent.coerceIn(PAGE_ZOOM_MIN, PAGE_ZOOM_MAX)).apply()
+    }
+
     // ---- 通知偏好 ----
 
     /** 通知总开关：关闭后所有任务事件通知都不再弹出。 */
@@ -171,6 +185,12 @@ class AppSettingsRepository(context: Context) {
         private const val KEY_NOTIF_ELICITATION = "key_notif_elicitation"
         private const val KEY_NOTIF_COMPLETED = "key_notif_completed"
         private const val KEY_NOTIF_FAILED = "key_notif_failed"
+        private const val KEY_PAGE_ZOOM = "key_page_zoom"
+
+        /** 页面缩放百分比范围与默认值：UI 滑杆与存储 clamp 共用，避免两处写死不一致。 */
+        const val PAGE_ZOOM_MIN = 50
+        const val PAGE_ZOOM_MAX = 150
+        const val PAGE_ZOOM_DEFAULT = 100
 
         @Volatile
         private var instance: AppSettingsRepository? = null

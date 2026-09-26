@@ -15,6 +15,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.SeekBar
 
 /**
  * 应用设置页：集中管理原生客户端的显示、通用、安全主题和更新偏好。
@@ -96,7 +97,34 @@ class SettingsActivity : AppCompatActivity() {
             if (appSettings.isNotificationEnabled()) R.string.settings_notif_summary_on
             else R.string.settings_notif_summary_off
         )
+        refreshZoomState()
         refreshKeepAliveState()
+    }
+
+    /**
+     * 页面缩放滑杆：progress 0~100 映射到 50%~150%（max 与范围常量联动，改范围时同步布局 XML 的 android:max）。
+     * 拖动过程中只更新百分比文案，松手（onStopTrackingTouch）才落盘，
+     * 避免滑杆连续回调里反复 apply() 写 SharedPreferences。
+     */
+    private fun refreshZoomState() {
+        val zoom = appSettings.getPageZoom()
+        binding.seekZoom.max = AppSettingsRepository.PAGE_ZOOM_MAX - AppSettingsRepository.PAGE_ZOOM_MIN
+        binding.seekZoom.setOnSeekBarChangeListener(null)
+        binding.seekZoom.progress = zoom - AppSettingsRepository.PAGE_ZOOM_MIN
+        binding.tvZoomValue.text = getString(R.string.settings_zoom_value, zoom)
+        binding.seekZoom.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                val percent = AppSettingsRepository.PAGE_ZOOM_MIN + progress
+                binding.tvZoomValue.text = getString(R.string.settings_zoom_value, percent)
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                val percent = AppSettingsRepository.PAGE_ZOOM_MIN + (seekBar?.progress ?: 0)
+                appSettings.setPageZoom(percent)
+            }
+        })
     }
 
     private fun refreshKeepAliveState() {

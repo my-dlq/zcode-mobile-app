@@ -1,92 +1,189 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/rootContainer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_dark">
+    android:background="@color/bg_dark"
+    android:orientation="vertical">
 
-    <!-- 核心 WebView 容器 -->
-    <WebView
-        android:id="@+id/webView"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="@color/bg_dark"
-        android:fitsSystemWindows="false"
-        android:overScrollMode="never"
-        android:scrollbars="none" />
-
-    <!-- 页面顶部精细加载进度条 -->
-    <ProgressBar
-        android:id="@+id/progressBar"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="2.5dp"
-        android:layout_gravity="top"
-        android:max="100"
-        android:progressDrawable="@drawable/bg_progress_bar"
-        android:visibility="gone"
-        tools:progress="60"
-        tools:visibility="visible" />
-
-    <!-- 异常断网/加载失败占位覆盖层 -->
+    <!-- 原生顶部栏：替代网页内 header（网页 header 已被注入 CSS 整条隐藏）。
+         高度 56dp 标准，内容垂直居中；状态栏透明沉浸，paddingTop 由代码按
+         WindowInsets 动态设置，让 LOGO/标题/按钮不被状态栏遮挡。 -->
     <LinearLayout
-        android:id="@+id/layoutErrorOverlay"
+        android:id="@+id/layoutNativeTopBar"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="56dp"
         android:background="@color/bg_dark"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:padding="24dp"
-        android:visibility="gone"
-        tools:visibility="gone">
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="8dp">
 
         <ImageView
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:src="@drawable/ic_computer"
-            app:tint="@color/danger" />
+            android:id="@+id/ivTopBarLogo"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:contentDescription="@string/app_name"
+            android:src="@drawable/ic_launcher_foreground" />
 
         <TextView
+            android:id="@+id/tvTopBarTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="@string/remote_load_failed"
+            android:layout_marginStart="10dp"
+            android:fontFamily="sans-serif-medium"
+            android:text="@string/app_name"
             android:textColor="@color/text_primary"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            android:textSize="17sp" />
 
-        <TextView
-            android:id="@+id/tvErrorDetail"
-            android:layout_width="wrap_content"
+        <Space
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:gravity="center"
-            android:textColor="@color/text_secondary"
-            android:textSize="13sp"
-            tools:text="ERR_INTERNET_DISCONNECTED" />
+            android:layout_weight="1" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnRetry"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:backgroundTint="@color/primary"
-            android:text="@string/remote_retry"
-            android:textColor="@color/white"
-            app:cornerRadius="8dp"
-            app:icon="@drawable/ic_refresh"
-            app:iconTint="@color/white" />
+        <!-- 原生顶部栏调色板按钮：按 2026-09-26 用户反馈"放在顶部栏不合适"，
+             仅 visibility=gone 隐藏。功能改由 ZCodeWebViewClient 注入到 dashboard
+             标题行右侧按钮组（与折叠/排序/刷新同一行）的网页内调色板按钮承担。
+             恢复原生按钮只需删除该行。 -->
+        <ImageButton
+            android:id="@+id/btnTopBarTheme"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/topbar_toggle_theme"
+            android:padding="8dp"
+            android:src="@drawable/ic_palette_24"
+            android:visibility="gone"
+            app:tint="@color/text_primary" />
+
+        <!-- 菜单按钮：弹出与主界面一致的菜单（扫描连接/地址连接/设置/关于）。
+             样式对齐 activity_main.xml 的 btnMenu（48dp + borderless 水波纹 + ic_menu）。 -->
+        <ImageButton
+            android:id="@+id/btnTopBarMenu"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/menu_title"
+            android:padding="12dp"
+            android:src="@drawable/ic_menu"
+            app:tint="@color/text_primary" />
     </LinearLayout>
 
-    <!-- 可拖动吸边悬浮控制球（当前按需求隐藏：仅 visibility=gone，代码逻辑未删除；恢复时删除该行即可） -->
-    <ai.zcode.remote.ui.remote.FloatingControlView
-        android:id="@+id/floatingControlView"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="90dp"
-        android:visibility="gone" />
-</FrameLayout>
+    <!-- 顶部栏与网页内容之间的分隔线，对齐网页 header 原有的 border-b 视觉 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/border_color" />
+
+    <!-- 网页容器（剩余空间） -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <!-- 核心 WebView 容器 -->
+        <WebView
+            android:id="@+id/webView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/bg_dark"
+            android:fitsSystemWindows="false"
+            android:overScrollMode="never"
+            android:scrollbars="none" />
+
+        <!-- 页面顶部精细加载进度条 -->
+        <ProgressBar
+            android:id="@+id/progressBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="2.5dp"
+            android:layout_gravity="top"
+            android:max="100"
+            android:progressDrawable="@drawable/bg_progress_bar"
+            android:visibility="gone"
+            tools:progress="60"
+            tools:visibility="visible" />
+
+        <!-- 异常断网/加载失败占位覆盖层 -->
+        <LinearLayout
+            android:id="@+id/layoutErrorOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/bg_dark"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="24dp"
+            android:visibility="gone"
+            tools:visibility="gone">
+
+            <ImageView
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:src="@drawable/ic_computer"
+                app:tint="@color/danger" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/remote_load_failed"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvErrorDetail"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                tools:text="ERR_INTERNET_DISCONNECTED" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRetry"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:backgroundTint="@color/primary"
+                android:text="@string/remote_retry"
+                android:textColor="@color/white"
+                app:cornerRadius="8dp"
+                app:icon="@drawable/ic_refresh"
+                app:iconTint="@color/white" />
+        </LinearLayout>
+
+        <!-- 页面缩放提示：调整缩放后屏幕中央短暂显示，2 秒后淡出（见 RemoteControlActivity.showZoomHint）。
+             放在 FrameLayout 内、WebView 之后（FrameLayout 中后声明的子元素绘制在上层）。 -->
+        <TextView
+            android:id="@+id/tvZoomHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_zoom_hint"
+            android:elevation="8dp"
+            android:paddingStart="20dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="12dp"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            tools:text="页面缩放 110%"
+            tools:visibility="visible" />
+
+        <!-- 可拖动吸边悬浮控制球（当前按需求隐藏：仅 visibility=gone，代码逻辑未删除；恢复时删除该行即可） -->
+        <ai.zcode.remote.ui.remote.FloatingControlView
+            android:id="@+id/floatingControlView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="90dp"
+            android:visibility="gone" />
+    </FrameLayout>
+</LinearLayout>
