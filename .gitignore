@@ -15,6 +15,9 @@ local.properties
 # 模拟器调试临时产物（截图/UI dump）
 /.debug-emulator/
 
+# 改动前代码备份（不入库）
+/.codex_backup_*/
+
 # 会话计划文件（一次性调试计划，不入库）
 /.zcode/plans/
 /.zcode/
@@ -31,3 +34,4 @@ zcode-release.jks
 # 含签名密码的本地配置（已由 gradle.properties 持有真实值，不入库）
 gradle.properties
 !gradle.properties.example
+/.zcodeignore

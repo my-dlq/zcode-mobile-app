@@ -4,6 +4,7 @@ import android.app.Application
 import android.webkit.WebView
 import androidx.appcompat.app.AppCompatDelegate
 import ai.zcode.remote.data.repository.AppSettingsRepository
+import ai.zcode.remote.ui.remote.event.TaskNotifier
 
 class ZCodeApp : Application() {
 
@@ -32,6 +33,10 @@ class ZCodeApp : Application() {
         if (AppSettingsRepository.getInstance(this).isKeepAliveEnabled()) {
             ai.zcode.remote.service.KeepAliveService.start(this)
         }
+
+        // 进程在通知发布过程中被系统回收时，持久化信箱中的待消费记录会带租约保留。
+        // 应用再次创建后恢复消费者，避免 WebView 事件到达与系统 notify 之间的消息丢失。
+        TaskNotifier.resumePending(this)
     }
 
     companion object {

@@ -7,177 +7,271 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import ai.zcode.remote.R
 import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.data.repository.ConnectionRepository
 import ai.zcode.remote.ui.remote.RemoteControlActivity
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 
 /**
- * 任务事件系统通知：审批请求（高优先级，横幅+声音）与任务完成/失败（默认优先级）。
- * 通知点击进入对应连接的远程控制页并跳转到任务会话。
- *
- * 通知偏好：总开关关闭后所有事件不通知；各事件类型（审批/提问/完成/失败）
- * 可独立开关。事件源为当前连接的 WebView 页面（单通道），同一事件理论上
- * 只会触发一次；保留极短去重窗口仅防同一次 snapshot 镜像的重复推送，
- * 不会过滤"短时间内连续的真实事件"（如 30 秒内同任务再次审批）。
+ * 持久化通知信箱的生产者/消费者。WebView 回调仅入库，单线程消费者再发布系统通知。
+ * 同一个 eventKey 被标记为已投递后会保留，重连快照及用户划掉通知均不会令它再次弹出。
  */
 object TaskNotifier {
-
     private const val CHANNEL_EVENTS = "zcode_task_events"
     private const val CHANNEL_APPROVALS = "zcode_task_approvals"
-
-    /** 同 taskId+type 的事件的极小去重窗口（仅防 snapshot 镜像重复，不拦连续事件）。 */
-    private const val DEDUP_WINDOW_MS = 3_000L
-    private val recentNotified = HashMap<String, Long>()
-
-    /**
-     * RESOLVED 冷却窗口：远端 WS 重连/刷新快照时会短暂把 permissionCount 从 N→0 再补回，
-     * 触发"假 resolved"把刚弹出的审批通知撤掉。冷却期内的 resolved 视为抖动忽略。
-     * 实测远端在用户未操作时 ~11s 后会自发发 RESOLVED（多端共用会话），
-     * 冷却窗取 30s 覆盖该窗口，避免"通知几秒消失"复发。
-     * 副作用：用户在 30s 内点同意/拒绝时旧通知暂不撤销，但不影响新通知弹出。
-     */
+    private const val TAG = "ZCodeEvent"
     private const val RESOLVE_COOLDOWN_MS = 30_000L
+    private const val MAX_RECENT_REQUESTS = 256
+    private const val RETRY_DELAY_MS = 15_000L
+    private const val FOREGROUND_CHECK_DELAY_MS = 1_000L
+
+    private val executor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread(runnable, "ZCodeNotificationConsumer").apply { isDaemon = true }
+    }
+    /** taskId → 最近一次已投递交互请求的 eventKey，用于让 resolved 精确配对。 */
+    private val recentRequestKeys = HashMap<String, String>()
+    /** eventKey → 最近一次投递时间，用于分辨真实的交互结束与快照抖动。 */
+    private val recentRequestTimes = HashMap<String, Long>()
+    @Volatile private var inboxInstance: TaskNotificationInbox? = null
+    private var consumerRunning = false
 
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_APPROVALS, context.getString(R.string.notif_channel_approvals), NotificationManager.IMPORTANCE_HIGH).apply {
+            NotificationChannel(CHANNEL_APPROVALS, context.getString(R.string.notif_channel_approvals),
+                NotificationManager.IMPORTANCE_HIGH).apply {
                 description = context.getString(R.string.notif_channel_approvals_desc)
-            }
+            },
         )
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_EVENTS, context.getString(R.string.notif_channel_events), NotificationManager.IMPORTANCE_DEFAULT).apply {
+            NotificationChannel(CHANNEL_EVENTS, context.getString(R.string.notif_channel_events),
+                NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = context.getString(R.string.notif_channel_events_desc)
-            }
+            },
         )
     }
 
-    /** 发布任务事件通知；重复事件（同任务同类型）只刷新不重复弹。 */
-    @Synchronized
+    /** WebView 事件生产入口，不在回调线程同步发布通知。 */
     fun notify(context: Context, event: TaskEventParser.TaskEvent) {
-        // 用户正停留在该任务会话页（页面可见且显示此会话）：
-        // 审批/提问弹层本身就在页面上，系统通知是额外打扰，跳过
-        if (event.taskId.isNotEmpty() &&
-            ai.zcode.remote.ui.remote.RemoteControlActivity.isForegroundSession(event.taskId)
-        ) {
-            return
-        }
-
-        // resolved 是撤回信号：撤销该任务的审批/提问通知，不发新通知
-        // 但需冷却窗口保护：通知刚弹出 5s 内的 resolved 判定为远端快照抖动的假撤回，忽略
+        val appContext = context.applicationContext
         if (event.type == TaskEventParser.TaskEvent.Type.RESOLVED) {
-            val lastRequestTime = recentNotified[event.taskId + ":PERMISSION_REQUEST"]
-                ?: recentNotified[event.taskId + ":ELICITATION_REQUEST"]
-                ?: 0L
-            val sinceRequest = System.currentTimeMillis() - lastRequestTime
-            if (sinceRequest < RESOLVE_COOLDOWN_MS) {
-                return // 冷却期内忽略，避免假撤回
-            }
-            cancelPending(context, event.taskId)
+            handleResolved(appContext, event)
             return
         }
-
-        // 通知偏好检查：总开关 + 事件类型开关
-        val settings = AppSettingsRepository.getInstance(context)
-        if (!settings.isNotificationEnabled()) return
-        val typeEnabled = when (event.type) {
-            TaskEventParser.TaskEvent.Type.PERMISSION_REQUEST -> settings.isNotifApprovalEnabled()
-            TaskEventParser.TaskEvent.Type.ELICITATION_REQUEST -> settings.isNotifElicitationEnabled()
-            TaskEventParser.TaskEvent.Type.TASK_COMPLETED -> settings.isNotifCompletedEnabled()
-            TaskEventParser.TaskEvent.Type.TASK_FAILED -> settings.isNotifFailedEnabled()
-            else -> false
+        if (!isNotifiable(event.type)) return
+        if (inbox(appContext).enqueue(event)) {
+            Log.d(TAG, "notification enqueued: type=${event.type} id=${event.taskId} key=${event.eventKey}")
+            // 前台抑制移到消费阶段：发送后立即切桌面时，事件往往恰好在
+            // onPause 前后被解析。若入队前就按“当前仍在前台”丢弃，会出现
+            // 切到桌面后永远收不到；延迟消费也给生命周期切换留出时间。
+            drainAsync(appContext, FOREGROUND_CHECK_DELAY_MS)
+        } else {
+            Log.d(TAG, "notification replay ignored: type=${event.type} id=${event.taskId} key=${event.eventKey}")
         }
-        if (!typeEnabled) return
+    }
 
-        // 时间窗口去重：前台 WS 和后台 WS 可能各触发一次同一事件
-        val dedupKey = event.taskId + ":" + event.type.name
-        val now = System.currentTimeMillis()
-        val lastTime = recentNotified[dedupKey] ?: 0L
-        if (now - lastTime < DEDUP_WINDOW_MS) return
-        recentNotified[dedupKey] = now
-        // 防御性清理：最多保留 100 条去重记录
-        if (recentNotified.size > 100) {
-            val oldest = recentNotified.minByOrNull { it.value }?.key
-            if (oldest != null) recentNotified.remove(oldest)
-        }
+    /** 应用或保活服务重建后恢复未完成消费；过期租约会自动重试。 */
+    fun resumePending(context: Context) = drainAsync(context.applicationContext)
 
-        ensureChannels(context)
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val (title, text, channel) = when (event.type) {
-            TaskEventParser.TaskEvent.Type.PERMISSION_REQUEST -> Triple(
-                context.getString(R.string.notif_approval_title),
-                buildText(context, event, R.string.notif_approval_text),
-                CHANNEL_APPROVALS
-            )
-            TaskEventParser.TaskEvent.Type.ELICITATION_REQUEST -> Triple(
-                context.getString(R.string.notif_elicitation_title),
-                buildText(context, event, R.string.notif_elicitation_text),
-                CHANNEL_APPROVALS
-            )
-            TaskEventParser.TaskEvent.Type.TASK_COMPLETED -> Triple(
-                context.getString(R.string.notif_completed_title),
-                buildText(context, event, R.string.notif_completed_text),
-                CHANNEL_EVENTS
-            )
-            TaskEventParser.TaskEvent.Type.TASK_FAILED -> Triple(
-                context.getString(R.string.notif_failed_title),
-                buildText(context, event, R.string.notif_failed_text),
-                CHANNEL_EVENTS
-            )
-            else -> return
+    private fun handleResolved(context: Context, event: TaskEventParser.TaskEvent) {
+        val key = event.eventKey
+        val resolvedAt = synchronized(recentRequestTimes) { recentRequestTimes[key] ?: 0L }
+        if (System.currentTimeMillis() - resolvedAt < RESOLVE_COOLDOWN_MS) {
+            Log.d(TAG, "resolved ignored during cooldown: id=" + event.taskId + " key=" + key)
+            return
         }
-        // 新事件到来时先取消同任务的所有旧通知（跨通道），避免残留
+        // 只清理与该交互严格对应的未投递记录。同一任务连续出现第二次审批时，
+        // 旧 resolved 的 eventKey 与新请求不同，绝不会误伤新通知。
+        if (key.isNotEmpty()) {
+            inbox(context).discardPendingInteraction(key)
+        }
         if (event.taskId.isNotEmpty()) {
-            manager.cancel(event.taskId.hashCode())
+            (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .cancel(event.taskId.hashCode())
         }
-        val contentIntent = PendingIntent.getActivity(
-            context,
-            0,
+    }
+
+    private fun drainAsync(context: Context, delayMs: Long = 0L) {
+        synchronized(this) {
+            if (consumerRunning) return
+            consumerRunning = true
+        }
+        executor.schedule({ drain(context) }, delayMs, TimeUnit.MILLISECONDS)
+    }
+
+    private fun drain(context: Context) {
+        try {
+            while (true) {
+                val record = inbox(context).claimNext() ?: return
+                if (!consumeRecord(record, context)) return
+            }
+        } finally {
+            synchronized(this) { consumerRunning = false }
+            // 先释放运行标记再安排下一次领取，避免生产者刚入队时恰好错过消费者。
+            inbox(context).nextWakeDelayMs()?.let { delay ->
+                executor.schedule({ drainAsync(context) }, delay, TimeUnit.MILLISECONDS)
+            }
+        }
+    }
+
+    /** 投递单条记录；返回 false 表示需要把记录留到下一轮（失败/租约到期）。 */
+    private fun consumeRecord(
+        record: TaskNotificationInbox.Record,
+        context: Context,
+    ): Boolean {
+        return try {
+            when (post(record, context)) {
+                ConsumeResult.DELIVERED -> {
+                    inbox(context).markDelivered(record.rowId)
+                    true
+                }
+                ConsumeResult.DISCARDED -> {
+                    inbox(context).markDiscarded(record.rowId)
+                    true
+                }
+                ConsumeResult.RETRY -> {
+                    inbox(context).markRetry(record.rowId, RETRY_DELAY_MS)
+                    false
+                }
+            }
+        } catch (e: Exception) {
+            // 单个坏事件不能让整个消费者退出；回滚到待消费状态后继续处理下一条。
+            Log.e(TAG, "notification consume failed; will retry: key=${record.event.eventKey}", e)
+            inbox(context).markRetry(record.rowId, RETRY_DELAY_MS)
+            false
+        }
+    }
+
+    private fun post(record: TaskNotificationInbox.Record, context: Context): ConsumeResult {
+        val event = record.event
+        // 用户正停留在某任务会话页时，该会话自身的消息（审批/提问/完成/失败）
+        // 已在页面上实时可见，弹系统通知属于打扰 → 抑制；其他会话的消息不受
+        // 影响照常通知。RESOLVED 不经过这里（notify 入口已分流）。
+        if (event.taskId.isNotEmpty() &&
+            RemoteControlActivity.isForegroundSession(event.taskId)
+        ) return ConsumeResult.DISCARDED
+        val settings = AppSettingsRepository.getInstance(context)
+        if (!settings.isNotificationEnabled() || !isEnabledForType(settings, event.type)) {
+            Log.d(TAG, "notification disabled; event consumed: type=${event.type} id=${event.taskId}")
+            return ConsumeResult.DISCARDED
+        }
+        ensureChannels(context)
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            Log.w(TAG, "system notifications disabled; event consumed: id=${event.taskId}")
+            return ConsumeResult.DISCARDED
+        }
+        val channel = channelFor(event)
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= 26 &&
+            manager.getNotificationChannel(channel)?.importance == NotificationManager.IMPORTANCE_NONE
+        ) return ConsumeResult.DISCARDED
+
+        val (title, text) = notificationText(context, event)
+        val intent = PendingIntent.getActivity(
+            context, (event.deviceName + ":" + event.taskId).hashCode(),
             buildLaunchIntent(context, event),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notification: Notification = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setContentIntent(contentIntent)
+            .setContentIntent(intent)
             .setAutoCancel(true)
-            .setOnlyAlertOnce(true)
             .build()
-        // ID 按任务维度稳定：同任务的新事件覆盖旧通知（不带 type，
-        // 避免同一任务的失败和成功通知并存导致"上次的失败通知"残留）
-        val id = event.taskId.ifEmpty { "general" }.hashCode()
-        try {
+        return try {
+            // 审批/提问使用 taskId 作为通知 ID：同一任务的新交互替换旧横幅，避免堆积。
+            // 完成/失败必须使用稳定的 eventKey 作为 ID：这些事件没有 pending 交互，
+            // 若统一退化为 "general"，多个后台任务的完成/失败会互相 cancel，最终
+            // 永远只留下最后一条 —— 表现为“失败/完成通知几次后就没了”。
+            val id = if (isInteraction(event)) {
+                event.taskId.ifEmpty { "general" }.hashCode()
+            } else {
+                event.eventKey.ifEmpty { event.taskId }.hashCode()
+            }
+            if (isInteraction(event)) manager.cancel(id)
             manager.notify(id, notification)
+            if (isInteraction(event) && event.eventKey.isNotEmpty()) {
+                val now = System.currentTimeMillis()
+                val key = event.eventKey
+                synchronized(recentRequestKeys) {
+                    recentRequestKeys[event.taskId] = key
+                    if (recentRequestKeys.size > MAX_RECENT_REQUESTS) {
+                        val oldest = recentRequestKeys.entries.minByOrNull { it.value }?.key
+                        if (oldest != null) recentRequestKeys.remove(oldest)
+                    }
+                }
+                synchronized(recentRequestTimes) {
+                    recentRequestTimes[key] = now
+                    if (recentRequestTimes.size > MAX_RECENT_REQUESTS) {
+                        val oldestKey = recentRequestTimes.entries.minByOrNull { it.value }?.key
+                        if (oldestKey != null) recentRequestTimes.remove(oldestKey)
+                    }
+                }
+            }
+            Log.i(TAG, "notification posted: type=${event.type} id=${event.taskId} key=${event.eventKey}")
+            ConsumeResult.DELIVERED
         } catch (e: Exception) {
-            // 通知权限被关闭等情况静默
+            Log.e(TAG, "notification post failed; will retry: type=${event.type} id=${event.taskId}", e)
+            ConsumeResult.RETRY
         }
     }
 
-    /** 撤销指定任务的通知（用户已在别处处理）。 */
-    private fun cancelPending(context: Context, taskId: String) {
-        if (taskId.isEmpty()) return
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.cancel(taskId.hashCode())
+    private fun isNotifiable(type: TaskEventParser.TaskEvent.Type) =
+        type != TaskEventParser.TaskEvent.Type.RESOLVED
+
+    private fun isInteraction(event: TaskEventParser.TaskEvent) =
+        event.type == TaskEventParser.TaskEvent.Type.PERMISSION_REQUEST ||
+            event.type == TaskEventParser.TaskEvent.Type.ELICITATION_REQUEST
+
+    private fun isEnabledForType(settings: AppSettingsRepository, type: TaskEventParser.TaskEvent.Type) = when (type) {
+        TaskEventParser.TaskEvent.Type.PERMISSION_REQUEST -> settings.isNotifApprovalEnabled()
+        TaskEventParser.TaskEvent.Type.ELICITATION_REQUEST -> settings.isNotifElicitationEnabled()
+        TaskEventParser.TaskEvent.Type.TASK_COMPLETED -> settings.isNotifCompletedEnabled()
+        TaskEventParser.TaskEvent.Type.TASK_FAILED -> settings.isNotifFailedEnabled()
+        TaskEventParser.TaskEvent.Type.RESOLVED -> false
     }
 
-    /**
-     * 构造通知点击后的启动 Intent：通过 deviceName 从连接仓库反查连接，
-     * 打开对应远程控制页并携带 taskId 跳转到任务会话；查不到时退化为首页。
-     */
+    private fun channelFor(event: TaskEventParser.TaskEvent) =
+        if (isInteraction(event)) CHANNEL_APPROVALS else CHANNEL_EVENTS
+
+    private fun notificationText(context: Context, event: TaskEventParser.TaskEvent): Pair<String, String> {
+        val titleRes = when (event.type) {
+            TaskEventParser.TaskEvent.Type.PERMISSION_REQUEST -> R.string.notif_approval_title
+            TaskEventParser.TaskEvent.Type.ELICITATION_REQUEST -> R.string.notif_elicitation_title
+            TaskEventParser.TaskEvent.Type.TASK_COMPLETED -> R.string.notif_completed_title
+            TaskEventParser.TaskEvent.Type.TASK_FAILED -> R.string.notif_failed_title
+            TaskEventParser.TaskEvent.Type.RESOLVED -> return "" to ""
+        }
+        val textRes = when (event.type) {
+            TaskEventParser.TaskEvent.Type.PERMISSION_REQUEST -> R.string.notif_approval_text
+            TaskEventParser.TaskEvent.Type.ELICITATION_REQUEST -> R.string.notif_elicitation_text
+            TaskEventParser.TaskEvent.Type.TASK_COMPLETED -> R.string.notif_completed_text
+            TaskEventParser.TaskEvent.Type.TASK_FAILED -> R.string.notif_failed_text
+            TaskEventParser.TaskEvent.Type.RESOLVED -> return "" to ""
+        }
+        val task = event.taskTitle.ifBlank { context.getString(R.string.notif_task_unnamed) }
+        val text = context.getString(textRes, task).let {
+            if (event.deviceName.isBlank()) it else "$it · ${event.deviceName}"
+        }
+        return context.getString(titleRes) to text
+    }
+
     private fun buildLaunchIntent(context: Context, event: TaskEventParser.TaskEvent): Intent {
-        val conn = findConnection(context, event.deviceName)
-        return if (conn != null) {
+        val connection = findConnection(context, event.deviceName)
+        return if (connection != null) {
             Intent(context, RemoteControlActivity::class.java).apply {
-                putExtra(RemoteControlActivity.EXTRA_URL, conn.url)
-                putExtra(RemoteControlActivity.EXTRA_NAME, conn.name)
-                if (event.taskId.isNotEmpty()) {
-                    putExtra(RemoteControlActivity.EXTRA_TASK_ID, event.taskId)
-                }
+                putExtra(RemoteControlActivity.EXTRA_URL, connection.url)
+                putExtra(RemoteControlActivity.EXTRA_NAME, connection.name)
+                if (event.taskId.isNotEmpty()) putExtra(RemoteControlActivity.EXTRA_TASK_ID, event.taskId)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
         } else {
@@ -187,23 +281,17 @@ object TaskNotifier {
         }
     }
 
-    /** 按设备名从连接仓库反查连接。 */
-    private fun findConnection(context: Context, deviceName: String): ai.zcode.remote.data.model.RemoteConnection? {
-        if (deviceName.isBlank()) return null
-        return try {
-            val repo = ConnectionRepository.getInstance(context)
-            repo.getAllConnections().firstOrNull { it.name == deviceName }
-        } catch (e: Exception) {
-            null
+    private fun findConnection(context: Context, deviceName: String) = try {
+        if (deviceName.isBlank()) null else ConnectionRepository.getInstance(context)
+            .getAllConnections().firstOrNull { it.name == deviceName }
+    } catch (_: Exception) { null }
+
+    private fun inbox(context: Context): TaskNotificationInbox {
+        inboxInstance?.let { return it }
+        return synchronized(this) {
+            inboxInstance ?: TaskNotificationInbox(context).also { inboxInstance = it }
         }
     }
 
-    private fun buildText(context: Context, event: TaskEventParser.TaskEvent, templateRes: Int): String {
-        val title = event.taskTitle.ifBlank { context.getString(R.string.notif_task_unnamed) }
-        return if (event.deviceName.isBlank()) {
-            context.getString(templateRes, title)
-        } else {
-            context.getString(templateRes, title) + " · " + event.deviceName
-        }
-    }
+    private enum class ConsumeResult { DELIVERED, DISCARDED, RETRY }
 }

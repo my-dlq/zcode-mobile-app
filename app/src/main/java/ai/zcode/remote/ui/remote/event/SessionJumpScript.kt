@@ -24,14 +24,25 @@ object SessionJumpScript {
     var deadline = Date.now() + 20000;
     var tried = new WeakSet();
     var mine = new WeakSet();
+    var wentHome = false;
+
+    // 当前会话视图的会话 ID（无 [data-session-id] 时为空 = 列表页/其他页）
+    var currentSessionId = function() {
+        var p = document.querySelector('[data-session-id]');
+        return p ? (p.getAttribute('data-session-id') || '') : '';
+    };
 
     var find = function() {
         var els = document.querySelectorAll('[data-testid]');
         for (var i = 0; i < els.length; i++) {
             var t = els[i].getAttribute('data-testid') || '';
-            if (t.indexOf(tid) === -1) continue;
+            // 只匹配任务条目本身（task-item-<完整 taskId>），避免 indexOf 把
+            // 前缀相同的其它条目（如 task-item-<id>-sub）误判为目标
+            if (t !== 'task-item-' + tid) continue;
             if (els[i].getClientRects().length === 0) continue;
             if (!els[i].isConnected) continue;
+            if (tried.has(els[i])) continue; // 已点过等跳转，不重复点击
+            tried.add(els[i]);
             els[i].scrollIntoView({block: 'center'});
             els[i].click();
             return true;
@@ -74,8 +85,6 @@ object SessionJumpScript {
         }
     };
 
-    if (find()) return;
-
     var iv = null, mo = null;
     var stop = function() {
         if (iv) clearInterval(iv);
@@ -85,21 +94,39 @@ object SessionJumpScript {
 
     var tick = function() {
         if (stale()) { restore(); stop(); return; }
-        if (find()) { stop(); return; }
+        // 目标会话已打开（当前会话 ID 与目标一致）才算成功。
+        // 不能只凭“页面处于会话视图”就停止：通知点击后若远端恢复的是
+        // 上一次会话（非目标），会误停在旧会话页 —— 表现为点 A 通知跳到 B。
+        var sid = currentSessionId();
+        if (sid === tid) { restore(); stop(); return; }
+        if (find()) return; // 点击后等会话切换，由下一轮 tick 确认
         if (Date.now() > deadline) { restore(); stop(); return; }
-        if (!onListPage() && document.querySelector('[data-session-id]') != null) {
-            // 页面已是会话视图：目标任务已打开，无需再找
-            stop();
+        if (!onListPage() && sid !== '') {
+            // 处于其它会话视图：先返回任务首页（列表），回到列表后由
+            // 后续 tick 的 find()/expandNext() 继续找目标。找不到返回
+            // 按钮时不能放弃——继续等页面渲染（可能有异步加载延迟）。
+            if (!wentHome) {
+                wentHome = true;
+                var backBtn = document.querySelector(
+                    'button[aria-label="返回任务首页"], button[aria-label="返回工作区"], button[aria-label="Back to workspace"]');
+                if (backBtn) {
+                    backBtn.click();
+                    return;
+                }
+            }
             return;
         }
         expandNext();
     };
 
+    // 立即 tick 一次（可能已在列表页且目标可见，直接点击进入）
+    tick();
     iv = setInterval(tick, 400);
     if (document.body) {
         mo = new MutationObserver(function() {
             if (stale()) { restore(); stop(); return; }
-            if (find()) { stop(); }
+            // DOM 变化时只做一次轻量检查；成功判定统一交给 tick
+            // （sid === tid 才 stop），避免会话切换未完成就提前退出。
         });
         mo.observe(document.body, { childList: true, subtree: true });
     }

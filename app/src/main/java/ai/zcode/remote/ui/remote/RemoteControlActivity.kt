@@ -8,6 +8,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -22,6 +25,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.webkit.ScriptHandler
 import ai.zcode.remote.R
 import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.data.repository.ConnectionRepository
@@ -50,12 +54,46 @@ class RemoteControlActivity : AppCompatActivity() {
     private var isFullscreen = true
     private var isKeepScreenOn = true
     private var lastBackPressTime = 0L
+    /** Activity 是否对用户可见（onStart/onStop 维护；后台不可见时渲染进程被回收需立即交接）。 */
+    @Volatile
+    private var activityVisible = false
+    /** 事件源是否已交接给保活服务（避免交接后 onDestroy 再次触发重复交接）。 */
+    @Volatile
+    private var eventSourceHandedOver = false
+    /** 事件桥建立时刻（elapsedRealtime）；用于跳过页面刚加载尚未收到首次心跳的宽限期。 */
+    @Volatile
+    private var eventBridgeCreatedAtElapsedMs = 0L
     private var mainMenuPopup: PopupWindow? = null
 
     private lateinit var customWebViewClient: ZCodeWebViewClient
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private lateinit var eventBridge: TaskEventBridge
+    private var eventBridgeAlive = false
+    private var eventCaptureScript: ScriptHandler? = null
+    private lateinit var networkCallback: ConnectivityManager.NetworkCallback
     private val handler = Handler(Looper.getMainLooper())
+    private val connectivityManager by lazy {
+        getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    }
+    private var networkCallbackRegistered = false
+    private var networkAvailable = true
+    private var networkLossObserved = false
+    private var reconnectAttempt = 0
+    private var reconnectScheduled = false
+    private var lastReconnectAtElapsedMs = 0L
+    private val reconnectRunnable = Runnable {
+        reconnectScheduled = false
+        if (!networkAvailable || isFinishing || (Build.VERSION.SDK_INT >= 17 && isDestroyed)) {
+            return@Runnable
+        }
+        reconnectAttempt++
+        lastReconnectAtElapsedMs = android.os.SystemClock.elapsedRealtime()
+        android.util.Log.i("ZCodeWeb", "reload for reconnect: attempt=$reconnectAttempt")
+        binding.layoutErrorOverlay.visibility = View.GONE
+        loadUrl(targetUrl)
+    }
+
+
 
     private val fileChooserLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -109,14 +147,17 @@ class RemoteControlActivity : AppCompatActivity() {
         android.util.Log.d("ZCodeEvent", "connectionId for $deviceName: ${connectionId.ifEmpty { "(not found)" }}")
 
         // 单连接监听：一次只保留一个远程页实例（新打开连接时关闭旧页面，
-        // 旧 WebView 随之销毁，事件监听切换到当前连接）
+        // 旧 WebView 随之销毁，事件监听切换到当前连接）。
+        // 先取得事件源所有权再加载本页：让保活服务销毁可能残留的隐藏事件源，
+        // 确保本 Activity 是唯一连接远端的控制端，避免“连接被占用”。
+        ai.zcode.remote.service.KeepAliveService.acquireEventSource(
+            this,
+            url = targetUrl,
+            name = deviceName,
+            sourceId = connectionId.ifEmpty { targetUrl },
+        )
         current?.takeIf { it !== this }?.finish()
         current = this
-
-        // 打开任一连接即自动启动保活前台服务：
-        // 防止进程被系统冻结（Android 12+ cached-app freeze / MIUI 更甚），
-        // 冻结后所有 WebSocket、重连、事件接收全部停摆——通知收不到的致命原因
-        ai.zcode.remote.service.KeepAliveService.start(this)
 
         setupImmersiveAndScreen()
         setupKeyboardInsets()
@@ -136,29 +177,51 @@ class RemoteControlActivity : AppCompatActivity() {
         }
 
         setupEventCapture()
+        registerNetworkCallback()
         loadUrl(targetUrl)
     }
 
     /** 注册任务事件桥并在每次页面加载后注入捕获脚本（SPA 导航可能重建 window）。 */
     private fun setupEventCapture() {
         ensureNotificationPermission()
+        if (::eventBridge.isInitialized) {
+            eventBridge.dispose()
+            binding.webView.removeJavascriptInterface(TaskEventBridge.BRIDGE_NAME)
+        }
+        eventCaptureScript?.let {
+            try { it.remove() } catch (e: Exception) {
+                android.util.Log.w("ZCodeWeb", "document-start script removal failed", e)
+            }
+            eventCaptureScript = null
+        }
+        val sourceId = connectionId.ifEmpty { targetUrl }
         eventBridge = TaskEventBridge(
+            sourceId = sourceId,
             deviceName = deviceName,
+            onConnectionState = { state ->
+                runOnUiThread { handleConnectionState(state) }
+            },
             onEvent = { event ->
                 runOnUiThread { TaskNotifier.notify(this, event) }
             }
         )
+        eventBridgeAlive = true
+        eventBridgeCreatedAtElapsedMs = android.os.SystemClock.elapsedRealtime()
         binding.webView.addJavascriptInterface(eventBridge, TaskEventBridge.BRIDGE_NAME)
-        // document-start 注入必须在 loadUrl 之前调用一次——onPageStarted 回调时页面
-        // 已开始加载，脚本可能赶不上页面引导阶段建立的 WebSocket 连接
+        android.util.Log.i("ZCodeEvent", "event bridge registered: source=$sourceId")
+        // document-start 脚本按当前连接 origin 注册，对后续每次整页加载都会生效。
         try {
-            androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
+            val origin = Uri.parse(targetUrl).let { uri ->
+                if (uri.scheme.isNullOrBlank() || uri.host.isNullOrBlank()) targetUrl
+                else "${uri.scheme}://${uri.host}${if (uri.port > 0) ":${uri.port}" else ""}"
+            }
+            eventCaptureScript = androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
                 binding.webView,
                 EventCaptureScript.build(TaskEventBridge.BRIDGE_NAME),
-                setOf("https://zcode.z.ai")
+                setOf(origin)
             )
         } catch (e: Exception) {
-            android.util.Log.w("ZCodeWeb", "document-start inject failed: ${e.message}")
+            android.util.Log.w("ZCodeWeb", "document-start inject failed", e)
         }
     }
 
@@ -357,10 +420,14 @@ class RemoteControlActivity : AppCompatActivity() {
         // 配置 WebViewClient
         customWebViewClient = ZCodeWebViewClient(
             onPageStart = {
+                handler.removeCallbacks(reconnectRunnable)
+                reconnectScheduled = false
                 binding.progressBar.visibility = View.VISIBLE
                 binding.layoutErrorOverlay.visibility = View.GONE
             },
             onPageFinish = { _ ->
+                handler.removeCallbacks(reconnectRunnable)
+                reconnectScheduled = false
                 binding.progressBar.visibility = View.GONE
                 // 整页加载后按当前设置重注 viewport 缩放（SPA 内部导航不改 meta，
                 // 无需额外轮询；设置页改完缩放返回走 onResume 那条路径）
@@ -394,6 +461,24 @@ class RemoteControlActivity : AppCompatActivity() {
                 binding.progressBar.visibility = View.GONE
                 binding.layoutErrorOverlay.visibility = View.VISIBLE
                 binding.tvErrorDetail.text = description
+                if (networkAvailable) scheduleReconnect("page-error")
+            },
+            onRenderProcessGone = {
+                // 渲染进程被系统回收后，前台页面可以 recreate 重建；后台不可见时
+                // recreate 出的新页面没有 surface，加载/WS 仍可能失败（实测 vivo 会
+                // 反复回收）。后台场景直接把事件源交接给保活服务的隐藏监听 WebView
+                // （无 UI 也能跑 JS/WS），避免“Activity 活着但事件源已死”的空窗。
+                handler.postDelayed({
+                    if (isFinishing || (Build.VERSION.SDK_INT >= 17 && isDestroyed)) return@postDelayed
+                    if (activityVisible) {
+                        if (networkAvailable) {
+                            android.util.Log.i("ZCodeWeb", "recreate activity after renderer process exit")
+                            recreate()
+                        }
+                    } else {
+                        handoverEventSourceToKeepAlive("renderer-gone-background")
+                    }
+                }, RENDERER_RECOVERY_DELAY_MS)
             },
             pageZoomProvider = { appSettings.getPageZoom() }
         )
@@ -690,6 +775,116 @@ class RemoteControlActivity : AppCompatActivity() {
         binding.webView.loadUrl(url)
     }
 
+    private fun registerNetworkCallback() {
+        if (networkCallbackRegistered) return
+        networkAvailable = isNetworkAvailable()
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                handler.post {
+                    val wasUnavailable = !networkAvailable || networkLossObserved
+                    networkAvailable = true
+                    if (wasUnavailable) {
+                        networkLossObserved = false
+                        android.util.Log.i("ZCodeWeb", "network available: ${network.networkHandle}")
+                        scheduleReconnect("network-available")
+                    }
+                }
+            }
+
+            override fun onLost(network: Network) {
+                handler.post {
+                    networkLossObserved = true
+                    networkAvailable = isNetworkAvailable()
+                    if (networkAvailable) {
+                        android.util.Log.i("ZCodeWeb", "default network switched: ${network.networkHandle}")
+                        scheduleReconnect("network-switched")
+                    } else {
+                        handler.removeCallbacks(reconnectRunnable)
+                        reconnectScheduled = false
+                        android.util.Log.w("ZCodeWeb", "network lost: ${network.networkHandle}")
+                    }
+                }
+            }
+
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                handler.post {
+                    val validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                    if (validated && !networkAvailable) {
+                        networkAvailable = true
+                        scheduleReconnect("network-validated")
+                    }
+                }
+            }
+        }
+        networkCallback = callback
+        try {
+            connectivityManager.registerDefaultNetworkCallback(callback)
+            networkCallbackRegistered = true
+            android.util.Log.i("ZCodeWeb", "network callback registered")
+        } catch (e: Exception) {
+            android.util.Log.e("ZCodeWeb", "network callback registration failed", e)
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        if (!networkCallbackRegistered) return
+        try {
+            connectivityManager.unregisterNetworkCallback(networkCallback)
+        } catch (e: Exception) {
+            android.util.Log.w("ZCodeWeb", "network callback unregister failed", e)
+        }
+        networkCallbackRegistered = false
+    }
+
+    private fun isNetworkAvailable(): Boolean {
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
+    private fun scheduleReconnect(reason: String, minimumDelayMs: Long = 0L) {
+        if (!networkAvailable || reconnectScheduled || isFinishing ||
+            (Build.VERSION.SDK_INT >= 17 && isDestroyed)
+        ) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        val intervalRemaining = (MIN_RECONNECT_INTERVAL_MS - (now - lastReconnectAtElapsedMs))
+            .coerceAtLeast(0L)
+        reconnectScheduled = true
+        val delay = maxOf(
+            ReconnectPolicy.delayMs(reconnectAttempt),
+            minimumDelayMs,
+            intervalRemaining,
+        )
+        android.util.Log.i("ZCodeWeb", "reconnect scheduled: reason=$reason delayMs=$delay attempt=$reconnectAttempt")
+        handler.postDelayed(reconnectRunnable, delay)
+    }
+
+    private fun cancelReconnect(reason: String) {
+        if (reconnectScheduled) {
+            handler.removeCallbacks(reconnectRunnable)
+            reconnectScheduled = false
+            android.util.Log.i("ZCodeWeb", "reconnect cancelled: reason=$reason")
+        }
+    }
+
+    private fun handleConnectionState(state: TaskEventBridge.ConnectionState) {
+        when (state.state) {
+            TaskEventBridge.ConnectionState.State.UP -> {
+                cancelReconnect("transport-up")
+                reconnectAttempt = 0
+                android.util.Log.i("ZCodeWeb", "transport recovered: ${state.transport}")
+            }
+            TaskEventBridge.ConnectionState.State.DOWN -> {
+                if (networkAvailable) {
+                    scheduleReconnect("transport-down", TRANSPORT_SELF_RECOVERY_GRACE_MS)
+                }
+            }
+            TaskEventBridge.ConnectionState.State.DEGRADED -> {
+                android.util.Log.d("ZCodeWeb", "transport degraded: ${state.transport} ${state.reason}")
+            }
+        }
+    }
+
     /** singleTop 复用栈顶实例时：用新 Intent 的 extra 切换到新连接/会话。 */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -708,6 +903,15 @@ class RemoteControlActivity : AppCompatActivity() {
         if (connectionId.isNotEmpty()) {
             repo.updateLastConnected(connectionId)
         }
+        // singleTop 切换连接时同步事件源目标：本页仍是唯一控制端，服务只更新接管目标，
+        // 不创建隐藏监听；本页销毁后才按新 URL 接管。
+        ai.zcode.remote.service.KeepAliveService.acquireEventSource(
+            this,
+            url = targetUrl,
+            name = deviceName,
+            sourceId = connectionId.ifEmpty { targetUrl },
+        )
+        setupEventCapture()
         // 重新加载页面
         loadUrl(targetUrl)
     }
@@ -738,13 +942,23 @@ class RemoteControlActivity : AppCompatActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        activityVisible = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        activityVisible = false
+    }
+
     override fun onPause() {
         super.onPause()
-        // 不调 webView.onPause()：暂停会冻结 JS 定时器与 WS 回调，
-        // 导致切后台后电脑端发审批 APP 收不到。让 WebView 在后台保持活跃，
-        // 事件经 TaskEventBridge → TaskNotifier 触发系统通知。
-        // 页面离开前台（被列表页覆盖/切后台/关闭）：不再抑制系统通知
+        // 页面离开前台时不停止 WebView 事件监听；仅暂停前台会话抑制与 UI 轮询。
         foregroundSessionVisible.set(false)
+        // 立即清空旧会话 ID：若事件解析器在 onPause 之前已捕获“前台会话”，
+        // 会沿用旧 ID 把切后台后的审批/提问也抑制掉，表现为几次通知后彻底失联。
+        foregroundSessionId.set("")
         handler.removeCallbacks(foregroundSessionTick)
         // 切出时记录当前任务会话：通过 JS 从页面 DOM 提取 task-item 的
         // data-testid（选中态/展开态），持久化到对应连接，下次切回时恢复
@@ -763,6 +977,7 @@ class RemoteControlActivity : AppCompatActivity() {
     /** 提取当前前台会话 ID 并更新全局（供 TaskNotifier 判断是否抑制通知）。 */
     private fun refreshForegroundSessionId() {
         if (connectionId.isEmpty()) return
+        if (Build.VERSION.SDK_INT >= 17 && isDestroyed) return
         binding.webView.evaluateJavascript("""
             (function() {
                 var pane = document.querySelector('[data-session-id]');
@@ -816,7 +1031,25 @@ class RemoteControlActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         if (current === this) current = null
+        // 主页面销毁后交还事件源所有权：保活服务随即用隐藏 WebView 接管同一远程 URL，
+        // 填补 Activity WebView 销毁后的监听空窗（服务内部保证与主页面不并存）。
+        ai.zcode.remote.service.KeepAliveService.releaseEventSource(
+            this,
+            url = targetUrl,
+            name = deviceName,
+            sourceId = connectionId.ifEmpty { targetUrl },
+        )
         handler.removeCallbacks(foregroundSessionTick)
+        handler.removeCallbacks(reconnectRunnable)
+        unregisterNetworkCallback()
+        eventCaptureScript?.let {
+            try { it.remove() } catch (e: Exception) {
+                android.util.Log.w("ZCodeWeb", "document-start script removal failed", e)
+            }
+        }
+        eventCaptureScript = null
+        if (::eventBridge.isInitialized) eventBridge.dispose()
+        eventBridgeAlive = false
         handler.removeCallbacks(zoomHintHide)
         mainMenuPopup?.dismiss()
         mainMenuPopup = null
@@ -824,6 +1057,34 @@ class RemoteControlActivity : AppCompatActivity() {
         filePathCallback = null
         binding.webView.destroy()
         super.onDestroy()
+    }
+
+    /**
+     * 将事件源所有权交还给保活服务并销毁本页。用于后台渲染进程被系统回收、
+     * 页面 JS 心跳/流量长时间停止等“Activity 活着但事件源已死”的场景：
+     * 保活服务随即用隐藏 WebView 接管同一远程 URL，避免通知监听空窗。
+     */
+    private fun handoverEventSourceToKeepAlive(reason: String) {
+        if (eventSourceHandedOver || isFinishing || (Build.VERSION.SDK_INT >= 17 && isDestroyed)) {
+            return
+        }
+        eventSourceHandedOver = true
+        val url = targetUrl
+        val name = deviceName
+        val sourceId = connectionId.ifEmpty { url }
+        android.util.Log.w("ZCodeWeb", "handover event source to keep-alive: reason=$reason")
+        // 先把自己从“存活实例”摘除：finish() 是异步的，若不先摘除，
+        // 保活服务在 onStartCommand 里看到 hasLiveInstance() 仍为 true，
+        // 会认为主页面还在托管事件源，从而跳过/销毁刚创建的隐藏监听，
+        // 交接后依然处于“Activity 活着但事件源已死”的空窗。
+        if (current === this) current = null
+        // 先释放事件源所有权（保活服务立即创建隐藏监听），再销毁本页 WebView。
+        // 顺序不能反：若先 finish，onDestroy 的 release 与这里的 release 幂等，
+        // 但先 release 可让隐藏监听尽早接管、缩短空窗。
+        ai.zcode.remote.service.KeepAliveService.releaseEventSource(
+            this, url = url, name = name, sourceId = sourceId,
+        )
+        finish()
     }
 
     /** 用户返回到连接列表：不销毁本页——把 MainActivity 启动到栈顶
@@ -848,8 +1109,12 @@ class RemoteControlActivity : AppCompatActivity() {
         const val EXTRA_TASK_ID = "extra_task_id"
         private const val EXTRA_SETTINGS_MODE = "extra_settings_mode"
 
-        /** 前台会话 ID 的刷新周期（ms）：跟随 SPA 页面内会话切换。 */
         private const val FOREGROUND_SESSION_TICK_MS = 2000L
+        private const val MIN_RECONNECT_INTERVAL_MS = 4_000L
+        private const val TRANSPORT_SELF_RECOVERY_GRACE_MS = 4_000L
+        private const val RENDERER_RECOVERY_DELAY_MS = 3_000L
+
+
 
         /** 顶栏菜单「缩小/放大页面」每次调整的步进（%），与设置页滑杆的 1% 微调互补。 */
         private const val STEP = 5
@@ -864,6 +1129,37 @@ class RemoteControlActivity : AppCompatActivity() {
 
         /** 是否已有远程页存活（供 MainActivity 切回判断/自动恢复去重）。 */
         fun hasLiveInstance(): Boolean = current != null
+
+        /**
+         * 主页面事件源健康自检（由 KeepAliveService 周期巡检调用）。
+         * 页面注入的捕获脚本每 10s 上报一次心跳；若主 Activity 存在但其事件桥的
+         * 心跳/流量超过 staleAfterElapsedMs 未更新，说明 WebView 渲染进程已被
+         * 系统回收或页面 JS 已停（vivo 后台激进回收的典型表现），此时 Activity
+         * 虽“活着”但已收不到任何远端事件。前台可见时交给 recreate/重连逻辑自行
+         * 恢复；后台不可见时直接把事件源交接给保活服务的隐藏监听，避免通知空窗。
+         *
+         * @return true 表示已执行交接（调用方应停止当前分支并让服务接管）。
+         */
+        fun requestEventSourceHandoverIfStale(staleAfterElapsedMs: Long): Boolean {
+            val activity = current ?: return false
+            if (!activity.eventBridgeAlive || !activity::eventBridge.isInitialized) return false
+            if (activity.activityVisible) return false
+            if (activity.isFinishing || (Build.VERSION.SDK_INT >= 17 && activity.isDestroyed)) return false
+            val now = android.os.SystemClock.elapsedRealtime()
+            // 事件桥刚建立（页面加载/重连初期）时可能尚未收到首次心跳，
+            // 必须跳过，避免把正常加载中的页面误判为“事件源已死”。
+            val bridgeAge = now - activity.eventBridgeCreatedAtElapsedMs
+            if (bridgeAge < staleAfterElapsedMs) return false
+            val lastBeat = activity.eventBridge.lastHeartbeatAtElapsedMs
+            val lastTraffic = activity.eventBridge.lastTrafficAtElapsedMs
+            val beatFresh = lastBeat > 0L && now - lastBeat < staleAfterElapsedMs
+            val trafficFresh = lastTraffic > 0L && now - lastTraffic < staleAfterElapsedMs
+            if (beatFresh || trafficFresh) return false
+            activity.handoverEventSourceToKeepAlive(
+                "heartbeat-stale-beat=" + (now - lastBeat) + "ms-traffic=" + (now - lastTraffic) + "ms"
+            )
+            return true
+        }
 
         /** 远程页是否在前台可见（Activity onResume/onPause 维护）。 */
         private val foregroundSessionVisible = java.util.concurrent.atomic.AtomicBoolean(false)

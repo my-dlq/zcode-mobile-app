@@ -16,6 +16,7 @@ class ZCodeWebViewClient(
     private val onPageStart: () -> Unit,
     private val onPageFinish: (url: String) -> Unit,
     private val onPageError: (errorCode: Int, description: String) -> Unit,
+    private val onRenderProcessGone: () -> Unit,
     /** 当前页面缩放百分比（70~150），由设置页写入、此处读取以生成 viewport。 */
     private val pageZoomProvider: () -> Int = { 100 }
 ) : WebViewClient() {
@@ -60,10 +61,12 @@ class ZCodeWebViewClient(
         view.evaluateJavascript(EventCaptureScript.build(TaskEventBridge.BRIDGE_NAME), null)
     }
 
+    @androidx.annotation.RequiresApi(26)
     override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
         val didCrash = detail?.didCrash() == true
         android.util.Log.e("ZCodeWeb", "onRenderProcessGone: didCrash=$didCrash")
-        onPageError(-100, if (didCrash) "页面渲染进程异常，请点击重试" else "系统内存不足回收了页面，请点击重试")
+        onPageError(-100, if (didCrash) "页面渲染进程异常，正在重新连接" else "系统回收了页面，正在重新连接")
+        onRenderProcessGone()
         return true
     }
 
@@ -462,10 +465,9 @@ class ZCodeWebViewClient(
             /* 任务会话底部"上下文容量"悬浮卡（Radix HoverCard）字体与模型菜单
                一致：label 为 text-ui-base 14px、数值为 text-ui-sm，统一 12px/18px。
                限定 data-slot="hover-card-content"，不影响聊天消息与输入框。
-               ⚠️ 不要在这里加 transform 偏移——源码 HoverCardContent 用 align="center"
-               + w-72，Radix 本就按触发器动态居中。之前写死的 translateX(-46px) 是按
-               412 视口 + 320 卡宽算的常量，视口/卡宽变化就偏（实测反而把卡片推出
-               屏幕左侧），去掉后由 Radix 原生逻辑居中即可。 */
+               ⚠️ 不要在这里加 transform 偏移——卡片由外层 popper wrapper 的
+               translate 定位，固定偏移只适配单一视口/卡宽（曾写死 translateX(-46px)
+               实测反而把卡片推出屏幕左侧）。水平居中改由 JS 动态计算，见下方第 8 节。 */
             div[data-slot="hover-card-content"],
             div[data-slot="hover-card-content"] * {
                 font-size: 12px !important;

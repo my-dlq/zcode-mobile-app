@@ -13,7 +13,7 @@ import org.json.JSONObject
  */
 object EnvelopeDecoder {
 
-    private const val MAX_BYTES = 512 * 1024
+    private const val MAX_BYTES = 4 * 1024 * 1024
     private const val MAX_ASM_SLOTS = 32
 
     /** 分片重组槽。 */
