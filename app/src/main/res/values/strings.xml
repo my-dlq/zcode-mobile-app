@@ -1,5 +1,6 @@
 <resources>
     <string name="app_name">ZMobile</string>
+    <string name="topbar_toggle_theme">切换主题</string>
     <string name="title_connections">连接列表</string>
     <string name="hint_drag_to_sort">长按拖动进行排序</string>
     
@@ -22,6 +23,9 @@
     <string name="menu_address_connect">地址连接</string>
     <string name="menu_settings">设置</string>
     <string name="menu_about">关于</string>
+    <string name="menu_zoom_in">放大页面</string>
+    <string name="menu_zoom_out">缩小页面</string>
+    <string name="menu_zoom_value">页面缩放 %1$d%%</string>
     <string name="menu_more_options">更多连接操作</string>
 
     <!-- 设置 -->
@@ -33,6 +37,9 @@
     <string name="settings_theme_title">主题设置</string>
     <string name="settings_theme_light">亮色主题</string>
     <string name="settings_theme_dark">暗色主题</string>
+    <string name="settings_zoom_title">页面缩放</string>
+    <string name="settings_zoom_summary">调整远程页面整体显示比例</string>
+    <string name="settings_zoom_value">%1$d%%</string>
     <string name="settings_section_app">应用</string>
     <string name="settings_section_security">安全与隐私</string>
     <string name="settings_section_general">通用</string>

@@ -15,11 +15,14 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.ValueCallback
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.widget.PopupWindow
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.webkit.ScriptHandler
@@ -27,11 +30,14 @@ import ai.zcode.remote.R
 import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.data.repository.ConnectionRepository
 import ai.zcode.remote.databinding.ActivityRemoteControlBinding
+import ai.zcode.remote.databinding.PopupRemoteMenuBinding
+import ai.zcode.remote.ui.about.AboutActivity
 import ai.zcode.remote.ui.remote.event.EventCaptureScript
 import ai.zcode.remote.ui.remote.event.TaskEventBridge
 import ai.zcode.remote.ui.remote.event.TaskNotifier
 import ai.zcode.remote.ui.remote.web.ZCodeWebChromeClient
 import ai.zcode.remote.ui.remote.web.ZCodeWebViewClient
+import ai.zcode.remote.ui.settings.SettingsActivity
 import ai.zcode.remote.utils.ImmersiveHelper
 import ai.zcode.remote.utils.ToastUtils
 import android.os.Handler
@@ -57,6 +63,7 @@ class RemoteControlActivity : AppCompatActivity() {
     /** 事件桥建立时刻（elapsedRealtime）；用于跳过页面刚加载尚未收到首次心跳的宽限期。 */
     @Volatile
     private var eventBridgeCreatedAtElapsedMs = 0L
+    private var mainMenuPopup: PopupWindow? = null
 
     private lateinit var customWebViewClient: ZCodeWebViewClient
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
@@ -154,6 +161,7 @@ class RemoteControlActivity : AppCompatActivity() {
 
         setupImmersiveAndScreen()
         setupKeyboardInsets()
+        setupNativeTopBar()
         setupWebView()
         setupFloatingControl()
         setupBackPressHandler()
@@ -247,8 +255,119 @@ class RemoteControlActivity : AppCompatActivity() {
                 webViewLp.bottomMargin = keyboardHeight
                 binding.webView.layoutParams = webViewLp
             }
+
+            // 状态栏透明沉浸：原生顶部栏不被状态栏遮挡，paddingTop 动态 = 状态栏高
+            val statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            val topBar = binding.layoutNativeTopBar
+            if (topBar.paddingTop != statusBarHeight) {
+                topBar.setPadding(topBar.paddingLeft, statusBarHeight, topBar.paddingRight, topBar.paddingBottom)
+            }
             insets
         }
+    }
+
+    /** 原生顶部栏：调色板按钮（当前已隐藏）→ 通过 JS 打开网页内主题菜单。 */
+    private fun setupNativeTopBar() {
+        binding.btnTopBarTheme.setOnClickListener {
+            // 调网页内 zcodeTriggerThemeToggle()（由 ZCodeWebViewClient 在 onPageFinished 注入）
+            binding.webView.evaluateJavascript(
+                "(window.zcodeTriggerThemeToggle && window.zcodeTriggerThemeToggle()) || 'not-ready'",
+                null
+            )
+        }
+        binding.btnTopBarMenu.setOnClickListener { showMainMenu() }
+    }
+
+    /**
+     * 顶栏菜单：缩放快捷方式（缩小/放大）+「设置」「关于」。
+     * 远程页已在某个连接中，不提供扫描/地址连接（会切换连接，属列表页职责）。
+     * 用独立的 popup_remote_menu.xml，与主界面菜单互不影响。
+     */
+    private fun showMainMenu() {
+        mainMenuPopup?.dismiss()
+
+        val menuBinding = PopupRemoteMenuBinding.inflate(layoutInflater)
+        val popupWidth = resources.getDimensionPixelSize(R.dimen.main_menu_width)
+        val popup = PopupWindow(
+            menuBinding.root,
+            popupWidth,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            true
+        ).apply {
+            elevation = resources.displayMetrics.density * 12f
+            isOutsideTouchable = true
+            setBackgroundDrawable(ContextCompat.getDrawable(this@RemoteControlActivity, R.drawable.bg_menu_popup))
+            setOnDismissListener {
+                if (mainMenuPopup === this) mainMenuPopup = null
+            }
+        }
+
+        // 缩放快捷方式：与设置页滑杆共用同一存储与生效链路（写 prefs → applyPageZoom）。
+        // 菜单保持打开以便连续微调，故不调 popup.dismiss()；到边界时按钮置灰。
+        // 当前百分比不在菜单里显示，改为点击后屏幕中央短暂提示（showZoomHint）。
+        fun renderZoomRow() {
+            val zoom = appSettings.getPageZoom()
+            menuBinding.menuItemZoomOut.isEnabled =
+                zoom > AppSettingsRepository.PAGE_ZOOM_MIN
+            menuBinding.menuItemZoomIn.isEnabled =
+                zoom < AppSettingsRepository.PAGE_ZOOM_MAX
+            menuBinding.menuItemZoomOut.alpha = if (menuBinding.menuItemZoomOut.isEnabled) 1f else 0.4f
+            menuBinding.menuItemZoomIn.alpha = if (menuBinding.menuItemZoomIn.isEnabled) 1f else 0.4f
+        }
+
+        fun stepZoom(delta: Int) {
+            val next = (appSettings.getPageZoom() + delta)
+                .coerceIn(AppSettingsRepository.PAGE_ZOOM_MIN, AppSettingsRepository.PAGE_ZOOM_MAX)
+            if (next == appSettings.getPageZoom()) return
+            appSettings.setPageZoom(next)
+            customWebViewClient.applyPageZoom(binding.webView)
+            renderZoomRow()
+            showZoomHint(next)
+        }
+
+        renderZoomRow()
+        menuBinding.menuItemZoomOut.setOnClickListener { stepZoom(-STEP) }
+        menuBinding.menuItemZoomIn.setOnClickListener { stepZoom(STEP) }
+        menuBinding.menuItemSettings.setOnClickListener {
+            popup.dismiss()
+            SettingsActivity.start(this)
+        }
+        menuBinding.menuItemAbout.setOnClickListener {
+            popup.dismiss()
+            AboutActivity.start(this)
+        }
+
+        mainMenuPopup = popup
+        popup.showAsDropDown(binding.btnTopBarMenu, -popupWidth + binding.btnTopBarMenu.width, 8)
+    }
+
+    /**
+     * 屏幕中央短暂显示当前页面缩放（2 秒后淡出）。
+     * 连续调整时先移除上一次的隐藏任务，新值直接替换旧值显示——
+     * 计时从最后一次调整重新开始，不会出现新旧提示叠加或提前消失。
+     */
+    private fun showZoomHint(zoomPercent: Int) {
+        val hint = binding.tvZoomHint
+        handler.removeCallbacks(zoomHintHide)
+        hint.animate().cancel()
+        hint.text = getString(R.string.menu_zoom_value, zoomPercent)
+        hint.alpha = 1f
+        hint.visibility = View.VISIBLE
+        handler.postDelayed(zoomHintHide, ZOOM_HINT_DURATION_MS)
+    }
+
+    /** 缩放提示的淡出任务：2 秒到点后淡出并置 GONE。 */
+    private val zoomHintHide = Runnable {
+        binding.tvZoomHint.animate()
+            .alpha(0f)
+            .setDuration(ZOOM_HINT_FADE_MS)
+            .withEndAction {
+                // 淡出期间可能已被新的调整重新显示，仅在仍未显示时才隐藏
+                if (binding.tvZoomHint.alpha == 0f) {
+                    binding.tvZoomHint.visibility = View.GONE
+                }
+            }
+            .start()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -310,6 +429,9 @@ class RemoteControlActivity : AppCompatActivity() {
                 handler.removeCallbacks(reconnectRunnable)
                 reconnectScheduled = false
                 binding.progressBar.visibility = View.GONE
+                // 整页加载后按当前设置重注 viewport 缩放（SPA 内部导航不改 meta，
+                // 无需额外轮询；设置页改完缩放返回走 onResume 那条路径）
+                customWebViewClient.applyPageZoom(binding.webView)
                 // 通知点击带来的会话跳转：页面加载完成后注入 JS 定位并点击任务条目
                 if (pendingTaskId.isNotEmpty()) {
                     val tid = pendingTaskId
@@ -357,7 +479,8 @@ class RemoteControlActivity : AppCompatActivity() {
                         handoverEventSourceToKeepAlive("renderer-gone-background")
                     }
                 }, RENDERER_RECOVERY_DELAY_MS)
-            }
+            },
+            pageZoomProvider = { appSettings.getPageZoom() }
         )
         webView.webViewClient = customWebViewClient
 
@@ -464,171 +587,188 @@ class RemoteControlActivity : AppCompatActivity() {
     private fun setupBackPressHandler() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                binding.webView.evaluateJavascript(
-                    """(function() {
-                        function isVisible(el) {
-                            if (!el) return false;
-                            var st = window.getComputedStyle(el);
-                            if (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0 || st.pointerEvents === 'none') {
-                                return false;
-                            }
-                            var r = el.getBoundingClientRect();
-                            return r.width > 0 && r.height > 0;
-                        }
-
-                        // 1. 优先关闭/收起处于打开状态的代码审查、终端等侧边栏面板（最高优先级）
-                        // 1A. 移动端侧滑面板全屏遮罩（处于激活状态时，直接 click 遮罩内的关闭触发器）
-                        var overlay = document.querySelector('[data-mobile-side-pane-overlay="true"]');
-                        if (overlay) {
-                            var ost = window.getComputedStyle(overlay);
-                            if (ost.pointerEvents !== 'none' && parseFloat(ost.opacity) > 0.1) {
-                                var overlayBtn = overlay.querySelector('button') || overlay;
-                                overlayBtn.click();
-                                return 'true';
-                            }
-                        }
-
-                        // 1B. 右上角收起按钮（带 panel-right-close 图标或 selected 状态）
-                        var panelCloseBtn = Array.from(document.querySelectorAll('button')).find(function(b) {
-                            if (!isVisible(b)) return false;
-                            var r = b.getBoundingClientRect();
-                            var isTopRight = r.top >= 0 && r.top < 100 && r.left > 200;
-                            var hasCloseIcon = b.querySelector('svg.lucide-panel-right-close, path[d*="m8 9 3 3-3 3"]') !== null;
-                            var isSelected = (b.className || '').indexOf('selected') >= 0 || (b.getAttribute('data-state') === 'active' || b.getAttribute('data-state') === 'open');
-                            return isTopRight && (hasCloseIcon || (b.querySelector('path[d*="M15 3v18"]') && isSelected));
-                        });
-                        if (panelCloseBtn) {
-                            panelCloseBtn.click();
-                            return 'true';
-                        }
-
-                        // 1C. 侧边栏内部的独立关闭按钮
-                        var sidePaneClose = document.querySelector('[data-mobile-side-pane="true"] button[aria-label*="关闭"], [data-mobile-side-pane="true"] button:has(svg.lucide-x)');
-                        if (sidePaneClose && isVisible(sidePaneClose)) {
-                            sidePaneClose.click();
-                            return 'true';
-                        }
-
-                        // 2. 检查是否有处于打开状态的真正模态对话框 (Dialog) 的关闭按钮
-                        var openDialogClose = document.querySelector('div[role="dialog"][data-state="open"] button[aria-label*="关闭"], div[role="dialog"][data-state="open"] button[aria-label*="Close"], div[role="dialog"] button.close');
-                        if (openDialogClose && isVisible(openDialogClose)) {
-                            openDialogClose.click();
-                            return 'true';
-                        }
-
-                        // 3. 检查设置中心二级详情页的悬浮返回按钮
-                        var detailBack = document.getElementById('__zcode_detail_back');
-                        if (detailBack && isVisible(detailBack)) {
-                            detailBack.click();
-                            return 'true';
-                        }
-
-                        // 4. 检查设置中心的“返回工作区”按钮
-                        var settingsBack = Array.from(document.querySelectorAll('button[aria-label*="返回工作区"], button[aria-label*="工作区"], aside button:has(svg), nav button:has(svg)')).find(function(b) {
-                            if (!isVisible(b)) return false;
-                            var aria = (b.getAttribute('aria-label') || '') + ' ' + (b.getAttribute('title') || '') + ' ' + (b.textContent || '');
-                            var r = b.getBoundingClientRect();
-                            return /返回工作区|Back to Workspace/i.test(aria) || (r.top < 60 && r.left < 50 && b.closest('aside, nav'));
-                        });
-                        if (settingsBack && isVisible(settingsBack)) {
-                            settingsBack.click();
-                            return 'true';
-                        }
-
-                        // 5. 任务会话返回上一页任务列表：
-                        // 全局通用查找左上角返回按钮（适配所有版本、所有类名、所有远程地址）
-                        var allTopInteractives = Array.from(document.querySelectorAll('button, a, div[role="button"], span[role="button"]'));
-                        var headerBackBtn = allTopInteractives.find(function(b) {
-                            if (b.id === '__zcode_detail_back') return false;
-                            if (!isVisible(b)) return false;
-
-                            var r = b.getBoundingClientRect();
-                            // 必须位于页面顶部左上角区域（top < 70 且 left < 80 且宽度在合理范围 16~120px）
-                            if (r.top < 0 || r.top > 70 || r.left < 0 || r.left > 80 || r.width <= 0 || r.width > 120) {
-                                return false;
-                            }
-
-                            // 特征 A: 包含向左箭头 SVG
-                            var hasArrowLeft = b.querySelector('svg.lucide-arrow-left, svg.lucide-chevron-left, path[d*="m12 19"], path[d*="19-7-7"], path[d*="19 12H5"], path[d*="12H5"], path[d*="M15 19"], path[d*="15 18"], path[d*="M10 19"], path[d*="M19 12"], path[d*="15 6-6 6"]') !== null;
-                            if (hasArrowLeft) return true;
-
-                            // 特征 B: aria-label / title / text 包含返回或首页
-                            var label = (b.getAttribute('aria-label') || '') + ' ' + (b.getAttribute('title') || '') + ' ' + (b.textContent || '');
-                            if (/返回|首页|任务列表|Back|Home|chevron-left|arrow-left/i.test(label)) return true;
-
-                            // 特征 C: 如果在顶部 Header 容器中，且是最左边的第一个按钮
-                            var isInsideHeader = !!b.closest('header, [class*="header"], [class*="Header"], [class*="topbar"], [class*="top-bar"], [class*="h-11"], [class*="h-12"], [class*="h-10"]');
-                            if (isInsideHeader && r.left < 40) return true;
-
-                            // 特征 D: 纯几何兜底：左上角 40x40 范围内尺寸 <= 40 的小图标按钮
-                            return r.top < 50 && r.left < 50 && r.width <= 40 && r.height <= 40;
-                        });
-
-                        if (headerBackBtn && isVisible(headerBackBtn)) {
-                            headerBackBtn.click();
-                            return 'true';
-                        }
-
-                        // 6. 任务会话状态判定与兜底
-                        var isChatSession = !!document.querySelector('textarea, .history-message, [data-slot="chat-input"], [data-testid*="chat"], [data-slot="terminal"], [data-slot="diff-editor"]');
-                        if (isChatSession) {
-                            if (window.history && window.history.length > 1) {
-                                window.history.back();
-                                return 'true';
-                            }
-                        }
-
-                        // 7. 检查是否处于根页面（工作区和任务列表首页）
-                        var bodyText = document.body.innerText || '';
-                        var hasHomeKeywords = /当前设备上的工作区和任务|已连接到当前桌面窗口|工作区和任务|Workspaces and Tasks|Connected to desktop/i.test(bodyText);
-                        var hasHomeElements = !!document.querySelector('[data-testid^="task-item-"], button[aria-expanded]');
-                        
-                        if (!isChatSession && (hasHomeKeywords || hasHomeElements)) {
-                            return 'finish';
-                        }
-
-                        // 8. 通用 history 兜底
-                        if (window.history && window.history.length > 1) {
-                            window.history.back();
-                            return 'true';
-                        }
-
-                        return 'false';
-                    })()""".trimIndent()
-                ) { handled ->
-                    val pageHandled = handled == "true" || handled == "\"true\""
-                    if (pageHandled) {
-                        lastBackPressTime = 0L
-                        return@evaluateJavascript
-                    }
-                    if (handled == "\"finish\"") {
-                        val now = System.currentTimeMillis()
-                        if (now - lastBackPressTime < 2000) {
-                            lastBackPressTime = 0L
-                            exitToDeviceList()
-                        } else {
-                            lastBackPressTime = now
-                            ToastUtils.show(this@RemoteControlActivity, getString(R.string.press_again_to_exit))
-                        }
-                        return@evaluateJavascript
-                    }
-
-                    if (binding.webView.canGoBack()) {
-                        binding.webView.goBack()
-                        lastBackPressTime = 0L
-                        return@evaluateJavascript
-                    }
-
-                    val now = System.currentTimeMillis()
-                    if (now - lastBackPressTime < 2000) {
-                        exitToDeviceList()
-                    } else {
-                        lastBackPressTime = now
-                        ToastUtils.show(this@RemoteControlActivity, getString(R.string.press_again_to_exit))
-                    }
-                }
+                dispatchPageBack()
             }
         })
+    }
+
+    /**
+     * 执行一次"返回"：先向 WebView 注入探测脚本判断页面状态，再按返回值决定
+     * 页面内处理 / 网页回退 / 退出到设备列表。
+     * 系统返回键与页面内注入的「返回」按钮共用此逻辑，保证两者行为一致。
+     */
+    private fun dispatchPageBack() {
+        binding.webView.evaluateJavascript(
+            """(function() {
+                function isVisible(el) {
+                    if (!el) return false;
+                    var st = window.getComputedStyle(el);
+                    if (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0 || st.pointerEvents === 'none') {
+                        return false;
+                    }
+                    var r = el.getBoundingClientRect();
+                    return r.width > 0 && r.height > 0;
+                }
+
+                // 1. 优先关闭/收起处于打开状态的代码审查、终端等侧边栏面板（最高优先级）
+                // 1A. 移动端侧滑面板全屏遮罩（处于打开态时，直接 click 遮罩内的关闭触发器）
+                // ⚠️ 判据必须用与 class 同步翻转的 aria-hidden / pointer-events-none，**不能**用
+                // computed opacity：遮罩开合是 Tailwind class 切换 + 200ms opacity 过渡，过渡期间
+                // computed opacity 仍是旧值（实测打开后 20ms 为 0、120ms 才 0.26）。若用 opacity
+                // 判定，在"刚打开抽屉就按返回"时会漏判 1A，继续向下分层落到第 5 层"返回任务首页"，
+                // 把用户直接带回会话列表——与页面内返回按钮同源的 bug。
+                var overlay = document.querySelector('[data-mobile-side-pane-overlay="true"]');
+                if (overlay) {
+                    var ocls = overlay.getAttribute('class') || '';
+                    var overlayOpen = overlay.getAttribute('aria-hidden') !== 'true' &&
+                                      ocls.indexOf('pointer-events-none') < 0;
+                    if (overlayOpen) {
+                        var overlayBtn = overlay.querySelector('button') || overlay;
+                        overlayBtn.click();
+                        return 'true';
+                    }
+                }
+
+                // 1B. 右上角收起按钮（带 panel-right-close 图标或 selected 状态）
+                var panelCloseBtn = Array.from(document.querySelectorAll('button')).find(function(b) {
+                    if (!isVisible(b)) return false;
+                    var r = b.getBoundingClientRect();
+                    var isTopRight = r.top >= 0 && r.top < 100 && r.left > 200;
+                    var hasCloseIcon = b.querySelector('svg.lucide-panel-right-close, path[d*="m8 9 3 3-3 3"]') !== null;
+                    var isSelected = (b.className || '').indexOf('selected') >= 0 || (b.getAttribute('data-state') === 'active' || b.getAttribute('data-state') === 'open');
+                    return isTopRight && (hasCloseIcon || (b.querySelector('path[d*="M15 3v18"]') && isSelected));
+                });
+                if (panelCloseBtn) {
+                    panelCloseBtn.click();
+                    return 'true';
+                }
+
+                // 1C. 侧边栏内部的独立关闭按钮
+                var sidePaneClose = document.querySelector('[data-mobile-side-pane="true"] button[aria-label*="关闭"], [data-mobile-side-pane="true"] button:has(svg.lucide-x)');
+                if (sidePaneClose && isVisible(sidePaneClose)) {
+                    sidePaneClose.click();
+                    return 'true';
+                }
+
+                // 2. 检查是否有处于打开状态的真正模态对话框 (Dialog) 的关闭按钮
+                var openDialogClose = document.querySelector('div[role="dialog"][data-state="open"] button[aria-label*="关闭"], div[role="dialog"][data-state="open"] button[aria-label*="Close"], div[role="dialog"] button.close');
+                if (openDialogClose && isVisible(openDialogClose)) {
+                    openDialogClose.click();
+                    return 'true';
+                }
+
+                // 3. 检查设置中心二级详情页的悬浮返回按钮
+                var detailBack = document.getElementById('__zcode_detail_back');
+                if (detailBack && isVisible(detailBack)) {
+                    detailBack.click();
+                    return 'true';
+                }
+
+                // 4. 检查设置中心的“返回工作区”按钮
+                var settingsBack = Array.from(document.querySelectorAll('button[aria-label*="返回工作区"], button[aria-label*="工作区"], aside button:has(svg), nav button:has(svg)')).find(function(b) {
+                    if (!isVisible(b)) return false;
+                    var aria = (b.getAttribute('aria-label') || '') + ' ' + (b.getAttribute('title') || '') + ' ' + (b.textContent || '');
+                    var r = b.getBoundingClientRect();
+                    return /返回工作区|Back to Workspace/i.test(aria) || (r.top < 60 && r.left < 50 && b.closest('aside, nav'));
+                });
+                if (settingsBack && isVisible(settingsBack)) {
+                    settingsBack.click();
+                    return 'true';
+                }
+
+                // 5. 任务会话返回上一页任务列表：
+                // 全局通用查找左上角返回按钮（适配所有版本、所有类名、所有远程地址）
+                var allTopInteractives = Array.from(document.querySelectorAll('button, a, div[role="button"], span[role="button"]'));
+                var headerBackBtn = allTopInteractives.find(function(b) {
+                    if (b.id === '__zcode_detail_back') return false;
+                    if (b.id === '__zcode_title_back') return false;
+                    if (!isVisible(b)) return false;
+
+                    var r = b.getBoundingClientRect();
+                    // 必须位于页面顶部左上角区域（top < 70 且 left < 80 且宽度在合理范围 16~120px）
+                    if (r.top < 0 || r.top > 70 || r.left < 0 || r.left > 80 || r.width <= 0 || r.width > 120) {
+                        return false;
+                    }
+
+                    // 特征 A: 包含向左箭头 SVG
+                    var hasArrowLeft = b.querySelector('svg.lucide-arrow-left, svg.lucide-chevron-left, path[d*="m12 19"], path[d*="19-7-7"], path[d*="19 12H5"], path[d*="12H5"], path[d*="M15 19"], path[d*="15 18"], path[d*="M10 19"], path[d*="M19 12"], path[d*="15 6-6 6"]') !== null;
+                    if (hasArrowLeft) return true;
+
+                    // 特征 B: aria-label / title / text 包含返回或首页
+                    var label = (b.getAttribute('aria-label') || '') + ' ' + (b.getAttribute('title') || '') + ' ' + (b.textContent || '');
+                    if (/返回|首页|任务列表|Back|Home|chevron-left|arrow-left/i.test(label)) return true;
+
+                    // 特征 C: 如果在顶部 Header 容器中，且是最左边的第一个按钮
+                    var isInsideHeader = !!b.closest('header, [class*="header"], [class*="Header"], [class*="topbar"], [class*="top-bar"], [class*="h-11"], [class*="h-12"], [class*="h-10"]');
+                    if (isInsideHeader && r.left < 40) return true;
+
+                    // 特征 D: 纯几何兜底：左上角 40x40 范围内尺寸 <= 40 的小图标按钮
+                    return r.top < 50 && r.left < 50 && r.width <= 40 && r.height <= 40;
+                });
+
+                if (headerBackBtn && isVisible(headerBackBtn)) {
+                    headerBackBtn.click();
+                    return 'true';
+                }
+
+                // 6. 任务会话状态判定与兜底
+                var isChatSession = !!document.querySelector('textarea, .history-message, [data-slot="chat-input"], [data-testid*="chat"], [data-slot="terminal"], [data-slot="diff-editor"]');
+                if (isChatSession) {
+                    if (window.history && window.history.length > 1) {
+                        window.history.back();
+                        return 'true';
+                    }
+                }
+
+                // 7. 检查是否处于根页面（工作区和任务列表首页）
+                var bodyText = document.body.innerText || '';
+                var hasHomeKeywords = /当前设备上的工作区和任务|已连接到当前桌面窗口|工作区和任务|Workspaces and Tasks|Connected to desktop/i.test(bodyText);
+                var hasHomeElements = !!document.querySelector('[data-testid^="task-item-"], button[aria-expanded]');
+
+                if (!isChatSession && (hasHomeKeywords || hasHomeElements)) {
+                    return 'finish';
+                }
+
+                // 8. 通用 history 兜底
+                if (window.history && window.history.length > 1) {
+                    window.history.back();
+                    return 'true';
+                }
+
+                return 'false';
+            })()""".trimIndent()
+        ) { handled ->
+            val pageHandled = handled == "true" || handled == "\"true\""
+            if (pageHandled) {
+                lastBackPressTime = 0L
+                return@evaluateJavascript
+            }
+            if (handled == "\"finish\"") {
+                val now = System.currentTimeMillis()
+                if (now - lastBackPressTime < 2000) {
+                    lastBackPressTime = 0L
+                    exitToDeviceList()
+                } else {
+                    lastBackPressTime = now
+                    ToastUtils.show(this@RemoteControlActivity, getString(R.string.press_again_to_exit))
+                }
+                return@evaluateJavascript
+            }
+
+            if (binding.webView.canGoBack()) {
+                binding.webView.goBack()
+                lastBackPressTime = 0L
+                return@evaluateJavascript
+            }
+
+            val now = System.currentTimeMillis()
+            if (now - lastBackPressTime < 2000) {
+                exitToDeviceList()
+            } else {
+                lastBackPressTime = now
+                ToastUtils.show(this@RemoteControlActivity, getString(R.string.press_again_to_exit))
+            }
+        }
     }
 
     private fun loadUrl(url: String) {
@@ -793,6 +933,13 @@ class RemoteControlActivity : AppCompatActivity() {
         foregroundSessionVisible.set(true)
         refreshForegroundSessionId()
         handler.postDelayed(foregroundSessionTick, FOREGROUND_SESSION_TICK_MS)
+
+        // 从原生设置页返回时按最新「页面缩放」重注视口（onCreate 时页面尚未加载，
+        // 真正生效靠 onPageFinish；这里只覆盖"改完设置返回"的场景）
+        val currentUrl = binding.webView.url
+        if (!currentUrl.isNullOrEmpty() && currentUrl != "about:blank") {
+            customWebViewClient.applyPageZoom(binding.webView)
+        }
     }
 
     override fun onStart() {
@@ -903,6 +1050,9 @@ class RemoteControlActivity : AppCompatActivity() {
         eventCaptureScript = null
         if (::eventBridge.isInitialized) eventBridge.dispose()
         eventBridgeAlive = false
+        handler.removeCallbacks(zoomHintHide)
+        mainMenuPopup?.dismiss()
+        mainMenuPopup = null
         filePathCallback?.onReceiveValue(null)
         filePathCallback = null
         binding.webView.destroy()
@@ -965,6 +1115,13 @@ class RemoteControlActivity : AppCompatActivity() {
         private const val RENDERER_RECOVERY_DELAY_MS = 3_000L
 
 
+
+        /** 顶栏菜单「缩小/放大页面」每次调整的步进（%），与设置页滑杆的 1% 微调互补。 */
+        private const val STEP = 5
+
+        /** 缩放提示显示时长（ms）与淡出动画时长（ms）。 */
+        private const val ZOOM_HINT_DURATION_MS = 2000L
+        private const val ZOOM_HINT_FADE_MS = 200L
 
         /** 当前存活的 RemoteControlActivity 实例（单连接监听：最多一个）。 */
         @Volatile
