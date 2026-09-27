@@ -31,7 +31,7 @@
                 android:background="@drawable/bg_device_icon"
                 android:padding="9dp"
                 android:src="@drawable/ic_computer"
-                app:tint="@color/primary_light" />
+                app:tint="?attr/zcPrimaryLight" />
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -53,7 +53,7 @@
                         android:layout_weight="1"
                         android:ellipsize="end"
                         android:maxLines="1"
-                        android:textColor="@color/text_primary"
+                        android:textColor="?attr/zcTextPrimary"
                         android:textSize="16sp"
                         android:textStyle="bold"
                         tools:text="示例设备" />
@@ -80,7 +80,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:textColor="@color/text_secondary"
+                    android:textColor="?attr/zcTextSecondary"
                     android:textSize="12sp"
                     tools:text="2026-09-04 13:40" />
             </LinearLayout>
@@ -108,7 +108,7 @@
                     android:contentDescription="@string/menu_more_options"
                     android:padding="4dp"
                     android:src="@drawable/ic_more"
-                    app:tint="@color/text_muted" />
+                    app:tint="?attr/zcTextMuted" />
             </LinearLayout>
         </LinearLayout>
 
@@ -117,7 +117,7 @@
             android:layout_width="match_parent"
             android:layout_height="1dp"
             android:layout_marginTop="4dp"
-            android:background="@color/border_color" />
+            android:background="?attr/zcBorderColor" />
 
         <!-- 旧版操作控件保留绑定以兼容已有适配器逻辑，但按新稿不展示 -->
         <com.google.android.material.button.MaterialButton

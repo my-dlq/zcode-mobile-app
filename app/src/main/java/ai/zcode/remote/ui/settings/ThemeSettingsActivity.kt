@@ -1,7 +1,7 @@
 
 package ai.zcode.remote.ui.settings
 
-import androidx.appcompat.app.AppCompatActivity
+import ai.zcode.remote.ui.BaseActivity
 
 import ai.zcode.remote.R
 import ai.zcode.remote.data.repository.AppSettingsRepository
@@ -10,9 +10,10 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatDelegate
+import ai.zcode.remote.utils.ThemeHelper
 
 /** 主题选择页：主题使用同一个持久化偏好并立即应用。 */
-class ThemeSettingsActivity : AppCompatActivity() {
+class ThemeSettingsActivity : BaseActivity() {
 
     private lateinit var binding: ActivityThemeSettingsBinding
     private lateinit var appSettings: AppSettingsRepository
@@ -27,8 +28,10 @@ class ThemeSettingsActivity : AppCompatActivity() {
         binding.btnBack.setOnClickListener { finish() }
         binding.rowLight.setOnClickListener { selectTheme(AppSettingsRepository.ThemeMode.LIGHT) }
         binding.rowDark.setOnClickListener { selectTheme(AppSettingsRepository.ThemeMode.DARK) }
+        binding.rowGraphite.setOnClickListener { selectTheme(AppSettingsRepository.ThemeMode.GRAPHITE) }
         binding.radioLight.setOnClickListener { selectTheme(AppSettingsRepository.ThemeMode.LIGHT) }
         binding.radioDark.setOnClickListener { selectTheme(AppSettingsRepository.ThemeMode.DARK) }
+        binding.radioGraphite.setOnClickListener { selectTheme(AppSettingsRepository.ThemeMode.GRAPHITE) }
 
         refreshSelection()
     }
@@ -41,28 +44,19 @@ class ThemeSettingsActivity : AppCompatActivity() {
     }
 
     private fun refreshSelection() {
-        when (appSettings.getThemeMode()) {
-            AppSettingsRepository.ThemeMode.LIGHT -> {
-                binding.radioLight.isChecked = true
-                binding.radioDark.isChecked = false
-            }
-            AppSettingsRepository.ThemeMode.DARK -> {
-                binding.radioLight.isChecked = false
-                binding.radioDark.isChecked = true
-            }
-        }
+        val mode = appSettings.getThemeMode()
+        binding.radioLight.isChecked = mode == AppSettingsRepository.ThemeMode.LIGHT
+        binding.radioDark.isChecked = mode == AppSettingsRepository.ThemeMode.DARK
+        binding.radioGraphite.isChecked = mode == AppSettingsRepository.ThemeMode.GRAPHITE
     }
 
     private fun selectTheme(mode: AppSettingsRepository.ThemeMode) {
         appSettings.setThemeMode(mode)
-        AppCompatDelegate.setDefaultNightMode(
-            if (mode != AppSettingsRepository.ThemeMode.LIGHT) {
-                AppCompatDelegate.MODE_NIGHT_YES
-            } else {
-                AppCompatDelegate.MODE_NIGHT_NO
-            }
-        )
-        refreshSelection()
+        // 夜间模式只表达"亮/非亮"；石墨灰靠 ThemeHelper 在 onCreate 前 setTheme 落地。
+        AppCompatDelegate.setDefaultNightMode(ThemeHelper.nightModeFor(mode))
+        // 立刻在当前 Activity 上生效（夜间模式对已创建 Activity 的重建是异步的，
+        // 且石墨灰的 setTheme 只在 onCreate 生效，故显式重建一次拿到正确配色）
+        recreate()
     }
 
     companion object {

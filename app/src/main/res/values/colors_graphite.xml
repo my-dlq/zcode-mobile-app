@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  石墨灰主题（Graphite）配色。
+
+  ⚠️ 所有颜色严格取自 ZCode 远程页暗色方案的实际渲染值（2026-09-27 用 CDP 在
+     真机远程页上读取 CSS 变量与 computed style 得到），不是目测近似：
+       color-background / color-sidebar : rgb(22,22,22)  = #161616（neutral-900）
+       color-card / color-popover       : rgb(43,43,43)  = #2B2B2B（neutral-800）
+       color-border                     : rgba(255,255,255,0.1)，压在卡片上约 neutral-700
+       color-surface                    : rgba(255,255,255,0.05)
+       color-foreground                 : oklch(0.87 0 0) = #D4D4D4
+       color-destructive                : rgb(255,92,92)  = #FF5C5C
+       color-success                    : rgb(70,191,114) = #46BF72
+       color-sky-500（品牌主色）         : oklch(0.685 0.169 237.323) = #00A6F4
+
+  与「暗色主题」的区别：暗色用的是项目自有的深海蓝灰（#0F1824 系，带蓝调），
+  石墨灰则是 ZCode 远程页的中性灰（无彩色偏色），观感与远程页本身一致。
+-->
+<resources>
+    <!-- 背景层次：由深到浅 = 页面底 / 卡片 / 抬升面 -->
+    <color name="graphite_bg_dark">#161616</color>
+    <color name="graphite_bg_surface">#2B2B2B</color>
+    <color name="graphite_bg_surface_elevated">#404040</color>
+
+    <!-- 分隔线：ZCode 用 rgba(255,255,255,0.1)。压在卡片(#2B2B2B)上约等于 neutral-700 -->
+    <color name="graphite_border_color">#404040</color>
+
+    <!-- 文字：ZCode foreground = oklch(0.87 0 0) = #D4D4D4；
+         次级/弱化取同一 neutral 灰阶（neutral-400 / neutral-500） -->
+    <color name="graphite_text_primary">#D4D4D4</color>
+    <color name="graphite_text_secondary">#A1A1A1</color>
+    <color name="graphite_text_muted">#737373</color>
+
+    <!-- 主色：ZCode 品牌色 sky-500 / sky-400 -->
+    <color name="graphite_primary">#00A6F4</color>
+    <color name="graphite_primary_light">#00BCFF</color>
+
+    <!-- 语义色：严格取 ZCode 的 color-success / color-destructive -->
+    <color name="graphite_accent">#46BF72</color>
+    <color name="graphite_danger">#FF5C5C</color>
+</resources>

@@ -1,7 +1,7 @@
 
 package ai.zcode.remote.ui.main
 
-import androidx.appcompat.app.AppCompatActivity
+import ai.zcode.remote.ui.BaseActivity
 
 import android.content.ClipboardManager
 import android.content.Context
@@ -31,7 +31,7 @@ import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.utils.ToastUtils
 import ai.zcode.remote.utils.UrlParser
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : BaseActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var repository: ConnectionRepository

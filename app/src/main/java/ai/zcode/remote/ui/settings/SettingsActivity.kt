@@ -1,7 +1,7 @@
 
 package ai.zcode.remote.ui.settings
 
-import androidx.appcompat.app.AppCompatActivity
+import ai.zcode.remote.ui.BaseActivity
 
 import ai.zcode.remote.R
 import ai.zcode.remote.data.repository.AppSettingsRepository
@@ -15,13 +15,13 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.widget.SeekBar
 
 /**
  * 应用设置页：集中管理原生客户端的显示、通用、安全主题和更新偏好。
  * 远程工作区自身的设置仍由远程控制页中的「远程设置」入口负责。
+ * 「全屏 / 顶部栏 / 页面缩放 / 工作区与任务页样式」已移入 [DisplaySettingsActivity]。
  */
-class SettingsActivity : AppCompatActivity() {
+class SettingsActivity : BaseActivity() {
 
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var appSettings: AppSettingsRepository
@@ -36,8 +36,9 @@ class SettingsActivity : AppCompatActivity() {
         updateSettings = UpdateRepository.getInstance(this)
 
         binding.btnBack.setOnClickListener { finish() }
+        // 「全屏设置」行改为进入独立设置页（页内含全屏与顶部栏两个独立开关）
         binding.rowFullscreen.setOnClickListener {
-            binding.switchFullscreen.toggle()
+            DisplaySettingsActivity.start(this)
         }
         binding.rowTheme.setOnClickListener {
             ThemeSettingsActivity.start(this)
@@ -66,14 +67,12 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun refreshState() {
-        val fullscreenEnabled = appSettings.isFullscreenEnabled()
-        binding.switchFullscreen.setOnCheckedChangeListener(null)
-        binding.switchFullscreen.isChecked = fullscreenEnabled
-        binding.switchFullscreen.setOnCheckedChangeListener { _, checked ->
-            appSettings.setFullscreenEnabled(checked)
-            updateFullscreenSummary(checked)
-        }
-        updateFullscreenSummary(fullscreenEnabled)
+        // 「全屏设置」已改为入口行（进入 DisplaySettingsActivity），
+        // 这里只显示两个开关的组合摘要，开关本身在那个页面里。
+        updateFullscreenSummary(
+            fullscreen = appSettings.isFullscreenEnabled(),
+            topBarVisible = appSettings.isRemoteTopBarVisible(),
+        )
 
         val autoCheckEnabled = updateSettings.isAutoCheckEnabled()
         binding.switchAutoCheckUpdate.setOnCheckedChangeListener(null)
@@ -84,6 +83,7 @@ class SettingsActivity : AppCompatActivity() {
 
         binding.tvThemeValue.text = when (appSettings.getThemeMode()) {
             AppSettingsRepository.ThemeMode.DARK -> getString(R.string.settings_theme_dark)
+            AppSettingsRepository.ThemeMode.GRAPHITE -> getString(R.string.settings_theme_graphite)
             AppSettingsRepository.ThemeMode.LIGHT -> getString(R.string.settings_theme_light)
         }
         binding.tvSecuritySummary.setText(
@@ -97,34 +97,7 @@ class SettingsActivity : AppCompatActivity() {
             if (appSettings.isNotificationEnabled()) R.string.settings_notif_summary_on
             else R.string.settings_notif_summary_off
         )
-        refreshZoomState()
         refreshKeepAliveState()
-    }
-
-    /**
-     * 页面缩放滑杆：progress 0~100 映射到 50%~150%（max 与范围常量联动，改范围时同步布局 XML 的 android:max）。
-     * 拖动过程中只更新百分比文案，松手（onStopTrackingTouch）才落盘，
-     * 避免滑杆连续回调里反复 apply() 写 SharedPreferences。
-     */
-    private fun refreshZoomState() {
-        val zoom = appSettings.getPageZoom()
-        binding.seekZoom.max = AppSettingsRepository.PAGE_ZOOM_MAX - AppSettingsRepository.PAGE_ZOOM_MIN
-        binding.seekZoom.setOnSeekBarChangeListener(null)
-        binding.seekZoom.progress = zoom - AppSettingsRepository.PAGE_ZOOM_MIN
-        binding.tvZoomValue.text = getString(R.string.settings_zoom_value, zoom)
-        binding.seekZoom.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                val percent = AppSettingsRepository.PAGE_ZOOM_MIN + progress
-                binding.tvZoomValue.text = getString(R.string.settings_zoom_value, percent)
-            }
-
-            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
-
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                val percent = AppSettingsRepository.PAGE_ZOOM_MIN + (seekBar?.progress ?: 0)
-                appSettings.setPageZoom(percent)
-            }
-        })
     }
 
     private fun refreshKeepAliveState() {
@@ -169,9 +142,12 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateFullscreenSummary(enabled: Boolean) {
-        binding.tvFullscreenSummary.setText(
-            if (enabled) R.string.settings_fullscreen_on else R.string.settings_fullscreen_off
+    /** 摘要反映两个独立开关的组合状态，让用户不进入子页也能看出当前配置。 */
+    private fun updateFullscreenSummary(fullscreen: Boolean, topBarVisible: Boolean) {
+        binding.tvFullscreenSummary.text = getString(
+            R.string.settings_display_summary_format,
+            getString(if (fullscreen) R.string.settings_display_on else R.string.settings_display_off),
+            getString(if (topBarVisible) R.string.settings_topbar_on else R.string.settings_topbar_off),
         )
     }
 

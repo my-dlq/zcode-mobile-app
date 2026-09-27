@@ -3,11 +3,11 @@
     android:color="#333B82F6">
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="@color/bg_surface" />
+            <solid android:color="?attr/zcBgSurface" />
             <corners android:radius="16dp" />
             <stroke
                 android:width="1dp"
-                android:color="@color/border_color" />
+                android:color="?attr/zcBorderColor" />
         </shape>
     </item>
 </ripple>

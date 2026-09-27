@@ -1,7 +1,7 @@
 
 package ai.zcode.remote.ui.security
 
-import androidx.appcompat.app.AppCompatActivity
+import ai.zcode.remote.ui.BaseActivity
 
 import ai.zcode.remote.R
 import ai.zcode.remote.data.repository.AppSettingsRepository
@@ -15,7 +15,7 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 
-class SecuritySettingsActivity : AppCompatActivity() {
+class SecuritySettingsActivity : BaseActivity() {
 
     private lateinit var binding: ActivitySecuritySettingsBinding
     private lateinit var settings: AppSettingsRepository

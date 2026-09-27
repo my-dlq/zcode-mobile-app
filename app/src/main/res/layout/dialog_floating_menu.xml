@@ -38,7 +38,7 @@
                 android:id="@+id/tvMenuDeviceName"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="@color/text_primary"
+                android:textColor="?attr/zcTextPrimary"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 tools:text="示例设备" />
@@ -47,7 +47,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="ZCode 快捷控制面板"
-                android:textColor="@color/text_muted"
+                android:textColor="?attr/zcTextMuted"
                 android:textSize="12sp" />
         </LinearLayout>
 
@@ -59,14 +59,14 @@
             android:contentDescription="关闭面板"
             android:padding="8dp"
             android:src="@drawable/ic_close"
-                app:tint="@color/text_muted" />
+                app:tint="?attr/zcTextMuted" />
     </LinearLayout>
 
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:layout_marginVertical="16dp"
-            android:background="@color/border_color" />
+            android:background="?attr/zcBorderColor" />
 
     <!-- 快捷功能网格 -->
     <GridLayout
@@ -93,14 +93,14 @@
                 android:layout_width="28dp"
                 android:layout_height="28dp"
                 android:src="@drawable/ic_settings"
-                app:tint="@color/primary_light" />
+                app:tint="?attr/zcPrimaryLight" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:text="远程设置"
-                android:textColor="@color/text_primary"
+                android:textColor="?attr/zcTextPrimary"
                 android:textSize="12sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -122,14 +122,14 @@
                 android:layout_width="28dp"
                 android:layout_height="28dp"
                 android:src="@drawable/ic_refresh"
-                app:tint="@color/primary_light" />
+                app:tint="?attr/zcPrimaryLight" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:text="@string/menu_refresh"
-                android:textColor="@color/text_primary"
+                android:textColor="?attr/zcTextPrimary"
                 android:textSize="12sp" />
         </LinearLayout>
 
@@ -151,7 +151,7 @@
                 android:layout_width="28dp"
                 android:layout_height="28dp"
                 android:src="@drawable/ic_fullscreen"
-                app:tint="@color/primary_light" />
+                app:tint="?attr/zcPrimaryLight" />
 
             <TextView
                 android:id="@+id/tvFullscreenText"
@@ -159,7 +159,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:text="@string/menu_toggle_fullscreen"
-                android:textColor="@color/text_primary"
+                android:textColor="?attr/zcTextPrimary"
                 android:textSize="12sp" />
         </LinearLayout>
 
@@ -180,14 +180,14 @@
                 android:layout_width="28dp"
                 android:layout_height="28dp"
                 android:src="@drawable/ic_copy"
-                app:tint="@color/primary_light" />
+                app:tint="?attr/zcPrimaryLight" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:text="@string/menu_copy_url"
-                android:textColor="@color/text_primary"
+                android:textColor="?attr/zcTextPrimary"
                 android:textSize="12sp" />
         </LinearLayout>
     </GridLayout>
@@ -213,7 +213,7 @@
                 android:layout_width="22dp"
                 android:layout_height="22dp"
                 android:src="@drawable/ic_refresh"
-                app:tint="@color/text_secondary" />
+                app:tint="?attr/zcTextSecondary" />
 
             <TextView
                 android:layout_width="0dp"
@@ -221,7 +221,7 @@
                 android:layout_marginStart="12dp"
                 android:layout_weight="1"
                 android:text="@string/menu_clear_cache"
-                android:textColor="@color/text_primary"
+                android:textColor="?attr/zcTextPrimary"
                 android:textSize="14sp" />
         </LinearLayout>
 
@@ -239,7 +239,7 @@
                 android:layout_width="22dp"
                 android:layout_height="22dp"
                 android:src="@drawable/ic_update"
-                app:tint="@color/text_secondary" />
+                app:tint="?attr/zcTextSecondary" />
 
             <TextView
                 android:layout_width="0dp"
@@ -247,7 +247,7 @@
                 android:layout_marginStart="12dp"
                 android:layout_weight="1"
                 android:text="@string/menu_auto_check_update"
-                android:textColor="@color/text_primary"
+                android:textColor="?attr/zcTextPrimary"
                 android:textSize="14sp" />
 
             <com.google.android.material.materialswitch.MaterialSwitch
@@ -270,7 +270,7 @@
                 android:layout_width="22dp"
                 android:layout_height="22dp"
                 android:src="@drawable/ic_back"
-                app:tint="@color/danger" />
+                app:tint="?attr/zcDanger" />
 
             <TextView
                 android:layout_width="0dp"
@@ -278,7 +278,7 @@
                 android:layout_marginStart="12dp"
                 android:layout_weight="1"
                 android:text="@string/menu_back_home"
-                android:textColor="@color/danger"
+                android:textColor="?attr/zcDanger"
                 android:textSize="14sp" />
         </LinearLayout>
     </LinearLayout>

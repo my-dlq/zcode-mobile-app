@@ -17,11 +17,74 @@
         <item name="android:statusBarColor">@color/bg_dark</item>
         <item name="android:navigationBarColor">@color/bg_dark</item>
         <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
+
+        <!-- 语义色主题属性（亮色取值）。布局/矢量图写 ?attr/zcXxx，随主题切换。
+             ⚠️ 新增属性时同步：attrs.xml、本文件、values-night/themes.xml、
+                Theme.ZCodeRemote.Graphite。 -->
+        <item name="zcBgDark">@color/bg_dark</item>
+        <item name="zcBgSurface">@color/bg_surface</item>
+        <item name="zcBgSurfaceElevated">@color/bg_surface_elevated</item>
+        <item name="zcBorderColor">@color/border_color</item>
+        <item name="zcTextPrimary">@color/text_primary</item>
+        <item name="zcTextSecondary">@color/text_secondary</item>
+        <item name="zcTextMuted">@color/text_muted</item>
+        <item name="zcPrimary">@color/primary</item>
+        <item name="zcPrimaryLight">@color/primary_light</item>
+        <item name="zcAccent">@color/accent</item>
+        <item name="zcDanger">@color/danger</item>
     </style>
 
     <!-- 沉浸式全屏主题（远程控制专用） -->
     <style name="Theme.ZCodeRemote.Fullscreen" parent="Theme.ZCodeRemote">
         <!-- 全屏由 ImmersiveHelper 根据设置动态控制，避免关闭全屏后系统栏仍被主题永久隐藏 -->
+        <item name="android:windowFullscreen">false</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:statusBarColor">@color/transparent</item>
+        <item name="android:navigationBarColor">@color/transparent</item>
+    </style>
+
+    <!--
+      石墨灰主题：App 原生界面套用 ZCode 远程页暗色方案的中性灰配色。
+      颜色严格取自远程页实测值（见 colors_graphite.xml 注释）。
+
+      ⚠️ 只影响 App 自身 UI（连接列表/设置页/顶栏等），不改变远程网页背景——
+         远程页外观由 ZCode 自己的主题开关决定。
+
+      应用方式：选中该主题时由 ThemeHelper 对 Activity 调用 setTheme(...)，
+      同时 AppCompat 夜间模式置 YES（提供暗色基底，保证 Material 控件明暗正确）。
+    -->
+    <style name="Theme.ZCodeRemote.Graphite" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/graphite_primary</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorPrimaryContainer">@color/graphite_bg_surface_elevated</item>
+        <item name="colorOnPrimaryContainer">@color/graphite_text_primary</item>
+
+        <item name="colorSecondary">@color/graphite_accent</item>
+        <item name="colorOnSecondary">@color/white</item>
+
+        <item name="android:colorBackground">@color/graphite_bg_dark</item>
+        <item name="colorSurface">@color/graphite_bg_surface</item>
+        <item name="colorOnSurface">@color/graphite_text_primary</item>
+
+        <item name="android:statusBarColor">@color/graphite_bg_dark</item>
+        <item name="android:navigationBarColor">@color/graphite_bg_dark</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+
+        <item name="zcBgDark">@color/graphite_bg_dark</item>
+        <item name="zcBgSurface">@color/graphite_bg_surface</item>
+        <item name="zcBgSurfaceElevated">@color/graphite_bg_surface_elevated</item>
+        <item name="zcBorderColor">@color/graphite_border_color</item>
+        <item name="zcTextPrimary">@color/graphite_text_primary</item>
+        <item name="zcTextSecondary">@color/graphite_text_secondary</item>
+        <item name="zcTextMuted">@color/graphite_text_muted</item>
+        <item name="zcPrimary">@color/graphite_primary</item>
+        <item name="zcPrimaryLight">@color/graphite_primary_light</item>
+        <item name="zcAccent">@color/graphite_accent</item>
+        <item name="zcDanger">@color/graphite_danger</item>
+    </style>
+
+    <!-- 石墨灰 + 沉浸式全屏（远程控制页专用组合） -->
+    <style name="Theme.ZCodeRemote.Fullscreen.Graphite" parent="Theme.ZCodeRemote.Graphite">
         <item name="android:windowFullscreen">false</item>
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:statusBarColor">@color/transparent</item>

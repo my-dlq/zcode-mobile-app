@@ -5,6 +5,7 @@ import android.webkit.WebView
 import androidx.appcompat.app.AppCompatDelegate
 import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.ui.remote.event.TaskNotifier
+import ai.zcode.remote.utils.ThemeHelper
 
 class ZCodeApp : Application() {
 
@@ -12,15 +13,11 @@ class ZCodeApp : Application() {
         super.onCreate()
         instance = this
 
-        // 在第一个 Activity 创建前恢复用户选择的主题（亮色/暗色）。
+        // 在第一个 Activity 创建前恢复用户选择的主题（亮色/暗色/石墨灰）。
+        // 夜间模式只表达"亮/非亮"两态；石墨灰由 ThemeHelper 在各 Activity
+        // onCreate 前 setTheme 覆盖，两者配合才能得到三套配色。
         val themeMode = AppSettingsRepository.getInstance(this).getThemeMode()
-        AppCompatDelegate.setDefaultNightMode(
-            if (themeMode != AppSettingsRepository.ThemeMode.LIGHT) {
-                AppCompatDelegate.MODE_NIGHT_YES
-            } else {
-                AppCompatDelegate.MODE_NIGHT_NO
-            }
-        )
+        AppCompatDelegate.setDefaultNightMode(ThemeHelper.nightModeFor(themeMode))
 
         // 开启 WebView 调试支持（便于必要时通过 Chrome DevTools 排查）
         if (BuildConfig.DEBUG) {

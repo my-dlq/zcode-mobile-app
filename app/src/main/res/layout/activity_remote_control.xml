@@ -5,7 +5,7 @@
     android:id="@+id/rootContainer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_dark"
+    android:background="?attr/zcBgDark"
     android:orientation="vertical">
 
     <!-- 原生顶部栏：替代网页内 header（网页 header 已被注入 CSS 整条隐藏）。
@@ -15,16 +15,22 @@
         android:id="@+id/layoutNativeTopBar"
         android:layout_width="match_parent"
         android:layout_height="56dp"
-        android:background="@color/bg_dark"
+        android:background="?attr/zcBgDark"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="16dp"
         android:paddingEnd="8dp">
 
+        <!-- 顶栏 LOGO：位图（ic_launcher_foreground.png）。
+             ⚠️ 该图四周有大量透明留白——实测非透明图案只占图片宽 62%、高 54%，
+             因此控件尺寸的约一半在视觉上是空的，图案看起来比控件小很多。
+             这也是它"显得小"的根因：32dp 控件里可见图案只有约 17dp 高。
+             故这里给到 44dp（顶栏 56dp，控件上下各 6dp），实际可见图案约 24dp，
+             与标题文字高度相称；因留白存在，视觉上不会顶满顶栏。 -->
         <ImageView
             android:id="@+id/ivTopBarLogo"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:contentDescription="@string/app_name"
             android:src="@drawable/ic_launcher_foreground" />
 
@@ -35,7 +41,7 @@
             android:layout_marginStart="10dp"
             android:fontFamily="sans-serif-medium"
             android:text="@string/app_name"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/zcTextPrimary"
             android:textSize="17sp" />
 
         <Space
@@ -56,7 +62,7 @@
             android:padding="8dp"
             android:src="@drawable/ic_palette_24"
             android:visibility="gone"
-            app:tint="@color/text_primary" />
+            app:tint="?attr/zcTextPrimary" />
 
         <!-- 菜单按钮：弹出与主界面一致的菜单（扫描连接/地址连接/设置/关于）。
              样式对齐 activity_main.xml 的 btnMenu（48dp + borderless 水波纹 + ic_menu）。 -->
@@ -68,14 +74,16 @@
             android:contentDescription="@string/menu_title"
             android:padding="12dp"
             android:src="@drawable/ic_menu"
-            app:tint="@color/text_primary" />
+            app:tint="?attr/zcTextPrimary" />
     </LinearLayout>
 
-    <!-- 顶部栏与网页内容之间的分隔线，对齐网页 header 原有的 border-b 视觉 -->
+    <!-- 顶部栏与网页内容之间的分隔线，对齐网页 header 原有的 border-b 视觉。
+         与顶栏一同显隐（见 RemoteControlActivity.applyTopBarVisibility）。 -->
     <View
+        android:id="@+id/topBarDivider"
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="@color/border_color" />
+        android:background="?attr/zcBorderColor" />
 
     <!-- 网页容器（剩余空间） -->
     <FrameLayout
@@ -88,7 +96,7 @@
             android:id="@+id/webView"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="@color/bg_dark"
+            android:background="?attr/zcBgDark"
             android:fitsSystemWindows="false"
             android:overScrollMode="never"
             android:scrollbars="none" />
@@ -111,7 +119,7 @@
             android:id="@+id/layoutErrorOverlay"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="@color/bg_dark"
+            android:background="?attr/zcBgDark"
             android:gravity="center"
             android:orientation="vertical"
             android:padding="24dp"
@@ -122,14 +130,14 @@
                 android:layout_width="64dp"
                 android:layout_height="64dp"
                 android:src="@drawable/ic_computer"
-                app:tint="@color/danger" />
+                app:tint="?attr/zcDanger" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:text="@string/remote_load_failed"
-                android:textColor="@color/text_primary"
+                android:textColor="?attr/zcTextPrimary"
                 android:textSize="16sp"
                 android:textStyle="bold" />
 
@@ -139,7 +147,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:gravity="center"
-                android:textColor="@color/text_secondary"
+                android:textColor="?attr/zcTextSecondary"
                 android:textSize="13sp"
                 tools:text="ERR_INTERNET_DISCONNECTED" />
 
@@ -148,7 +156,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:backgroundTint="@color/primary"
+                android:backgroundTint="?attr/zcPrimary"
                 android:text="@string/remote_retry"
                 android:textColor="@color/white"
                 app:cornerRadius="8dp"
@@ -169,7 +177,7 @@
             android:paddingTop="12dp"
             android:paddingEnd="20dp"
             android:paddingBottom="12dp"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/zcTextPrimary"
             android:textSize="16sp"
             android:textStyle="bold"
             android:visibility="gone"

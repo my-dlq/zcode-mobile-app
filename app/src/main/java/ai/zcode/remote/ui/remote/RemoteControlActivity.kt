@@ -1,7 +1,7 @@
 
 package ai.zcode.remote.ui.remote
 
-import androidx.appcompat.app.AppCompatActivity
+import ai.zcode.remote.ui.BaseActivity
 
 import android.annotation.SuppressLint
 import android.content.ClipData
@@ -43,7 +43,10 @@ import ai.zcode.remote.utils.ToastUtils
 import android.os.Handler
 import android.os.Looper
 
-class RemoteControlActivity : AppCompatActivity() {
+class RemoteControlActivity : BaseActivity() {
+
+    // 远程页是全屏页：石墨灰需用全屏变体（无 ActionBar 背景窗口）
+    override fun graphiteThemeRes(): Int = R.style.Theme_ZCodeRemote_Fullscreen_Graphite
 
     private lateinit var binding: ActivityRemoteControlBinding
     private lateinit var appSettings: AppSettingsRepository
@@ -241,6 +244,25 @@ class RemoteControlActivity : AppCompatActivity() {
             ImmersiveHelper.exitImmersiveFullscreen(this)
         }
         ImmersiveHelper.setKeepScreenOn(this, isKeepScreenOn)
+        applyTopBarVisibility()
+    }
+
+    /**
+     * 按「显示顶部栏」设置切换 App 顶栏（LOGO + 菜单）的显隐。
+     * 与全屏设置相互独立，可任意组合；隐藏后网页内容自然上移占满。
+     * 隐藏时同步收起已展开的菜单弹层，避免浮层悬挂在无锚点的位置。
+     */
+    private fun applyTopBarVisibility() {
+        val visible = appSettings.isRemoteTopBarVisible()
+        val topBar = binding.layoutNativeTopBar
+        val divider = binding.topBarDivider
+        val target = if (visible) View.VISIBLE else View.GONE
+        if (topBar.visibility != target) topBar.visibility = target
+        if (divider.visibility != target) divider.visibility = target
+        if (!visible) {
+            mainMenuPopup?.dismiss()
+            mainMenuPopup = null
+        }
     }
 
     private fun setupKeyboardInsets() {
@@ -480,7 +502,8 @@ class RemoteControlActivity : AppCompatActivity() {
                     }
                 }, RENDERER_RECOVERY_DELAY_MS)
             },
-            pageZoomProvider = { appSettings.getPageZoom() }
+            pageZoomProvider = { appSettings.getPageZoom() },
+            dashboardModeProvider = { appSettings.getDashboardMode() },
         )
         webView.webViewClient = customWebViewClient
 
@@ -920,11 +943,10 @@ class RemoteControlActivity : AppCompatActivity() {
         super.onResume()
         // 不调 webView.onResume()：与 onPause 对应，保持 WebView 持续活跃，
         // 让切后台时 JS 的 WebSocket 仍能收消息（审批/完成事件镜像到系统通知）
-        if (isFullscreen) {
-            ImmersiveHelper.enterImmersiveFullscreen(this)
-        } else {
-            ImmersiveHelper.exitImmersiveFullscreen(this)
-        }
+        // 从「显示与全屏」设置页返回时，全屏与顶部栏开关可能刚改过：
+        // 重新读一次设置再应用（该函数内部会读取最新值）。
+        isFullscreen = appSettings.isFullscreenEnabled()
+        setupImmersiveAndScreen()
         ai.zcode.remote.ui.main.MainActivity.markVisiblePage("remote")
         // 页面恢复到前台可见：记录可见状态并持续跟踪当前会话 ID。
         // 若用户正停留在该会话页（正在对话），审批/提问弹层已在页面上，
@@ -939,6 +961,9 @@ class RemoteControlActivity : AppCompatActivity() {
         val currentUrl = binding.webView.url
         if (!currentUrl.isNullOrEmpty() && currentUrl != "about:blank") {
             customWebViewClient.applyPageZoom(binding.webView)
+            // 「工作区与任务页样式」可能刚在设置页改过：重注适配样式，无需重载页面。
+            // 幂等——注入脚本按当前设置增删 dashboard 样式元素与调色板按钮。
+            customWebViewClient.reapplyPageAdaptation(binding.webView)
         }
     }
 

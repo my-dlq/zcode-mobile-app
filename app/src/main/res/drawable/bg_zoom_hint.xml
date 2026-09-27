@@ -2,9 +2,9 @@
 <!-- 页面缩放提示浮层背景：半透明浮层，亮/夜间随主题色自适应 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="@color/bg_surface_elevated" />
+    <solid android:color="?attr/zcBgSurfaceElevated" />
     <corners android:radius="12dp" />
     <stroke
         android:width="1dp"
-        android:color="@color/border_color" />
+        android:color="?attr/zcBorderColor" />
 </shape>

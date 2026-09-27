@@ -59,7 +59,7 @@
         android:paddingHorizontal="16dp"
         android:paddingVertical="8dp"
         android:text="@string/scan_hint"
-        android:textColor="@color/text_primary"
+        android:textColor="?attr/zcTextPrimary"
         android:textSize="13sp" />
 
     <!-- 底部控制按钮 (相册 + 手电筒) -->

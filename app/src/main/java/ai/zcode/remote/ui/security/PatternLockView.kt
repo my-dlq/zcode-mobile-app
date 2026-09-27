@@ -29,6 +29,16 @@ class PatternLockView @JvmOverloads constructor(
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 3f * density; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
 
+    /** 从当前主题解析颜色属性（随亮色/暗色/石墨灰切换）。 */
+    private fun resolveThemeColor(attr: Int): Int {
+        val typed = context.obtainStyledAttributes(intArrayOf(attr))
+        return try {
+            typed.getColor(0, 0)
+        } finally {
+            typed.recycle()
+        }
+    }
+
     init {
         isFocusable = true
         isClickable = true
@@ -36,9 +46,10 @@ class PatternLockView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val accent = ContextCompat.getColor(context, R.color.primary)
-        val muted = ContextCompat.getColor(context, R.color.text_muted)
-        val selectedFill = ContextCompat.getColor(context, R.color.primary_light)
+        // 走主题属性而非 R.color：颜色需随「亮色/暗色/石墨灰」三套主题切换。
+        val accent = resolveThemeColor(com.google.android.material.R.attr.colorPrimary)
+        val muted = resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
+        val selectedFill = resolveThemeColor(com.google.android.material.R.attr.colorPrimaryContainer)
         ringPaint.color = muted
         linePaint.color = accent
 
@@ -56,7 +67,8 @@ class PatternLockView @JvmOverloads constructor(
             val point = centers[index]
             val active = selected.contains(index)
             ringPaint.color = if (active) accent else muted
-            fillPaint.color = if (active) selectedFill else ContextCompat.getColor(context, R.color.bg_surface_elevated)
+            fillPaint.color = if (active) selectedFill
+                else resolveThemeColor(com.google.android.material.R.attr.colorSurfaceVariant)
             canvas.drawCircle(point[0], point[1], ringRadius, ringPaint)
             canvas.drawCircle(point[0], point[1], if (active) dotRadius + 2f * density else dotRadius, fillPaint)
         }

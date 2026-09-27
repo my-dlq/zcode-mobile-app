@@ -1,7 +1,7 @@
 
 package ai.zcode.remote.ui.scan
 
-import androidx.appcompat.app.AppCompatActivity
+import ai.zcode.remote.ui.BaseActivity
 
 import android.Manifest
 import android.content.Context
@@ -36,7 +36,7 @@ import com.google.zxing.common.HybridBinarizer
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-class QrScanActivity : AppCompatActivity() {
+class QrScanActivity : BaseActivity() {
 
     private lateinit var binding: ActivityQrScanBinding
     private var cameraExecutor: ExecutorService? = null

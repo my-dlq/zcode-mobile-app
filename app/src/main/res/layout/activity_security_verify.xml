@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_dark"
+    android:background="?attr/zcBgDark"
     android:fitsSystemWindows="true"
     android:orientation="vertical">
 
@@ -22,7 +22,7 @@
             android:contentDescription="@string/action_back"
             android:padding="12dp"
             android:src="@drawable/ic_back"
-            app:tint="@color/text_primary" />
+            app:tint="?attr/zcTextPrimary" />
         <ImageView
             android:layout_width="32dp"
             android:layout_height="32dp"
@@ -34,7 +34,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="10dp"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/zcTextPrimary"
             android:textSize="20sp"
             android:textStyle="bold" />
     </LinearLayout>
@@ -54,7 +54,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:gravity="center"
-            android:textColor="@color/text_secondary"
+            android:textColor="?attr/zcTextSecondary"
             android:textSize="15sp" />
 
         <ai.zcode.remote.ui.security.PatternLockView
@@ -71,7 +71,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
             android:text="@string/settings_security_use_fingerprint"
-            android:textColor="@color/primary"
+            android:textColor="?attr/zcPrimary"
             android:visibility="gone" />
     </LinearLayout>
 </LinearLayout>
