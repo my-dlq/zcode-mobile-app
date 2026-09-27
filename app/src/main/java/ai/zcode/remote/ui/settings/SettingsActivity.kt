@@ -1,7 +1,7 @@
 
 package ai.zcode.remote.ui.settings
 
-import androidx.appcompat.app.AppCompatActivity
+import ai.zcode.remote.ui.BaseActivity
 
 import ai.zcode.remote.R
 import ai.zcode.remote.data.repository.AppSettingsRepository
@@ -15,22 +15,19 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import ai.zcode.remote.utils.ThemeHelper
 
 /**
  * 应用设置页：集中管理原生客户端的显示、通用、安全主题和更新偏好。
  * 远程工作区自身的设置仍由远程控制页中的「远程设置」入口负责。
  * 「全屏 / 顶部栏 / 页面缩放 / 工作区与任务页样式」已移入 [DisplaySettingsActivity]。
  */
-class SettingsActivity : AppCompatActivity() {
+class SettingsActivity : BaseActivity() {
 
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var appSettings: AppSettingsRepository
     private lateinit var updateSettings: UpdateRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // 应用用户选择的主题（亮色/暗色/石墨灰）；石墨灰需在 super.onCreate 前 setTheme
-        ThemeHelper.applyTheme(this)
         super.onCreate(savedInstanceState)
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)

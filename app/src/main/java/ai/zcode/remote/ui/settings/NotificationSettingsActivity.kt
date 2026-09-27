@@ -3,23 +3,20 @@ package ai.zcode.remote.ui.settings
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
+import ai.zcode.remote.ui.BaseActivity
 import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.databinding.ActivityNotificationSettingsBinding
-import ai.zcode.remote.utils.ThemeHelper
 
 /**
  * 通知管理设置页：总开关 + 各事件类型独立开关。
  * 偏好存 AppSettingsRepository，TaskNotifier 发布前逐条检查。
  */
-class NotificationSettingsActivity : AppCompatActivity() {
+class NotificationSettingsActivity : BaseActivity() {
 
     private lateinit var binding: ActivityNotificationSettingsBinding
     private lateinit var appSettings: AppSettingsRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // 应用用户选择的主题（亮色/暗色/石墨灰）；石墨灰需在 super.onCreate 前 setTheme
-        ThemeHelper.applyTheme(this)
         super.onCreate(savedInstanceState)
         binding = ActivityNotificationSettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)

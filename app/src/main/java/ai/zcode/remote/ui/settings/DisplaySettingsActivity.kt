@@ -1,6 +1,6 @@
 package ai.zcode.remote.ui.settings
 
-import androidx.appcompat.app.AppCompatActivity
+import ai.zcode.remote.ui.BaseActivity
 
 import ai.zcode.remote.R
 import ai.zcode.remote.data.repository.AppSettingsRepository
@@ -9,7 +9,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.SeekBar
-import ai.zcode.remote.utils.ThemeHelper
 
 /**
  * 显示与全屏设置页：集中管理远程连接页的显示方式。
@@ -23,14 +22,12 @@ import ai.zcode.remote.utils.ThemeHelper
  * 前两项相互独立；后两项同样独立。改动在远程页 onResume 时生效
  * （RemoteControlActivity 每次回到前台按最新设置重设/重注），因此从本页返回即可看到效果。
  */
-class DisplaySettingsActivity : AppCompatActivity() {
+class DisplaySettingsActivity : BaseActivity() {
 
     private lateinit var binding: ActivityDisplaySettingsBinding
     private lateinit var appSettings: AppSettingsRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // 应用用户选择的主题（亮色/暗色/石墨灰）；石墨灰需在 super.onCreate 前 setTheme
-        ThemeHelper.applyTheme(this)
         super.onCreate(savedInstanceState)
         binding = ActivityDisplaySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)

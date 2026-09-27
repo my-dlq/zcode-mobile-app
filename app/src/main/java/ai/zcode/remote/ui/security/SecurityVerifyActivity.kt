@@ -27,6 +27,8 @@ class SecurityVerifyActivity : FragmentActivity() {
     private var biometricPrompt: BiometricPrompt? = null
     private var biometricFailureCount = 0
     private var switchedToPattern = false
+    /** 本 Activity 创建时应用的主题；用于 onResume 检测主题是否在其他页被改。 */
+    private var appliedThemeMode: AppSettingsRepository.ThemeMode? = null
 
     private val lockHandler = Handler(Looper.getMainLooper())
     private val lockCountdownRunnable = object : Runnable {
@@ -54,7 +56,7 @@ class SecurityVerifyActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // 应用用户选择的主题（亮色/暗色/石墨灰）；石墨灰需在 super.onCreate 前 setTheme
-        ThemeHelper.applyTheme(this)
+        appliedThemeMode = ThemeHelper.applyTheme(this)
         super.onCreate(savedInstanceState)
         binding = ActivitySecurityVerifyBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -69,7 +71,6 @@ class SecurityVerifyActivity : FragmentActivity() {
             else R.string.settings_security_verify_hint
         )
         binding.patternLock.onPatternComplete = { pattern -> handlePattern(pattern) }
-
         val biometricAvailable = canUseBiometric()
         val fingerprintEnabled = !setupMode && biometricAvailable && settings.isFingerprintEnabled()
         val patternEnabled = setupMode || settings.isPatternEnabled()
@@ -86,6 +87,15 @@ class SecurityVerifyActivity : FragmentActivity() {
         if (!setupMode && isVerifyLocked()) {
             // 锁定状态持久化：进程被杀死后重新进入，未过期的锁定仍然生效
             startLockCountdown()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 主题可能在其他页面被修改：与当前偏好不一致则重建，避免暗色/石墨灰混搭
+        val current = AppSettingsRepository.getInstance(this).getThemeMode()
+        if (appliedThemeMode != null && appliedThemeMode != current) {
+            recreate()
         }
     }
 

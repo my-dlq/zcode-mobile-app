@@ -1,7 +1,7 @@
 
 package ai.zcode.remote.ui.main
 
-import androidx.appcompat.app.AppCompatActivity
+import ai.zcode.remote.ui.BaseActivity
 
 import android.content.ClipboardManager
 import android.content.Context
@@ -30,9 +30,8 @@ import ai.zcode.remote.ui.security.SecurityVerifyActivity
 import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.utils.ToastUtils
 import ai.zcode.remote.utils.UrlParser
-import ai.zcode.remote.utils.ThemeHelper
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : BaseActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var repository: ConnectionRepository
@@ -42,8 +41,6 @@ class MainActivity : AppCompatActivity() {
     private var mainMenuPopup: PopupWindow? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // 应用用户选择的主题（亮色/暗色/石墨灰）；石墨灰需在 super.onCreate 前 setTheme
-        ThemeHelper.applyTheme(this)
         super.onCreate(savedInstanceState)
         if (AppSettingsRepository.getInstance(this).isSecurityVerificationEnabled() &&
             !SecuritySession.isUnlocked

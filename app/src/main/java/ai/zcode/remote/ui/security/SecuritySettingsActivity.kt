@@ -1,7 +1,7 @@
 
 package ai.zcode.remote.ui.security
 
-import androidx.appcompat.app.AppCompatActivity
+import ai.zcode.remote.ui.BaseActivity
 
 import ai.zcode.remote.R
 import ai.zcode.remote.data.repository.AppSettingsRepository
@@ -14,9 +14,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
-import ai.zcode.remote.utils.ThemeHelper
 
-class SecuritySettingsActivity : AppCompatActivity() {
+class SecuritySettingsActivity : BaseActivity() {
 
     private lateinit var binding: ActivitySecuritySettingsBinding
     private lateinit var settings: AppSettingsRepository
@@ -34,8 +33,6 @@ class SecuritySettingsActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // 应用用户选择的主题（亮色/暗色/石墨灰）；石墨灰需在 super.onCreate 前 setTheme
-        ThemeHelper.applyTheme(this)
         super.onCreate(savedInstanceState)
         binding = ActivitySecuritySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)

@@ -21,13 +21,13 @@ import ai.zcode.remote.data.repository.AppSettingsRepository
  */
 object ThemeHelper {
 
-    /** Activity onCreate 中、`super.onCreate()` 之前调用。 */
-    fun applyTheme(activity: Activity, graphiteThemeRes: Int = R.style.Theme_ZCodeRemote_Graphite) {
-        if (AppSettingsRepository.getInstance(activity).getThemeMode() ==
-            AppSettingsRepository.ThemeMode.GRAPHITE
-        ) {
+    /** Activity onCreate 中、`super.onCreate()` 之前调用。返回本次实际应用的主题。 */
+    fun applyTheme(activity: Activity, graphiteThemeRes: Int = R.style.Theme_ZCodeRemote_Graphite): AppSettingsRepository.ThemeMode {
+        val mode = AppSettingsRepository.getInstance(activity).getThemeMode()
+        if (mode == AppSettingsRepository.ThemeMode.GRAPHITE) {
             activity.setTheme(graphiteThemeRes)
         }
+        return mode
     }
 
     /**

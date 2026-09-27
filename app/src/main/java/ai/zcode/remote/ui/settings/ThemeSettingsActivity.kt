@@ -1,7 +1,7 @@
 
 package ai.zcode.remote.ui.settings
 
-import androidx.appcompat.app.AppCompatActivity
+import ai.zcode.remote.ui.BaseActivity
 
 import ai.zcode.remote.R
 import ai.zcode.remote.data.repository.AppSettingsRepository
@@ -13,14 +13,12 @@ import androidx.appcompat.app.AppCompatDelegate
 import ai.zcode.remote.utils.ThemeHelper
 
 /** 主题选择页：主题使用同一个持久化偏好并立即应用。 */
-class ThemeSettingsActivity : AppCompatActivity() {
+class ThemeSettingsActivity : BaseActivity() {
 
     private lateinit var binding: ActivityThemeSettingsBinding
     private lateinit var appSettings: AppSettingsRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // 应用用户选择的主题（亮色/暗色/石墨灰）；石墨灰需在 super.onCreate 前 setTheme
-        ThemeHelper.applyTheme(this)
         super.onCreate(savedInstanceState)
         binding = ActivityThemeSettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)

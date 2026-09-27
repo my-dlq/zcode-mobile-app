@@ -1,7 +1,7 @@
 
 package ai.zcode.remote.ui.remote
 
-import androidx.appcompat.app.AppCompatActivity
+import ai.zcode.remote.ui.BaseActivity
 
 import android.annotation.SuppressLint
 import android.content.ClipData
@@ -42,9 +42,11 @@ import ai.zcode.remote.utils.ImmersiveHelper
 import ai.zcode.remote.utils.ToastUtils
 import android.os.Handler
 import android.os.Looper
-import ai.zcode.remote.utils.ThemeHelper
 
-class RemoteControlActivity : AppCompatActivity() {
+class RemoteControlActivity : BaseActivity() {
+
+    // 远程页是全屏页：石墨灰需用全屏变体（无 ActionBar 背景窗口）
+    override fun graphiteThemeRes(): Int = R.style.Theme_ZCodeRemote_Fullscreen_Graphite
 
     private lateinit var binding: ActivityRemoteControlBinding
     private lateinit var appSettings: AppSettingsRepository
@@ -119,8 +121,6 @@ class RemoteControlActivity : AppCompatActivity() {
     private var isSettingsModeRequested: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // 应用用户选择的主题（亮色/暗色/石墨灰）；石墨灰需在 super.onCreate 前 setTheme
-        ThemeHelper.applyTheme(this, R.style.Theme_ZCodeRemote_Fullscreen_Graphite)
         super.onCreate(savedInstanceState)
         binding = ActivityRemoteControlBinding.inflate(layoutInflater)
         setContentView(binding.root)

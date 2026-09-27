@@ -1,7 +1,7 @@
 
 package ai.zcode.remote.ui.about
 
-import androidx.appcompat.app.AppCompatActivity
+import ai.zcode.remote.ui.BaseActivity
 
 import ai.zcode.remote.BuildConfig
 import ai.zcode.remote.R
@@ -12,20 +12,17 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import ai.zcode.remote.utils.ThemeHelper
 
 /**
  * 关于页：应用信息、版本号、检查更新入口、GitHub 项目主页跳转。
  * 检查更新逻辑复用 UpdateCheckFlow（与 MainActivity 启动静默检查同一条链路）。
  */
-class AboutActivity : AppCompatActivity() {
+class AboutActivity : BaseActivity() {
 
     private lateinit var binding: ActivityAboutBinding
     private lateinit var updateFlow: UpdateCheckFlow
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // 应用用户选择的主题（亮色/暗色/石墨灰）；石墨灰需在 super.onCreate 前 setTheme
-        ThemeHelper.applyTheme(this)
         super.onCreate(savedInstanceState)
         binding = ActivityAboutBinding.inflate(layoutInflater)
         setContentView(binding.root)
