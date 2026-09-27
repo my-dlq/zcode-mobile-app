@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  语义色主题属性。
+
+  背景：项目布局/矢量图原先直接引用 @color/xxx，而 @color/ 只随资源限定符
+  （values / values-night）变化，只有"亮/暗"两态，无法表达第三个主题。
+  因此把这些语义色提升为主题属性：布局写 ?attr/zcXxx，具体颜色由当前主题决定，
+  从而支持「亮色 / 暗色 / 石墨灰」三套配色。
+
+  ⚠️ 新增可随主题变化的颜色时，必须同步四处：
+    1) 这里声明属性；
+    2) values/themes.xml 的 Theme.ZCodeRemote 给亮色值；
+    3) values-night/themes.xml 的同名主题给暗色值；
+    4) values/themes.xml 的 ThemeOverlay.ZCodeRemote.Graphite 给石墨灰值。
+-->
+<resources>
+    <attr name="zcBgDark" format="color" />
+    <attr name="zcBgSurface" format="color" />
+    <attr name="zcBgSurfaceElevated" format="color" />
+    <attr name="zcBorderColor" format="color" />
+    <attr name="zcTextPrimary" format="color" />
+    <attr name="zcTextSecondary" format="color" />
+    <attr name="zcTextMuted" format="color" />
+    <attr name="zcPrimary" format="color" />
+    <attr name="zcPrimaryLight" format="color" />
+    <attr name="zcAccent" format="color" />
+    <attr name="zcDanger" format="color" />
+</resources>

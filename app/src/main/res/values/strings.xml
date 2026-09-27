@@ -34,12 +34,28 @@
     <string name="settings_fullscreen_title">全屏设置</string>
     <string name="settings_fullscreen_on">已开启沉浸式全屏</string>
     <string name="settings_fullscreen_off">保持系统状态栏和导航栏显示</string>
+    <string name="settings_display_title">显示与全屏</string>
+    <string name="settings_display_summary">全屏与远程页顶部栏</string>
+    <string name="settings_display_on">全屏已开启</string>
+    <string name="settings_display_off">全屏已关闭</string>
+    <string name="settings_display_summary_format">%1$s · %2$s</string>
+    <string name="settings_fullscreen_summary">开启后隐藏系统状态栏与导航栏</string>
+    <string name="settings_topbar_title">显示顶部栏</string>
+    <string name="settings_topbar_summary">远程连接页顶部显示 LOGO 与菜单</string>
+    <string name="settings_topbar_on">已显示顶部栏</string>
+    <string name="settings_topbar_off">已隐藏顶部栏</string>
+    <string name="settings_display_hint">两个开关相互独立，可任意组合。隐藏顶部栏后，仍可从远程页侧边栏进入远程设置。</string>
     <string name="settings_theme_title">主题设置</string>
     <string name="settings_theme_light">亮色主题</string>
     <string name="settings_theme_dark">暗色主题</string>
+    <string name="settings_theme_graphite">石墨灰主题</string>
     <string name="settings_zoom_title">页面缩放</string>
     <string name="settings_zoom_summary">调整远程页面整体显示比例</string>
     <string name="settings_zoom_value">%1$d%%</string>
+    <string name="settings_dashboard_title">工作区与任务页样式</string>
+    <string name="settings_dashboard_summary">「当前设备上的工作区和任务」页面的界面来源</string>
+    <string name="settings_dashboard_native">远程原生</string>
+    <string name="settings_dashboard_adaptive">Zmobile移动适配</string>
     <string name="settings_section_app">应用</string>
     <string name="settings_section_security">安全与隐私</string>
     <string name="settings_section_general">通用</string>
@@ -118,6 +134,7 @@
     <string name="settings_theme_select_title">选择主题</string>
     <string name="settings_theme_light_summary">明亮、清晰的界面</string>
     <string name="settings_theme_dark_summary">深色背景，夜间更舒适</string>
+    <string name="settings_theme_graphite_summary">与 ZCode 远程页一致的中性灰配色</string>
 
     <!-- 弹窗 -->
     <string name="dialog_add_title">添加远程连接</string>

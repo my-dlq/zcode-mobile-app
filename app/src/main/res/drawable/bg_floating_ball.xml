@@ -6,7 +6,7 @@
             <solid android:color="@color/fab_bg" />
             <stroke
                 android:width="1.5dp"
-                android:color="@color/primary" />
+                android:color="?attr/zcPrimary" />
         </shape>
     </item>
 </ripple>

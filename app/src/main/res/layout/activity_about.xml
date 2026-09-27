@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_dark"
+    android:background="?attr/zcBgDark"
     android:fitsSystemWindows="true"
     android:orientation="vertical">
 
@@ -24,14 +24,14 @@
             android:contentDescription="@string/action_back"
             android:padding="10dp"
             android:src="@drawable/ic_back"
-            app:tint="@color/text_primary" />
+            app:tint="?attr/zcTextPrimary" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:text="@string/about_title"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/zcTextPrimary"
             android:textSize="18sp"
             android:textStyle="bold" />
     </LinearLayout>
@@ -42,10 +42,10 @@
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="16dp"
         android:layout_marginTop="8dp"
-            app:cardBackgroundColor="@color/bg_surface"
+            app:cardBackgroundColor="?attr/zcBgSurface"
         app:cardCornerRadius="16dp"
         app:cardElevation="0dp"
-            app:strokeColor="@color/border_color"
+            app:strokeColor="?attr/zcBorderColor"
         app:strokeWidth="1dp">
 
         <LinearLayout
@@ -71,7 +71,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/app_name"
-                    android:textColor="@color/text_primary"
+                    android:textColor="?attr/zcTextPrimary"
                     android:textSize="18sp"
                     android:textStyle="bold" />
 
@@ -80,7 +80,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:text="@string/about_app_desc"
-                    android:textColor="@color/text_muted"
+                    android:textColor="?attr/zcTextMuted"
                     android:textSize="12sp" />
 
                 <TextView
@@ -88,7 +88,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:textColor="@color/text_secondary"
+                    android:textColor="?attr/zcTextSecondary"
                     android:textSize="13sp"
                     tools:text="版本 0.1.2 (3)" />
             </LinearLayout>
@@ -101,10 +101,10 @@
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="16dp"
         android:layout_marginTop="12dp"
-            app:cardBackgroundColor="@color/bg_surface"
+            app:cardBackgroundColor="?attr/zcBgSurface"
         app:cardCornerRadius="16dp"
         app:cardElevation="0dp"
-            app:strokeColor="@color/border_color"
+            app:strokeColor="?attr/zcBorderColor"
         app:strokeWidth="1dp">
 
         <LinearLayout
@@ -126,7 +126,7 @@
                     android:layout_width="22dp"
                     android:layout_height="22dp"
                     android:src="@drawable/ic_update"
-                    app:tint="@color/primary_light" />
+                    app:tint="?attr/zcPrimaryLight" />
 
                 <TextView
                     android:layout_width="0dp"
@@ -134,7 +134,7 @@
                     android:layout_marginStart="12dp"
                     android:layout_weight="1"
                     android:text="@string/action_check_update"
-                    android:textColor="@color/text_primary"
+                    android:textColor="?attr/zcTextPrimary"
                     android:textSize="14sp" />
 
                 <ImageView
@@ -142,14 +142,14 @@
                     android:layout_height="18dp"
                     android:src="@drawable/ic_more"
                     android:rotation="180"
-                    app:tint="@color/text_muted" />
+                    app:tint="?attr/zcTextMuted" />
             </LinearLayout>
 
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
                 android:layout_marginStart="50dp"
-                android:background="@color/border_color" />
+                android:background="?attr/zcBorderColor" />
 
             <!-- GitHub -->
             <LinearLayout
@@ -165,7 +165,7 @@
                     android:layout_width="22dp"
                     android:layout_height="22dp"
                     android:src="@drawable/ic_github"
-                    app:tint="@color/text_secondary" />
+                    app:tint="?attr/zcTextSecondary" />
 
                 <TextView
                     android:layout_width="0dp"
@@ -173,7 +173,7 @@
                     android:layout_marginStart="12dp"
                     android:layout_weight="1"
                     android:text="@string/about_github_project"
-                    android:textColor="@color/text_primary"
+                    android:textColor="?attr/zcTextPrimary"
                     android:textSize="14sp" />
 
                 <ImageView
@@ -181,7 +181,7 @@
                     android:layout_height="18dp"
                     android:src="@drawable/ic_more"
                     android:rotation="180"
-                    app:tint="@color/text_muted" />
+                    app:tint="?attr/zcTextMuted" />
             </LinearLayout>
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>

@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_dark"
+    android:background="?attr/zcBgDark"
     android:fitsSystemWindows="true"
     android:orientation="vertical">
 
@@ -23,7 +23,7 @@
             android:contentDescription="@string/action_back"
             android:padding="12dp"
             android:src="@drawable/ic_back"
-            app:tint="@color/text_primary" />
+            app:tint="?attr/zcTextPrimary" />
 
         <ImageView
             android:layout_width="32dp"
@@ -37,7 +37,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="10dp"
             android:text="@string/settings_theme_title"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/zcTextPrimary"
             android:textSize="20sp"
             android:textStyle="bold" />
     </LinearLayout>
@@ -64,17 +64,17 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="10dp"
                 android:text="@string/settings_theme_select_title"
-                android:textColor="@color/text_muted"
+                android:textColor="?attr/zcTextMuted"
                 android:textSize="12sp"
                 android:textStyle="bold" />
 
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:cardBackgroundColor="@color/bg_surface"
+                app:cardBackgroundColor="?attr/zcBgSurface"
                 app:cardCornerRadius="18dp"
                 app:cardElevation="0dp"
-                app:strokeColor="@color/border_color"
+                app:strokeColor="?attr/zcBorderColor"
                 app:strokeWidth="1dp">
 
                 <LinearLayout
@@ -102,7 +102,7 @@
                             android:layout_height="25dp"
                             android:contentDescription="@null"
                             android:src="@drawable/ic_sun"
-                            app:tint="@color/primary" />
+                            app:tint="?attr/zcPrimary" />
 
                         <LinearLayout
                             android:layout_width="0dp"
@@ -115,7 +115,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/settings_theme_light"
-                                android:textColor="@color/text_primary"
+                                android:textColor="?attr/zcTextPrimary"
                                 android:textSize="15sp"
                                 android:textStyle="bold" />
 
@@ -124,7 +124,7 @@
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="3dp"
                                 android:text="@string/settings_theme_light_summary"
-                                android:textColor="@color/text_muted"
+                                android:textColor="?attr/zcTextMuted"
                                 android:textSize="12sp" />
                         </LinearLayout>
 
@@ -132,7 +132,7 @@
                             android:id="@+id/radioLight"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:buttonTint="@color/primary"
+                            android:buttonTint="?attr/zcPrimary"
                             android:clickable="true"
                             android:contentDescription="@string/settings_theme_light"
                             android:focusable="true" />
@@ -142,7 +142,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="1dp"
                         android:layout_marginStart="55dp"
-                        android:background="@color/border_color" />
+                        android:background="?attr/zcBorderColor" />
 
                     <LinearLayout
                         android:id="@+id/rowDark"
@@ -164,7 +164,7 @@
                             android:layout_height="25dp"
                             android:contentDescription="@null"
                             android:src="@drawable/ic_moon"
-                            app:tint="@color/primary" />
+                            app:tint="?attr/zcPrimary" />
 
                         <LinearLayout
                             android:layout_width="0dp"
@@ -177,7 +177,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/settings_theme_dark"
-                                android:textColor="@color/text_primary"
+                                android:textColor="?attr/zcTextPrimary"
                                 android:textSize="15sp"
                                 android:textStyle="bold" />
 
@@ -186,7 +186,7 @@
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="3dp"
                                 android:text="@string/settings_theme_dark_summary"
-                                android:textColor="@color/text_muted"
+                                android:textColor="?attr/zcTextMuted"
                                 android:textSize="12sp" />
                         </LinearLayout>
 
@@ -194,9 +194,73 @@
                             android:id="@+id/radioDark"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:buttonTint="@color/primary"
+                            android:buttonTint="?attr/zcPrimary"
                             android:clickable="true"
                             android:contentDescription="@string/settings_theme_dark"
+                            android:focusable="true" />
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="55dp"
+                        android:background="?attr/zcBorderColor" />
+
+                    <!-- 石墨灰主题：配色严格取自 ZCode 远程页暗色方案（中性灰阶）。
+                         只影响 App 自身界面，不改变远程网页背景。 -->
+                    <LinearLayout
+                        android:id="@+id/rowGraphite"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:minHeight="82dp"
+                        android:orientation="horizontal"
+                        android:paddingStart="16dp"
+                        android:paddingTop="12dp"
+                        android:paddingEnd="12dp"
+                        android:paddingBottom="12dp">
+
+                        <ImageView
+                            android:layout_width="25dp"
+                            android:layout_height="25dp"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_graphite"
+                            app:tint="?attr/zcPrimary" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="14dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/settings_theme_graphite"
+                                android:textColor="?attr/zcTextPrimary"
+                                android:textSize="15sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="3dp"
+                                android:text="@string/settings_theme_graphite_summary"
+                                android:textColor="?attr/zcTextMuted"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <RadioButton
+                            android:id="@+id/radioGraphite"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:buttonTint="?attr/zcPrimary"
+                            android:clickable="true"
+                            android:contentDescription="@string/settings_theme_graphite"
                             android:focusable="true" />
                     </LinearLayout>
 

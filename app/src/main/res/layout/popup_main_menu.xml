@@ -26,14 +26,14 @@
             android:layout_height="22dp"
             android:contentDescription="@null"
             android:src="@drawable/ic_scan"
-            app:tint="@color/text_primary" />
+            app:tint="?attr/zcTextPrimary" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="14dp"
             android:text="@string/menu_scan_connect"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/zcTextPrimary"
             android:textSize="14sp" />
     </LinearLayout>
 
@@ -54,14 +54,14 @@
             android:layout_height="22dp"
             android:contentDescription="@null"
             android:src="@drawable/ic_link"
-            app:tint="@color/text_primary" />
+            app:tint="?attr/zcTextPrimary" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="14dp"
             android:text="@string/menu_address_connect"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/zcTextPrimary"
             android:textSize="14sp" />
     </LinearLayout>
 
@@ -82,14 +82,14 @@
             android:layout_height="22dp"
             android:contentDescription="@null"
             android:src="@drawable/ic_settings"
-            app:tint="@color/text_primary" />
+            app:tint="?attr/zcTextPrimary" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="14dp"
             android:text="@string/menu_settings"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/zcTextPrimary"
             android:textSize="14sp" />
     </LinearLayout>
 
@@ -110,14 +110,14 @@
             android:layout_height="22dp"
             android:contentDescription="@null"
             android:src="@drawable/ic_info"
-            app:tint="@color/text_primary" />
+            app:tint="?attr/zcTextPrimary" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="14dp"
             android:text="@string/menu_about"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/zcTextPrimary"
             android:textSize="14sp" />
     </LinearLayout>
 </LinearLayout>

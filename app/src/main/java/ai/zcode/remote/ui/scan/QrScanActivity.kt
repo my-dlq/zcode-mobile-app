@@ -35,6 +35,7 @@ import com.google.zxing.RGBLuminanceSource
 import com.google.zxing.common.HybridBinarizer
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import ai.zcode.remote.utils.ThemeHelper
 
 class QrScanActivity : AppCompatActivity() {
 
@@ -65,6 +66,8 @@ class QrScanActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 应用用户选择的主题（亮色/暗色/石墨灰）；石墨灰需在 super.onCreate 前 setTheme
+        ThemeHelper.applyTheme(this)
         super.onCreate(savedInstanceState)
         binding = ActivityQrScanBinding.inflate(layoutInflater)
         setContentView(binding.root)

@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_dark"
+    android:background="?attr/zcBgDark"
     android:orientation="vertical">
 
     <!-- 顶栏 -->
@@ -25,14 +25,14 @@
             android:contentDescription="@string/action_back"
             android:padding="10dp"
             android:src="@drawable/ic_back"
-            app:tint="@color/text_primary" />
+            app:tint="?attr/zcTextPrimary" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:text="@string/notif_settings_title"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/zcTextPrimary"
             android:textSize="18sp"
             android:textStyle="bold" />
     </LinearLayout>
@@ -53,10 +53,10 @@
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:cardBackgroundColor="@color/bg_surface"
+                app:cardBackgroundColor="?attr/zcBgSurface"
                 app:cardCornerRadius="18dp"
                 app:cardElevation="0dp"
-                app:strokeColor="@color/border_color"
+                app:strokeColor="?attr/zcBorderColor"
                 app:strokeWidth="1dp">
 
                 <LinearLayout
@@ -79,7 +79,7 @@
                         android:layout_height="24dp"
                         android:contentDescription="@null"
                         android:src="@drawable/ic_notification"
-                        app:tint="@color/primary" />
+                        app:tint="?attr/zcPrimary" />
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -92,7 +92,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/notif_settings_master"
-                            android:textColor="@color/text_primary"
+                            android:textColor="?attr/zcTextPrimary"
                             android:textSize="15sp" />
 
                         <TextView
@@ -100,7 +100,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
                             android:text="@string/notif_settings_master_summary"
-                            android:textColor="@color/text_muted"
+                            android:textColor="?attr/zcTextMuted"
                             android:textSize="12sp" />
                     </LinearLayout>
 
@@ -118,17 +118,17 @@
                 android:layout_marginTop="26dp"
                 android:layout_marginBottom="10dp"
                 android:text="@string/notif_settings_section_events"
-                android:textColor="@color/text_muted"
+                android:textColor="?attr/zcTextMuted"
                 android:textSize="12sp"
                 android:textStyle="bold" />
 
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:cardBackgroundColor="@color/bg_surface"
+                app:cardBackgroundColor="?attr/zcBgSurface"
                 app:cardCornerRadius="18dp"
                 app:cardElevation="0dp"
-                app:strokeColor="@color/border_color"
+                app:strokeColor="?attr/zcBorderColor"
                 app:strokeWidth="1dp">
 
                 <LinearLayout
@@ -164,7 +164,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/notif_settings_approval"
-                                android:textColor="@color/text_primary"
+                                android:textColor="?attr/zcTextPrimary"
                                 android:textSize="15sp" />
 
                             <TextView
@@ -172,7 +172,7 @@
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="2dp"
                                 android:text="@string/notif_settings_approval_summary"
-                                android:textColor="@color/text_muted"
+                                android:textColor="?attr/zcTextMuted"
                                 android:textSize="12sp" />
                         </LinearLayout>
 
@@ -208,7 +208,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/notif_settings_elicitation"
-                                android:textColor="@color/text_primary"
+                                android:textColor="?attr/zcTextPrimary"
                                 android:textSize="15sp" />
 
                             <TextView
@@ -216,7 +216,7 @@
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="2dp"
                                 android:text="@string/notif_settings_elicitation_summary"
-                                android:textColor="@color/text_muted"
+                                android:textColor="?attr/zcTextMuted"
                                 android:textSize="12sp" />
                         </LinearLayout>
 
@@ -252,7 +252,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/notif_settings_completed"
-                                android:textColor="@color/text_primary"
+                                android:textColor="?attr/zcTextPrimary"
                                 android:textSize="15sp" />
 
                             <TextView
@@ -260,7 +260,7 @@
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="2dp"
                                 android:text="@string/notif_settings_completed_summary"
-                                android:textColor="@color/text_muted"
+                                android:textColor="?attr/zcTextMuted"
                                 android:textSize="12sp" />
                         </LinearLayout>
 
@@ -296,7 +296,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/notif_settings_failed"
-                                android:textColor="@color/text_primary"
+                                android:textColor="?attr/zcTextPrimary"
                                 android:textSize="15sp" />
 
                             <TextView
@@ -304,7 +304,7 @@
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="2dp"
                                 android:text="@string/notif_settings_failed_summary"
-                                android:textColor="@color/text_muted"
+                                android:textColor="?attr/zcTextMuted"
                                 android:textSize="12sp" />
                         </LinearLayout>
 

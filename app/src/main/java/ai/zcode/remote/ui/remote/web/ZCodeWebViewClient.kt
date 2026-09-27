@@ -18,7 +18,13 @@ class ZCodeWebViewClient(
     private val onPageError: (errorCode: Int, description: String) -> Unit,
     private val onRenderProcessGone: () -> Unit,
     /** 当前页面缩放百分比（70~150），由设置页写入、此处读取以生成 viewport。 */
-    private val pageZoomProvider: () -> Int = { 100 }
+    private val pageZoomProvider: () -> Int = { 100 },
+    /**
+     * 「当前设备上的工作区和任务」页用哪套界面（远程原生 / Zmobile移动适配）。
+     * 每次注入时读取，因此设置页改完返回即可生效（配合 onResume 重新注入）。
+     */
+    private val dashboardModeProvider: () -> AppSettingsRepository.DashboardMode =
+        { AppSettingsRepository.DashboardMode.NATIVE },
 ) : WebViewClient() {
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
@@ -1011,22 +1017,6 @@ aside[class*="min-w-0"] nav {
                 order: 4 !important;
             }
 
-            /* 主工作区任务列表标题与操作图标栏排版保护：
-               确保 3 个图标（全部折叠/设置/刷新）作为整体紧凑排列，向左排列，间距适当，不被打散或分散拉伸 */
-            div.mt-4[class*="justify-between"] > div.flex.shrink-0,
-            div.mt-4[class*="justify-between"] > div:last-child {
-                display: flex !important;
-                flex: 0 0 auto !important;
-                align-items: center !important;
-                justify-content: flex-start !important;
-                gap: 6px !important;
-                width: auto !important;
-            }
-            div.mt-4[class*="justify-between"] > div.flex.shrink-0 button {
-                order: initial !important;
-                flex: 0 0 auto !important;
-            }
-
             /* 13. 使用统计「Token 活动」点阵：移动断点下 cell 自带大 padding
                （12px 14px），box-sizing:border-box 时最小尺寸被 padding+border
                顶到 29.5×25.5——排查时 computed width 恒为 29.5238px
@@ -1181,7 +1171,11 @@ aside[class*="min-w-0"] nav {
                （实测 count=1），不误伤其它卡片。隐藏后标题/列表随文档流自然上移
                约 71px（横幅高度），无需额外位移。
                ⚠️ 不叠加 `:has(+ div.mt-4)` 兄弟锚点：一旦标题改版或缺省，横幅反而
-                  会意外复现；class 组合本身已唯一，足够精确。 */
+                  会意外复现；class 组合本身已唯一，足够精确。
+               ⚠️ 本规则放在主样式串（两种模式都生效）：用户要求「远程原生」模式
+                  下也去掉这条提示，故不放进只在适配模式挂载的 dashboardCss。
+                  注：编号 21 的顶部留白收紧依赖本规则隐藏后的结构，两条需同时生效
+                  ——21 只在适配模式挂载，原生模式下标题上方留白略多，属预期。 */
             div.min-h-0.flex-1.overflow-y-auto
                 > div.rounded-lg.border.border-card-border.bg-card.text-foreground-subtle:first-child {
                 display: none !important;
@@ -1200,27 +1194,6 @@ aside[class*="min-w-0"] nav {
                   并派发完整 pointer event 序列触发菜单。 */
             header.shrink-0.border-b.bg-header {
                 display: none !important;
-            }
-
-            /* 21. 收紧任务列表页滚动容器顶部空白（2026-09-26 需求）。
-               间距来源（真机 992e8e14 / 模拟器 emulator-5554 实测）：
-               - header 底 y=37；
-               - 滚动容器 `div.min-h-0.flex-1.overflow-y-auto.px-3.py-3` 的 pt=12px → 49；
-               - 首可见子元素 `div.mt-4`（「当前设备上的工作区和任务」标题行）mt=16px → 65。
-               即标题离 header 底 28px 的空白，主要来自这两层 padding/margin。
-               处理：scroller 上 padding 12px→4px，标题行上 margin 16px→8px，
-               标题离 header 底 28px→12px；下 padding 12px→8px 保持上下节奏。
-               ⚠️ 不能用 `:first-child`——编号 19 隐藏的 banner 虽然 display:none
-                  但仍是 firstElementChild，`:first-child` 是结构伪类不会跳过它。
-                  因此用「banner 的相邻兄弟」选择器，精确命中标题行。 */
-            div.min-h-0.flex-1.overflow-y-auto.px-3.py-3 {
-                padding-top: 4px !important;
-                padding-bottom: 8px !important;
-            }
-            div.min-h-0.flex-1.overflow-y-auto.px-3.py-3
-                > div.rounded-lg.border.border-card-border.bg-card.text-foreground-subtle:first-child
-                + .mt-4 {
-                margin-top: 8px !important;
             }
 
             /* 22. 设置面板左侧栏顶部空白收紧（2026-09-26 需求）。
@@ -1331,6 +1304,66 @@ aside[class*="min-w-0"] nav {
                   生效；桌面端 WebView 不会触发（项目只在移动端注入）。 */
             [data-testid="settings-page"] {
                 grid-template-columns: 44px minmax(0, 1fr) !important;
+            }
+
+            /* 28. 设置中心侧边栏按钮的 hover tooltip 屏蔽（2026-09-26 需求，模拟器实测）。
+               现象：在设置中心点侧边栏图标（外观/记忆/MCP/命令/...），手指按下瞬间
+               会先弹出按钮的 aria-label 文字气泡（如「记忆」白底气泡）再切到对应
+               模块，视觉上"闪一下"。
+               根因：远端按钮是 `button[data-slot="tooltip-trigger"][aria-label]`，
+               配对的视觉 tooltip 容器是挂在 body 末尾 popper wrapper 里的
+               `div[data-slot="tooltip-content"][data-side="right"][data-state="delayed-open"]`。
+               Radix Tooltip 内部状态触发，与 aria-describedby 无关——移除
+               aria-describedby 不能阻止弹出（已实测）。
+               处理：CSS 全局 `display:none` 隐藏所有 tooltip-content，
+               JS 白名单（编号 16）放行工作区气泡（含「最近活动」/路径分隔符「:\\」「:/」），
+               不影响其它依赖 tooltip 的功能。 */
+            div[data-slot="tooltip-content"] {
+                display: none !important;
+            }
+        """.trimIndent().replace("\n", " ").replace("\"", "\\\"")
+
+        // 「当前设备上的工作区和任务」页（dashboard）专属的窄屏适配样式。
+        // 单独成串是为了能按用户设置（AppSettingsRepository.getDashboardMode）决定是否注入：
+        // 选「远程原生」时不注入（该页保持远端原貌），选「Zmobile移动适配」时注入（下方 19/21/25/27）。
+        // ⚠️ 只包含「改变该页布局」的规则。触控增强（点击热区、FastTouch、穿透修复）不在其中——
+        //    那些是 App 全局的可用性保障，任何模式下都要生效。
+        val dashboardCss = """
+            /* 主工作区任务列表标题与操作图标栏排版保护：
+               确保 3 个图标（全部折叠/设置/刷新）作为整体紧凑排列，向左排列，间距适当，不被打散或分散拉伸 */
+            div.mt-4[class*="justify-between"] > div.flex.shrink-0,
+            div.mt-4[class*="justify-between"] > div:last-child {
+                display: flex !important;
+                flex: 0 0 auto !important;
+                align-items: center !important;
+                justify-content: flex-start !important;
+                gap: 6px !important;
+                width: auto !important;
+            }
+            div.mt-4[class*="justify-between"] > div.flex.shrink-0 button {
+                order: initial !important;
+                flex: 0 0 auto !important;
+            }
+
+            /* 21. 收紧任务列表页滚动容器顶部空白（2026-09-26 需求）。
+               间距来源（真机 992e8e14 / 模拟器 emulator-5554 实测）：
+               - header 底 y=37；
+               - 滚动容器 `div.min-h-0.flex-1.overflow-y-auto.px-3.py-3` 的 pt=12px → 49；
+               - 首可见子元素 `div.mt-4`（「当前设备上的工作区和任务」标题行）mt=16px → 65。
+               即标题离 header 底 28px 的空白，主要来自这两层 padding/margin。
+               处理：scroller 上 padding 12px→4px，标题行上 margin 16px→8px，
+               标题离 header 底 28px→12px；下 padding 12px→8px 保持上下节奏。
+               ⚠️ 不能用 `:first-child`——编号 19 隐藏的 banner 虽然 display:none
+                  但仍是 firstElementChild，`:first-child` 是结构伪类不会跳过它。
+                  因此用「banner 的相邻兄弟」选择器，精确命中标题行。 */
+            div.min-h-0.flex-1.overflow-y-auto.px-3.py-3 {
+                padding-top: 4px !important;
+                padding-bottom: 8px !important;
+            }
+            div.min-h-0.flex-1.overflow-y-auto.px-3.py-3
+                > div.rounded-lg.border.border-card-border.bg-card.text-foreground-subtle:first-child
+                + .mt-4 {
+                margin-top: 8px !important;
             }
 
             /* 25. 任务列表工作区卡片精简（2026-09-26 需求，两行布局）：
@@ -1490,25 +1523,20 @@ aside[class*="min-w-0"] nav {
                 padding-right: 4px !important;
             }
 
-            /* 28. 设置中心侧边栏按钮的 hover tooltip 屏蔽（2026-09-26 需求，模拟器实测）。
-               现象：在设置中心点侧边栏图标（外观/记忆/MCP/命令/...），手指按下瞬间
-               会先弹出按钮的 aria-label 文字气泡（如「记忆」白底气泡）再切到对应
-               模块，视觉上"闪一下"。
-               根因：远端按钮是 `button[data-slot="tooltip-trigger"][aria-label]`，
-               配对的视觉 tooltip 容器是挂在 body 末尾 popper wrapper 里的
-               `div[data-slot="tooltip-content"][data-side="right"][data-state="delayed-open"]`。
-               Radix Tooltip 内部状态触发，与 aria-describedby 无关——移除
-               aria-describedby 不能阻止弹出（已实测）。
-               处理：CSS 全局 `display:none` 隐藏所有 tooltip-content，
-               JS 白名单（编号 16）放行工作区气泡（含「最近活动」/路径分隔符「:\\」「:/」），
-               不影响其它依赖 tooltip 的功能。 */
-            div[data-slot="tooltip-content"] {
-                display: none !important;
-            }
         """.trimIndent().replace("\n", " ").replace("\"", "\\\"")
+
+        // 「当前设备上的工作区和任务」页是否使用 Zmobile 移动适配布局。
+        // 由 AppSettingsRepository.getDashboardMode() 决定，用户可在原生设置页切换；
+        // 切换后 RemoteControlActivity.onResume 会重新注入，无需重载页面。
+        val dashboardAdaptive =
+            dashboardModeProvider() == AppSettingsRepository.DashboardMode.ADAPTIVE
 
         val js = """
             (function() {
+                // 每次注入都把最新模式写到 window 上：长期存活的 MutationObserver
+                // （如调色板按钮注入）读它而非闭包常量，切换设置后无需重载页面即生效。
+                window.__zcodeDashboardAdaptive = $dashboardAdaptive;
+
                 // 1. 安全注入触控优化样式
                 function applyStyle() {
                     var target = document.head || document.documentElement || document.body;
@@ -1520,6 +1548,20 @@ aside[class*="min-w-0"] nav {
                         target.appendChild(style);
                     }
                     style.innerHTML = "$css";
+                    // dashboard（「当前设备上的工作区和任务」页）专属适配样式：
+                    // 按用户设置决定是否挂载。用一个独立 style 元素承载，切换模式时
+                    // 只需增删该元素，不必重新计算主样式（幂等，SPA 内切换也安全）。
+                    var dash = document.getElementById('zcode-dashboard-adaptive-style');
+                    if (window.__zcodeDashboardAdaptive) {
+                        if (!dash) {
+                            dash = document.createElement('style');
+                            dash.id = 'zcode-dashboard-adaptive-style';
+                            target.appendChild(dash);
+                        }
+                        dash.innerHTML = "$dashboardCss";
+                    } else if (dash) {
+                        dash.remove();
+                    }
                     return true;
                 }
                 if (!applyStyle()) {
@@ -2301,6 +2343,9 @@ aside[class*="min-w-0"] nav {
                 // 点击调规则 15 的 zcodeTriggerThemeToggle() 打开主题菜单（由用户自己选）。
                 // ⚠️ SPA 重渲染会重建按钮组（如切换任务/工作区后），需 MutationObserver
                 //    持续监听并补注入；observer 回调里发现按钮已存在则跳过，避免重复。
+                // ⚠️ 两种模式都注入：网页 header 被规则 20 整条隐藏（含它自带的调色板
+                //    按钮），所以无论选「远程原生」还是「移动适配」，都需要把这枚按钮
+                //    补到标题行按钮组里，否则用户在该页无法切换主题。
                 (function() {
                     if (window.__zcodeThemeBtnInject) return;
                     window.__zcodeThemeBtnInject = true;
@@ -2443,6 +2488,14 @@ aside[class*="min-w-0"] nav {
         """.trimIndent()
 
         webView.evaluateJavascript(js, null)
+    }
+
+    /**
+     * 按当前设置重新注入页面适配样式（供「设置页返回」等场景调用，无需重载页面）。
+     * 主要用途：用户在原生设置页切换「工作区与任务页样式」后，立即让远程页生效。
+     */
+    fun reapplyPageAdaptation(webView: WebView) {
+        injectAntiMisoperation(webView)
     }
 
     /**

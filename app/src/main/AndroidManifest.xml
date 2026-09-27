@@ -102,6 +102,12 @@
             android:exported="false"
             android:theme="@style/Theme.ZCodeRemote" />
 
+        <!-- 显示与全屏设置：全屏 + 远程页顶部栏两个独立开关 -->
+        <activity
+            android:name=".ui.settings.DisplaySettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ZCodeRemote" />
+
         <activity
             android:name=".ui.settings.ThemeSettingsActivity"
             android:exported="false"

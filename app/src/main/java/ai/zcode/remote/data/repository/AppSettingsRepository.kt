@@ -17,6 +17,17 @@ class AppSettingsRepository(context: Context) {
         prefs.edit().putBoolean(KEY_FULLSCREEN, enabled).apply()
     }
 
+    /**
+     * 远程连接页是否显示 App 自己的顶部栏（LOGO + 菜单）。
+     * 关闭后该页只剩远程网页内容，配合全屏设置可获得完全沉浸的观感。
+     * 与全屏设置相互独立：两者可任意组合。
+     */
+    fun isRemoteTopBarVisible(): Boolean = prefs.getBoolean(KEY_REMOTE_TOP_BAR, true)
+
+    fun setRemoteTopBarVisible(visible: Boolean) {
+        prefs.edit().putBoolean(KEY_REMOTE_TOP_BAR, visible).apply()
+    }
+
     /** 后台保活：息屏时前台服务 + WakeLock 保持远程会话在线。 */
     fun isKeepAliveEnabled(): Boolean = prefs.getBoolean(KEY_KEEP_ALIVE, false)
 
@@ -27,6 +38,7 @@ class AppSettingsRepository(context: Context) {
     fun getThemeMode(): ThemeMode {
         return when (prefs.getString(KEY_THEME_MODE, ThemeMode.LIGHT.value)) {
             ThemeMode.DARK.value -> ThemeMode.DARK
+            ThemeMode.GRAPHITE.value -> ThemeMode.GRAPHITE
             else -> ThemeMode.LIGHT
         }
     }
@@ -113,6 +125,26 @@ class AppSettingsRepository(context: Context) {
         prefs.edit().putInt(KEY_PAGE_ZOOM, percent.coerceIn(PAGE_ZOOM_MIN, PAGE_ZOOM_MAX)).apply()
     }
 
+    /**
+     * 「当前设备上的工作区和任务」页（dashboard）用哪套界面：
+     * - [DashboardMode.NATIVE]：远程页面原样呈现（默认）；
+     * - [DashboardMode.ADAPTIVE]：本项目为窄屏调整过的紧凑布局（横幅隐藏、卡片两行、
+     *   任务项紧凑、侧栏收窄等）。
+     *
+     * 只影响该页的布局适配规则，不影响触控增强（点击热区/FastTouch）——
+     * 那些是 App 全局的可用性保障，关掉会让原生模式反而难点。
+     */
+    fun getDashboardMode(): DashboardMode {
+        return when (prefs.getString(KEY_DASHBOARD_MODE, DashboardMode.NATIVE.value)) {
+            DashboardMode.ADAPTIVE.value -> DashboardMode.ADAPTIVE
+            else -> DashboardMode.NATIVE
+        }
+    }
+
+    fun setDashboardMode(mode: DashboardMode) {
+        prefs.edit().putString(KEY_DASHBOARD_MODE, mode.value).apply()
+    }
+
     // ---- 通知偏好 ----
 
     /** 通知总开关：关闭后所有任务事件通知都不再弹出。 */
@@ -165,12 +197,28 @@ class AppSettingsRepository(context: Context) {
 
     enum class ThemeMode(val value: String) {
         LIGHT("light"),
-        DARK("dark")
+        DARK("dark"),
+
+        /**
+         * 石墨灰主题：严格取自 ZCode 远程页暗色方案的中性灰阶
+         * （背景 neutral-900 #161616、卡片 neutral-800 #2B2B2B、文字 #D4D4D4）。
+         */
+        GRAPHITE("graphite")
+    }
+
+    /** 「当前设备上的工作区和任务」页的界面来源。 */
+    enum class DashboardMode(val value: String) {
+        /** 远程原生界面（默认）。 */
+        NATIVE("native"),
+
+        /** Zmobile 移动适配界面（本项目为窄屏调整过的紧凑布局）。 */
+        ADAPTIVE("adaptive")
     }
 
     companion object {
         private const val PREFS_NAME = "zcode_remote_prefs"
         private const val KEY_FULLSCREEN = "key_fullscreen_enabled"
+        private const val KEY_REMOTE_TOP_BAR = "key_remote_top_bar_visible"
         private const val KEY_KEEP_ALIVE = "key_keepalive_enabled"
         private const val KEY_THEME_MODE = "key_theme_mode"
         private const val KEY_PATTERN_SALT = "key_pattern_salt"
@@ -186,6 +234,7 @@ class AppSettingsRepository(context: Context) {
         private const val KEY_NOTIF_COMPLETED = "key_notif_completed"
         private const val KEY_NOTIF_FAILED = "key_notif_failed"
         private const val KEY_PAGE_ZOOM = "key_page_zoom"
+        private const val KEY_DASHBOARD_MODE = "key_dashboard_mode"
 
         /** 页面缩放百分比范围与默认值：UI 滑杆与存储 clamp 共用，避免两处写死不一致。 */
         const val PAGE_ZOOM_MIN = 50

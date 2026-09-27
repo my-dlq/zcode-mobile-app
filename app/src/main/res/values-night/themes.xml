@@ -16,5 +16,19 @@
         <item name="android:statusBarColor">@color/bg_dark</item>
         <item name="android:navigationBarColor">@color/bg_dark</item>
         <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+
+        <!-- 语义色主题属性（暗色取值，引用 values-night/colors.xml）。
+             与 values/themes.xml 中的同名条目一一对应，勿只改一处。 -->
+        <item name="zcBgDark">@color/bg_dark</item>
+        <item name="zcBgSurface">@color/bg_surface</item>
+        <item name="zcBgSurfaceElevated">@color/bg_surface_elevated</item>
+        <item name="zcBorderColor">@color/border_color</item>
+        <item name="zcTextPrimary">@color/text_primary</item>
+        <item name="zcTextSecondary">@color/text_secondary</item>
+        <item name="zcTextMuted">@color/text_muted</item>
+        <item name="zcPrimary">@color/primary</item>
+        <item name="zcPrimaryLight">@color/primary_light</item>
+        <item name="zcAccent">@color/accent</item>
+        <item name="zcDanger">@color/danger</item>
     </style>
 </resources>
