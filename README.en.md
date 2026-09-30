@@ -24,14 +24,17 @@ ZCode Mobile App wraps the official remote control page in a native shell: it us
 
 ## Features
 
-- **Security:** Adds fingerprint and pattern unlock.
-- **Theme:** Built-in light and dark themes, switchable in settings.
-- **Event notifications:** Supports four event types — task success, failure, approval, and question — each can be enabled independently.
-- **Session memory:** Remembers the last task session per device and restores that device and session after switching back or after the process is reclaimed by the system.
-- **In-app updates:** Silently checks GitHub Releases on startup, downloads the APK and launches the system installer, with an option to ignore a specific version.
-- **Connection management:** Add remote devices quickly via four entry points (QR scan, gallery recognition, clipboard detection, and deep links), with unified management of multiple connections and sorting support.
-- **Mobile interaction:** Immersive full screen, narrow-screen adaptation, mis-touch suppression, settings UI optimization, staged back-key handling, and auto-raising the page when the soft keyboard appears, for a better experience.
-- **Background keep-alive:** Keeps the connection alive with a foreground service plus a screen-off `WakeLock` during remote sessions, preventing the page from being reclaimed by the system, and provides battery optimization guidance.
+- **Reward Notification:** Integrated support for ZCode token reward campaigns. When rewards are available for an account, a centered pop-up notification will appear upon entering a task session.
+- **Security Features:** Added fingerprint authentication and pattern lock support.
+- **Page Scaling:** Added full-page scaling for better adaptation to different mobile screen sizes.
+- **UI Themes:** Added built-in Light, Dark, and Graphite themes, which can be manually switched in Settings.
+- **Event Notifications:** Added notifications for four event types: task success, task failure, approval requests, and questions. Each notification type can be enabled or disabled independently.
+- **Page Improvements:** Refined the ZCode task list page by removing unnecessary notifications, adjusting title width, and improving overall visual clarity.
+- **Update Detection:** Added app version change detection and update support to better adapt to changes on the ZCode side.
+- **Session Memory:** Remembers the last active task session for each device. When switching back to a device or when the app is reclaimed by the system, it automatically restores the previous device and session.
+- **In-App Updates:** Silently checks GitHub Releases on startup. Supports downloading APK files, launching the system installer, and ignoring specified versions.
+- **Background Keep-Alive:** During remote sessions, uses a foreground service and screen-off WakeLock to maintain the connection and prevent the page from being reclaimed by the system. Also provides guidance for disabling battery optimization.
+- **Mobile Interaction:** Added immersive full-screen mode, narrow-screen adaptation, accidental-touch prevention, Settings UI improvements, hierarchical Back button handling, and automatic page adjustment when the soft keyboard appears, providing a better overall mobile experience.
 
 ## Tech Stack
 
