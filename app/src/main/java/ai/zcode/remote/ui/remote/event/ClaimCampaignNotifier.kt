@@ -21,9 +21,12 @@ object ClaimCampaignNotifier {
     private const val PREFS = "zcode_claim_campaigns"
     private const val EXTRA_KEY = "claim_campaign_key"
     private const val EXTRA_SOURCE = "claim_campaign_source"
+    private const val EXTRA_CAMPAIGN = "claim_campaign_payload"
 
     @Synchronized
-    fun receive(context: Context, sourceId: String, deviceName: String, body: String) {
+    fun receive(context: Context, sourceId: String, deviceName: String, body: String): List<ClaimCampaign> {
+        if (!AppSettingsRepository.getInstance(context).isNotificationEnabled()) return emptyList()
+        val received = mutableListOf<ClaimCampaign>()
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val deliveredAt = runCatching { JSONObject(body).optLong("serverTime", 0L) }.getOrDefault(0L)
@@ -35,8 +38,10 @@ object ClaimCampaignNotifier {
             if (prefs.getBoolean(key, false)) continue
             // A mirrored/replayed copy of the same response is not a new server delivery.
             if (deliveredAt > 0 && prefs.getLong("delivery|$key", 0L) >= deliveredAt) continue
-            if (!AppSettingsRepository.getInstance(context).isNotificationEnabled() ||
-                !NotificationManagerCompat.from(context).areNotificationsEnabled()) continue
+            received.add(campaign)
+            if (deliveredAt > 0) prefs.edit().putLong("delivery|$key", deliveredAt).apply()
+            // Foreground dialogs still work when Android notification permission is denied.
+            if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) continue
             val connection = ConnectionRepository.getInstance(context).getAllConnections()
                 .firstOrNull { it.id == sourceId || it.url == sourceId }
                 ?: ConnectionRepository.getInstance(context).getAllConnections().firstOrNull { it.name == deviceName }
@@ -46,6 +51,7 @@ object ClaimCampaignNotifier {
                 putExtra(RemoteControlActivity.EXTRA_NAME, connection.name)
                 putExtra(EXTRA_KEY, campaign.key)
                 putExtra(EXTRA_SOURCE, sourceId)
+                putExtra(EXTRA_CAMPAIGN, campaign.toJson())
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
             val pending = PendingIntent.getActivity(context, key.hashCode(), launch,
@@ -62,11 +68,11 @@ object ClaimCampaignNotifier {
                 .build()
             runCatching { manager.notify(key.hashCode(), notification) }
                 .onSuccess {
-                    if (deliveredAt > 0) prefs.edit().putLong("delivery|$key", deliveredAt).apply()
                     Log.i("ZCodeClaim", "campaign notification posted: ${campaign.id}")
                 }
                 .onFailure { Log.w("ZCodeClaim", "campaign notification failed", it) }
         }
+        return received
     }
 
     @Synchronized
@@ -80,4 +86,8 @@ object ClaimCampaignNotifier {
     fun acknowledgeIntent(context: Context, intent: Intent) {
         acknowledge(context, intent.getStringExtra(EXTRA_SOURCE).orEmpty(), intent.getStringExtra(EXTRA_KEY).orEmpty())
     }
+
+    fun campaignFromIntent(intent: Intent): ClaimCampaign? =
+        ClaimCampaign.fromJson(intent.getStringExtra(EXTRA_CAMPAIGN).orEmpty())
+            ?.takeIf { it.key == intent.getStringExtra(EXTRA_KEY) }
 }

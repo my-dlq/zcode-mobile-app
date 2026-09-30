@@ -8,7 +8,20 @@ import java.util.Locale
 data class ClaimCampaign(val id: String, val scope: String, val planId: String, val title: String, val detail: String) {
     val key: String get() = "$scope|$id|$planId"
 
+    fun toJson(): String = JSONObject().put("id", id).put("scope", scope).put("planId", planId)
+        .put("title", title).put("detail", detail).toString()
+
     companion object {
+        /** A notification carries its own snapshot, so opening it does not depend on a later poll. */
+        fun fromJson(body: String): ClaimCampaign? = runCatching {
+            if (body.length > 32 * 1024) return null
+            val json = JSONObject(body)
+            val values = listOf("id", "scope", "planId", "title", "detail").map { json.optString(it) }
+            if (values.any { it.isBlank() }) return null
+            ClaimCampaign(values[0], values[1], values[2], values[3], values[4])
+                .takeIf { it.key.length <= 2048 }
+        }.getOrNull()
+
         fun parse(body: String): List<ClaimCampaign> = runCatching {
             if (body.length > 256 * 1024) return emptyList()
             val root = JSONObject(body)

@@ -38,4 +38,18 @@ class ClaimCampaignTest {
         val campaign = ClaimCampaign.parse(delivery.replace("100000000", "-1")).single()
         assertEquals("活动权益可领取", campaign.detail)
     }
+
+    @Test fun `notification snapshot preserves exact activity and display without another query`() {
+        val campaign = ClaimCampaign.parse(delivery).single()
+        assertEquals(campaign, ClaimCampaign.fromJson(campaign.toJson()))
+        val escaped = campaign.copy(title = "活动\"标题", detail = "模型\n100,000,000 tokens")
+        assertEquals(escaped, ClaimCampaign.fromJson(escaped.toJson()))
+    }
+
+    @Test fun `invalid notification snapshot cannot open a claim prompt`() {
+        assertNull(ClaimCampaign.fromJson("not json"))
+        assertNull(ClaimCampaign.fromJson("{}"))
+        assertNull(ClaimCampaign.fromJson(ClaimCampaign.parse(delivery).single().copy(planId = "").toJson()))
+        assertNull(ClaimCampaign.fromJson("x".repeat(32 * 1024 + 1)))
+    }
 }

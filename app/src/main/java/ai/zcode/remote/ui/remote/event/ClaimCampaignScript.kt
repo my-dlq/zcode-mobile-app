@@ -9,6 +9,7 @@ object ClaimCampaignScript {
     if (!bridge) return;
     var services = null, offers = [], busy = false, querying = false, lastQuery = 0;
     var REFRESH_MS = 10 * 60 * 1000;
+    var activeClaimKey = '', lastStatus = '';
     var api = window.__zcodeClaims = {};
 
     function findServices() {
@@ -60,53 +61,11 @@ object ClaimCampaignScript {
         return { id: action.args.plan_id, name: plan && plan.name || '可领取活动',
             benefits: plan && plan.entitlements || [], delivery: delivery };
     }
-    function detail(plan) {
-        return plan.benefits.map(function (e) {
-            var amount = Number(e.grant_units || e.units || 0);
-            if (!isFinite(amount) || amount <= 0) return '';
-            return (e.show_name || e.showName || '') + ' ' + amount.toLocaleString('en-US') + ' ' +
-                ((e.unit_type || e.unitType) === 'token' ? 'tokens' : (e.unit_type || e.unitType || ''));
-        }).filter(Boolean).join(' · ') || '活动权益可领取';
-    }
     function status(text) {
-        var el = document.getElementById('zcode-claim-status');
-        if (el) { el.textContent = text; el.hidden = !text; }
-    }
-    function render() {
-        var heading = Array.from(document.querySelectorAll('h1')).find(function (e) {
-            return /当前设备上的工作区和任务|Workspaces and Tasks/i.test(e.textContent);
-        });
-        var host = document.getElementById('zcode-claim-offers');
-        if (!heading || !offers.length) { if (host) host.remove(); return; }
-        // Insert beside the dashboard header, within its scrolling content.
-        var header = heading.parentElement.parentElement;
-        var signature = JSON.stringify(offers.map(function (o) { return [o.key, o.plan.name, detail(o.plan)]; }));
-        if (host && host.dataset.signature === signature) return;
-        if (host) host.remove();
-        host = document.createElement('section');
-        host.id = 'zcode-claim-offers'; host.dataset.signature = signature;
-        host.setAttribute('aria-label', '可领取活动');
-        host.style.cssText = 'margin:12px 0;display:grid;gap:10px;';
-        offers.forEach(function (offer) {
-            var card = document.createElement('article');
-            card.className = 'bg-surface text-foreground border-border';
-            card.style.cssText = 'padding:16px;border-width:1px;border-style:solid;border-radius:16px;display:flex;align-items:center;gap:12px;';
-            var info = document.createElement('div'); info.style.cssText = 'flex:1;min-width:0;';
-            var title = document.createElement('strong'); title.textContent = offer.plan.name;
-            title.style.cssText = 'display:block;font-size:14px;line-height:1.5;';
-            var benefit = document.createElement('div'); benefit.textContent = detail(offer.plan);
-            benefit.style.cssText = 'font-size:13px;line-height:1.6;margin-top:6px;overflow-wrap:anywhere;';
-            info.appendChild(title); info.appendChild(benefit);
-            var button = document.createElement('button'); button.type = 'button'; button.textContent = '领取';
-            button.setAttribute('data-zcode-inject', '1');
-            button.setAttribute('aria-label', '领取 ' + offer.plan.name);
-            button.style.cssText = 'flex:none;border:1px solid currentColor;border-radius:999px;padding:8px 16px;font-size:14px;background:transparent;color:inherit;min-height:44px;';
-            button.onclick = function (event) { event.stopPropagation(); claim(offer); };
-            card.appendChild(info); card.appendChild(button); host.appendChild(card);
-        });
-        var message = document.createElement('p'); message.id = 'zcode-claim-status'; message.hidden = true;
-        message.setAttribute('role', 'status'); message.style.cssText = 'margin:4px 0;font-size:13px;'; host.appendChild(message);
-        header.insertAdjacentElement('afterend', host);
+        lastStatus = text;
+        if (activeClaimKey && typeof bridge.onClaimCampaignStatus === 'function') {
+            bridge.onClaimCampaignStatus(activeClaimKey, text, !busy);
+        }
     }
     async function refresh(force) {
         if (querying || (!force && Date.now() - lastQuery < REFRESH_MS)) return;
@@ -121,7 +80,6 @@ object ClaimCampaignScript {
                 return plan && { plan: plan, key: result.scope + '|' + d.campaign_id + '|' + plan.id, scope: result.scope };
             }).filter(Boolean);
             lastQuery = Date.now();
-            render();
             bridge.onClaimCampaigns(JSON.stringify(result));
         } catch (e) {
             // Older desktops may only expose plan previews. These provide an entry, without manufacturing deliveries.
@@ -130,7 +88,7 @@ object ClaimCampaignScript {
                 offers = (preview.plans || []).filter(function (p) { return p.planId; }).map(function (p) {
                     return {key: 'preview|' + p.planId, scope: '', plan: {id:p.planId, name:p.name || '可领取活动', benefits:p.entitlements || []}};
                 });
-                lastQuery = Date.now(); render();
+                lastQuery = Date.now();
             } catch (ignored) { services = null; }
         } finally { querying = false; }
     }
@@ -187,9 +145,8 @@ object ClaimCampaignScript {
     async function claim(offer) {
         if (busy) return;
         busy = true;
+        activeClaimKey = offer.key;
         if (offer.scope) bridge.onClaimCampaignClicked(offer.key);
-        var buttons = document.querySelectorAll('#zcode-claim-offers button');
-        buttons.forEach(function (b) { b.disabled = true; });
         try {
             status('正在加载领取验证…');
             var svc = findServices().codingPlanSubscriptionService;
@@ -207,21 +164,25 @@ object ClaimCampaignScript {
                 }
                 status(offer.plan.name + ' 领取成功');
                 offers = offers.filter(function (o) { return o.key !== offer.key; });
-                setTimeout(function () { render(); refresh(true); }, 2500);
+                setTimeout(function () { refresh(true); }, 2500);
             } else {
                 var messages = {1001:'套餐不存在',1002:'活动已结束或暂不可领取',1003:'该套餐已经领取过',
                     1004:'账号或客户端版本不满足领取条件',1005:'今日领取名额已用完',3007:'验证码校验失败，请重试',401:'请先在桌面端登录'};
                 throw Error(result && (result.message || messages[result.code]) || '领取失败，请稍后重试');
             }
         } catch (e) { status(e.message || '领取失败，请稍后重试'); }
-        finally { busy = false; buttons.forEach(function (b) { b.disabled = false; }); }
+        finally {
+            busy = false;
+            status(lastStatus); activeClaimKey = '';
+        }
     }
     api.refresh = refresh;
-    var scheduled = false;
-    new MutationObserver(function () {
-        if (scheduled) return; scheduled = true;
-        setTimeout(function () { scheduled = false; render(); }, 250);
-    }).observe(document, {childList:true, subtree:true});
+    // Native reminders can claim from a task conversation without a dashboard button.
+    api.claim = function (key) {
+        var offer = offers.find(function (o) { return o.key === key; });
+        if (busy || !offer || !findServices()) return false;
+        claim(offer); return true;
+    };
     // First discovery retries until the remote services have paired; successful queries use desktop cadence.
     setInterval(function () { refresh(false); }, 10000);
     window.addEventListener('online', function () { refresh(false); });
