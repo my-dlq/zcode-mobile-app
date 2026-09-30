@@ -33,6 +33,8 @@ import ai.zcode.remote.databinding.ActivityRemoteControlBinding
 import ai.zcode.remote.databinding.PopupRemoteMenuBinding
 import ai.zcode.remote.ui.about.AboutActivity
 import ai.zcode.remote.ui.remote.event.EventCaptureScript
+import ai.zcode.remote.ui.remote.event.ClaimCampaignDialogController
+import ai.zcode.remote.ui.remote.event.ClaimCampaignNotifier
 import ai.zcode.remote.ui.remote.event.TaskEventBridge
 import ai.zcode.remote.ui.remote.event.TaskNotifier
 import ai.zcode.remote.ui.remote.web.ZCodeWebChromeClient
@@ -75,6 +77,14 @@ class RemoteControlActivity : BaseActivity() {
     private var eventCaptureScript: ScriptHandler? = null
     private lateinit var networkCallback: ConnectivityManager.NetworkCallback
     private val handler = Handler(Looper.getMainLooper())
+    private val claimDialogs by lazy {
+        ClaimCampaignDialogController(this) { key, callback ->
+            val quoted = org.json.JSONObject.quote(key)
+            binding.webView.evaluateJavascript(
+                "!!(window.__zcodeClaims && window.__zcodeClaims.claim($quoted))"
+            ) { value -> callback(value == "true") }
+        }
+    }
     private val connectivityManager by lazy {
         getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     }
@@ -131,6 +141,7 @@ class RemoteControlActivity : BaseActivity() {
         targetUrl = intent.getStringExtra(EXTRA_URL) ?: ""
         deviceName = intent.getStringExtra(EXTRA_NAME) ?: "ZCode 远程工作区"
         pendingTaskId = intent.getStringExtra(EXTRA_TASK_ID) ?: ""
+        ClaimCampaignNotifier.acknowledgeIntent(this, intent)
         isSettingsModeRequested = intent.getBooleanExtra(EXTRA_SETTINGS_MODE, false)
 
         if (targetUrl.isBlank()) {
@@ -182,6 +193,7 @@ class RemoteControlActivity : BaseActivity() {
         setupEventCapture()
         registerNetworkCallback()
         loadUrl(targetUrl)
+        ClaimCampaignNotifier.campaignFromIntent(intent)?.let { claimDialogs.receive(listOf(it), fromNotification = true) }
     }
 
     /** 注册任务事件桥并在每次页面加载后注入捕获脚本（SPA 导航可能重建 window）。 */
@@ -206,6 +218,24 @@ class RemoteControlActivity : BaseActivity() {
             },
             onEvent = { event ->
                 runOnUiThread { TaskNotifier.notify(this, event) }
+            },
+            onClaimCampaigns = { body ->
+                val campaigns = ClaimCampaignNotifier.receive(this, sourceId, deviceName, body)
+                runOnUiThread {
+                    if (sourceId == connectionId.ifEmpty { targetUrl } && !isFinishing && !isDestroyed) {
+                        claimDialogs.receive(campaigns)
+                    }
+                }
+            },
+            onClaimCampaignClicked = { key ->
+                ClaimCampaignNotifier.acknowledge(this, sourceId, key)
+            },
+            onClaimCampaignStatus = { key, message, finished ->
+                runOnUiThread {
+                    if (sourceId == connectionId.ifEmpty { targetUrl } && !isFinishing && !isDestroyed) {
+                        claimDialogs.status(key, message, finished)
+                    }
+                }
             }
         )
         eventBridgeAlive = true
@@ -912,7 +942,15 @@ class RemoteControlActivity : BaseActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        ClaimCampaignNotifier.acknowledgeIntent(this, intent)
         val newUrl = intent.getStringExtra(EXTRA_URL) ?: return
+        val campaign = ClaimCampaignNotifier.campaignFromIntent(intent)
+        if (newUrl == targetUrl && campaign != null) {
+            // Notification taps keep the currently open conversation intact.
+            claimDialogs.receive(listOf(campaign), fromNotification = true)
+            return
+        }
+        claimDialogs.clear()
         val newName = intent.getStringExtra(EXTRA_NAME) ?: deviceName
         val newTaskId = intent.getStringExtra(EXTRA_TASK_ID) ?: ""
         // 保存当前页面的 taskId 到旧连接（切换前）
@@ -937,6 +975,8 @@ class RemoteControlActivity : BaseActivity() {
         setupEventCapture()
         // 重新加载页面
         loadUrl(targetUrl)
+        claimDialogs.setVisible(foregroundSessionVisible.get())
+        campaign?.let { claimDialogs.receive(listOf(it), fromNotification = true) }
     }
 
     override fun onResume() {
@@ -953,6 +993,7 @@ class RemoteControlActivity : BaseActivity() {
         // 系统通知跳过（见 TaskNotifier.notify 的前台会话判断）。
         // 周期刷新以跟随 SPA 页面内切换会话（页面内导航不触发 onPageFinished）
         foregroundSessionVisible.set(true)
+        claimDialogs.setVisible(true)
         refreshForegroundSessionId()
         handler.postDelayed(foregroundSessionTick, FOREGROUND_SESSION_TICK_MS)
 
@@ -981,6 +1022,7 @@ class RemoteControlActivity : BaseActivity() {
         super.onPause()
         // 页面离开前台时不停止 WebView 事件监听；仅暂停前台会话抑制与 UI 轮询。
         foregroundSessionVisible.set(false)
+        claimDialogs.setVisible(false)
         // 立即清空旧会话 ID：若事件解析器在 onPause 之前已捕获“前台会话”，
         // 会沿用旧 ID 把切后台后的审批/提问也抑制掉，表现为几次通知后彻底失联。
         foregroundSessionId.set("")
@@ -1015,6 +1057,7 @@ class RemoteControlActivity : BaseActivity() {
         """.trimIndent()) { result ->
             val taskId = result?.trim('"')?.trim() ?: ""
             foregroundSessionId.set(taskId)
+            if (!isFinishing && !isDestroyed) claimDialogs.setInConversation(taskId.isNotBlank())
         }
     }
 
@@ -1055,6 +1098,7 @@ class RemoteControlActivity : BaseActivity() {
     }
 
     override fun onDestroy() {
+        claimDialogs.clear()
         if (current === this) current = null
         // 主页面销毁后交还事件源所有权：保活服务随即用隐藏 WebView 接管同一远程 URL，
         // 填补 Activity WebView 销毁后的监听空窗（服务内部保证与主页面不并存）。

@@ -264,5 +264,6 @@ object EventCaptureScript {
 """
 
     fun build(bridgeName: String): String =
-        js.replace(BRIDGE_TOKEN, "\"$bridgeName\"").replace(MAX_TOKEN, MAX_BYTES.toString())
+        js.replace(BRIDGE_TOKEN, "\"$bridgeName\"").replace(MAX_TOKEN, MAX_BYTES.toString()) +
+            "\n" + ClaimCampaignScript.js
 }

@@ -282,6 +282,12 @@ class KeepAliveService : Service() {
             onEvent = { event ->
                 TaskNotifier.notify(this, event)
             },
+            onClaimCampaigns = { body ->
+                ai.zcode.remote.ui.remote.event.ClaimCampaignNotifier.receive(this, sourceId, monitorName, body)
+            },
+            onClaimCampaignClicked = { key ->
+                ai.zcode.remote.ui.remote.event.ClaimCampaignNotifier.acknowledge(this, sourceId, key)
+            },
         )
         monitorBridge = bridge
         monitorActiveSourceId = sourceId

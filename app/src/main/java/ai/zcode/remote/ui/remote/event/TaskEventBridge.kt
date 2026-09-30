@@ -15,6 +15,9 @@ class TaskEventBridge(
     private val deviceName: String,
     private val onConnectionState: (ConnectionState) -> Unit,
     private val onEvent: (TaskEventParser.TaskEvent) -> Unit,
+    private val onClaimCampaigns: (String) -> Unit = {},
+    private val onClaimCampaignClicked: (String) -> Unit = {},
+    private val onClaimCampaignStatus: (String, String, Boolean) -> Unit = { _, _, _ -> },
 ) {
     @Volatile
     var enabled = true
@@ -73,6 +76,24 @@ class TaskEventBridge(
     fun onHeartbeat() {
         if (!enabled) return
         lastHeartbeatAtElapsedMs = SystemClock.elapsedRealtime()
+    }
+
+    @android.webkit.JavascriptInterface
+    fun onClaimCampaigns(body: String) {
+        if (!enabled || body.length > 256 * 1024) return
+        runCatching { parserWorker.execute { if (enabled) onClaimCampaigns.invoke(body) } }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun onClaimCampaignClicked(key: String) {
+        if (!enabled || key.length > 2048) return
+        runCatching { parserWorker.execute { if (enabled) onClaimCampaignClicked.invoke(key) } }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun onClaimCampaignStatus(key: String, message: String, finished: Boolean) {
+        if (!enabled || key.length > 2048 || message.length > 4096) return
+        runCatching { parserWorker.execute { if (enabled) onClaimCampaignStatus.invoke(key, message, finished) } }
     }
 
     @android.webkit.JavascriptInterface
