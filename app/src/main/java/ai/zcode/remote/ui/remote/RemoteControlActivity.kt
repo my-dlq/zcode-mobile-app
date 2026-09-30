@@ -131,6 +131,7 @@ class RemoteControlActivity : BaseActivity() {
         targetUrl = intent.getStringExtra(EXTRA_URL) ?: ""
         deviceName = intent.getStringExtra(EXTRA_NAME) ?: "ZCode 远程工作区"
         pendingTaskId = intent.getStringExtra(EXTRA_TASK_ID) ?: ""
+        ai.zcode.remote.ui.remote.event.ClaimCampaignNotifier.acknowledgeIntent(this, intent)
         isSettingsModeRequested = intent.getBooleanExtra(EXTRA_SETTINGS_MODE, false)
 
         if (targetUrl.isBlank()) {
@@ -206,6 +207,12 @@ class RemoteControlActivity : BaseActivity() {
             },
             onEvent = { event ->
                 runOnUiThread { TaskNotifier.notify(this, event) }
+            },
+            onClaimCampaigns = { body ->
+                ai.zcode.remote.ui.remote.event.ClaimCampaignNotifier.receive(this, sourceId, deviceName, body)
+            },
+            onClaimCampaignClicked = { key ->
+                ai.zcode.remote.ui.remote.event.ClaimCampaignNotifier.acknowledge(this, sourceId, key)
             }
         )
         eventBridgeAlive = true
@@ -912,6 +919,7 @@ class RemoteControlActivity : BaseActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        ai.zcode.remote.ui.remote.event.ClaimCampaignNotifier.acknowledgeIntent(this, intent)
         val newUrl = intent.getStringExtra(EXTRA_URL) ?: return
         val newName = intent.getStringExtra(EXTRA_NAME) ?: deviceName
         val newTaskId = intent.getStringExtra(EXTRA_TASK_ID) ?: ""
