@@ -53,7 +53,8 @@ class RemoteControlActivity : BaseActivity() {
     private lateinit var binding: ActivityRemoteControlBinding
     private lateinit var appSettings: AppSettingsRepository
     private var targetUrl: String = ""
-    private var deviceName: String = "ZCode 远程工作区"
+    /** 设备名缺省值，onCreate 中赋为 strings 资源里的默认文案，之后可能被 WebView 标题覆盖。 */
+    private var deviceName: String = ""
     private var pendingTaskId: String = ""
     private var connectionId: String = ""
     private var isFullscreen = true
@@ -139,13 +140,13 @@ class RemoteControlActivity : BaseActivity() {
         isFullscreen = appSettings.isFullscreenEnabled()
 
         targetUrl = intent.getStringExtra(EXTRA_URL) ?: ""
-        deviceName = intent.getStringExtra(EXTRA_NAME) ?: "ZCode 远程工作区"
+        deviceName = intent.getStringExtra(EXTRA_NAME) ?: getString(R.string.default_device_name)
         pendingTaskId = intent.getStringExtra(EXTRA_TASK_ID) ?: ""
         ClaimCampaignNotifier.acknowledgeIntent(this, intent)
         isSettingsModeRequested = intent.getBooleanExtra(EXTRA_SETTINGS_MODE, false)
 
         if (targetUrl.isBlank()) {
-            ToastUtils.show(this, "无效的远程连接 URL")
+            ToastUtils.show(this, getString(R.string.toast_invalid_remote_url))
             finish()
             return
         }
@@ -213,6 +214,7 @@ class RemoteControlActivity : BaseActivity() {
         eventBridge = TaskEventBridge(
             sourceId = sourceId,
             deviceName = deviceName,
+            defaultTaskName = getString(R.string.task_unnamed_background),
             onConnectionState = { state ->
                 runOnUiThread { handleConnectionState(state) }
             },
@@ -471,6 +473,7 @@ class RemoteControlActivity : BaseActivity() {
 
         // 配置 WebViewClient
         customWebViewClient = ZCodeWebViewClient(
+            appContext = applicationContext,
             onPageStart = {
                 handler.removeCallbacks(reconnectRunnable)
                 reconnectScheduled = false
@@ -500,10 +503,10 @@ class RemoteControlActivity : BaseActivity() {
                         customWebViewClient.openWorkspaceSettings(binding.webView) { opened ->
                             isSettingsModeRequested = false
                             if (opened) {
-                                ToastUtils.show(this@RemoteControlActivity, "已进入设置中心")
+                                ToastUtils.show(this@RemoteControlActivity, getString(R.string.toast_entered_settings_center))
                             } else {
                                 customWebViewClient.setDesktopViewport(binding.webView, false)
-                                ToastUtils.show(this@RemoteControlActivity, "进入设置中心失败，请稍后重试")
+                                ToastUtils.show(this@RemoteControlActivity, getString(R.string.toast_enter_settings_failed))
                             }
                         }
                     }, 500)
@@ -549,7 +552,8 @@ class RemoteControlActivity : BaseActivity() {
                 }
             },
             onTitleReceived = { title ->
-                if (deviceName == "ZCode 远程工作区" && title.isNotBlank()) {
+                // 仅当设备名仍是缺省值时才用 WebView 标题覆盖；用户显式命名过的连接不被标题替换
+                if (deviceName == getString(R.string.default_device_name) && title.isNotBlank()) {
                     deviceName = title
                 }
             },
@@ -591,17 +595,17 @@ class RemoteControlActivity : BaseActivity() {
         dialog.onOpenSettingsListener = {
             customWebViewClient.openWorkspaceSettings(binding.webView) { success ->
                 if (success) {
-                    ToastUtils.show(this@RemoteControlActivity, "已进入设置中心")
+                    ToastUtils.show(this@RemoteControlActivity, getString(R.string.toast_entered_settings_center))
                 } else {
                     customWebViewClient.setDesktopViewport(binding.webView, false)
-                    ToastUtils.show(this@RemoteControlActivity, "进入设置中心失败，请稍后重试")
+                    ToastUtils.show(this@RemoteControlActivity, getString(R.string.toast_enter_settings_failed))
                 }
             }
         }
 
         dialog.onRefreshListener = {
             binding.webView.reload()
-            ToastUtils.show(this, "正在重新连接...")
+            ToastUtils.show(this, getString(R.string.toast_reconnecting))
         }
 
         dialog.onToggleFullscreenListener = {
@@ -609,10 +613,10 @@ class RemoteControlActivity : BaseActivity() {
             appSettings.setFullscreenEnabled(isFullscreen)
             if (isFullscreen) {
                 ImmersiveHelper.enterImmersiveFullscreen(this)
-                ToastUtils.show(this, "已进入沉浸全屏")
+                ToastUtils.show(this, getString(R.string.toast_entered_immersive))
             } else {
                 ImmersiveHelper.exitImmersiveFullscreen(this)
-                ToastUtils.show(this, "已退出沉浸全屏")
+                ToastUtils.show(this, getString(R.string.toast_exited_immersive))
             }
         }
 
@@ -824,8 +828,16 @@ class RemoteControlActivity : BaseActivity() {
         }
     }
 
+    /**
+     * 加载远端页时刻意把 `Accept-Language` 钉为中文，避免 APP 切到英文后系统默认
+     * Accept-Language 变为 en 导致远端 SPA 跟着变英文——注入脚本中大量 aria-label
+     * 选择器按中文匹配（"设置"/"拖拽"/"返回工作区"等），远端变英文会让这些注入失效。
+     * 与 `ZCodeWebViewClient` 在 onPageStarted 注入的 `navigator.language` 锁定互补：
+     * 一个管 HTTP 请求头，一个管 JS 侧 navigator 读取。
+     */
     private fun loadUrl(url: String) {
-        binding.webView.loadUrl(url)
+        val headers = mapOf("Accept-Language" to "zh-CN,zh;q=0.9")
+        binding.webView.loadUrl(url, headers)
     }
 
     private fun registerNetworkCallback() {

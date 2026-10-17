@@ -275,7 +275,8 @@ class KeepAliveService : Service() {
         val sourceId = monitorSourceId.ifBlank { url }
         val bridge = TaskEventBridge(
             sourceId = sourceId,
-            deviceName = monitorName.ifBlank { "ZCode 远程工作区" },
+            deviceName = monitorName.ifBlank { getString(R.string.default_device_name) },
+            defaultTaskName = getString(R.string.task_unnamed_background),
             onConnectionState = {
                 // 隐藏监听只补事件，不参与页面自身的恢复调度。
             },

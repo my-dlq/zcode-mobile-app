@@ -40,6 +40,17 @@ object TaskEventParser {
     private const val MAX_DEPTH = 8
     private const val MAX_MESSAGE_CHARS = 4 * 1024 * 1024
 
+    /** 测试场景省略 [parse] 的 defaultTaskName 参数时使用的中文兜底。 */
+    private const val DEFAULT_TASK_NAME_ZH = "后台任务"
+
+    /**
+     * 任务名缺省时的本地化兜底文案。由 [parse] 调用方按当前语言更新。
+     * 非线程安全的并发场景不存在：parse 本身 @Synchronized，且语言切换只会
+     * 影响下一次 parse 调用，当前正在解析的批次仍用旧值是允许的。
+     */
+    @Volatile
+    private var defaultTaskName: String = DEFAULT_TASK_NAME_ZH
+
     /** 远端已知事件类型（显式事件路径的白名单）。 */
     private val KNOWN_EVENT_TYPES = setOf(
         "created", "prompt_sent", "resumed", "streaming",
@@ -53,7 +64,14 @@ object TaskEventParser {
 
     /** 从一段流量文本中解析任务事件；无法识别时返回空列表。 */
     @Synchronized
-    fun parse(body: String, deviceName: String, sourceId: String): List<TaskEvent> {
+    fun parse(
+        body: String,
+        deviceName: String,
+        sourceId: String,
+        /** 任务名缺省时的本地化兜底文案，由调用方按当前语言提供。测试场景可省略，落回中文默认值。 */
+        defaultTaskName: String = DEFAULT_TASK_NAME_ZH,
+    ): List<TaskEvent> {
+        this.defaultTaskName = defaultTaskName
         if (body.isEmpty() || body.length > MAX_MESSAGE_CHARS) return emptyList()
         val root = try {
             JSONObject(body)
@@ -445,7 +463,7 @@ object TaskEventParser {
             exitCode == 0L -> "completed"
             else -> "failed"
         }
-        val title = firstString(work, "title", "command", "description", "summary") ?: "后台任务"
+        val title = firstString(work, "title", "command", "description", "summary") ?: defaultTaskName
         return BackgroundWorkState(taskId, executionId, status, title)
     }
 
@@ -474,7 +492,7 @@ object TaskEventParser {
             "executionId", "execId", "runId", "commandId", "id",
         )?.takeIf { it.startsWith("exec_") || it.contains("exec") } ?: return null
         val taskId = taskIdOf(node) ?: return null
-        val title = firstString(node, "title", "command", "description", "summary") ?: "后台任务"
+        val title = firstString(node, "title", "command", "description", "summary") ?: defaultTaskName
         return BackgroundTaskState(taskId, executionId, status, title)
     }
 
@@ -615,7 +633,7 @@ object TaskEventParser {
             .containsMatchIn(text)
         if (!failed && !completed) return null
         val taskId = taskIdOf(node) ?: return null
-        val title = firstString(node, "title", "summary") ?: "后台任务"
+        val title = firstString(node, "title", "summary") ?: defaultTaskName
         return BackgroundTaskState(
             taskId = taskId,
             executionId = executionId,

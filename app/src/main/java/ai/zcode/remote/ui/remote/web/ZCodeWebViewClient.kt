@@ -10,9 +10,11 @@ import android.webkit.WebViewClient
 import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.ui.remote.event.EventCaptureScript
 import ai.zcode.remote.ui.remote.event.TaskEventBridge
+import ai.zcode.remote.R
 import kotlin.math.roundToInt
 
 class ZCodeWebViewClient(
+    private val appContext: android.content.Context,
     private val onPageStart: () -> Unit,
     private val onPageFinish: (url: String) -> Unit,
     private val onPageError: (errorCode: Int, description: String) -> Unit,
@@ -36,6 +38,12 @@ class ZCodeWebViewClient(
                     try {
                         Object.defineProperty(navigator, 'userAgent', { get: function() { return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'; } });
                         Object.defineProperty(navigator, 'platform', { get: function() { return 'Win32'; } });
+                        // 钉住 JS 侧语言为中文：APP 切到英文时系统 navigator.language 会跟随变化，
+                        // 远端 SPA 据此切语言会让注入脚本里按中文 aria-label 匹配的选择器全部失效；
+                        // 因此无论 APP 语言如何，远端页始终按中文渲染（HTTP 侧对应 Accept-Language 头，
+                        // 见 RemoteControlActivity.loadUrl）。
+                        Object.defineProperty(navigator, 'language', { get: function() { return 'zh-CN'; } });
+                        Object.defineProperty(navigator, 'languages', { get: function() { return ['zh-CN', 'zh']; } });
                     } catch(e) {}
                 })();
             """.trimIndent()
@@ -71,7 +79,8 @@ class ZCodeWebViewClient(
     override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
         val didCrash = detail?.didCrash() == true
         android.util.Log.e("ZCodeWeb", "onRenderProcessGone: didCrash=$didCrash")
-        onPageError(-100, if (didCrash) "页面渲染进程异常，正在重新连接" else "系统回收了页面，正在重新连接")
+        val reasonRes = if (didCrash) R.string.error_renderer_crashed else R.string.error_renderer_recycled
+        onPageError(-100, appContext.getString(reasonRes))
         onRenderProcessGone()
         return true
     }
@@ -84,7 +93,8 @@ class ZCodeWebViewClient(
         super.onReceivedError(view, request, error)
         if (request?.isForMainFrame == true) {
             val code = error?.errorCode ?: -1
-            val desc = error?.description?.toString() ?: "网络连接异常"
+            val desc = error?.description?.toString()
+                ?: appContext.getString(R.string.error_network_generic)
             onPageError(code, desc)
         }
     }

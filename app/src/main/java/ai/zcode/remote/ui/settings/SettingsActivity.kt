@@ -43,6 +43,9 @@ class SettingsActivity : BaseActivity() {
         binding.rowTheme.setOnClickListener {
             ThemeSettingsActivity.start(this)
         }
+        binding.rowLanguage.setOnClickListener {
+            LanguageSettingsActivity.start(this)
+        }
         binding.rowNotification.setOnClickListener {
             NotificationSettingsActivity.start(this)
         }
@@ -85,6 +88,11 @@ class SettingsActivity : BaseActivity() {
             AppSettingsRepository.ThemeMode.DARK -> getString(R.string.settings_theme_dark)
             AppSettingsRepository.ThemeMode.GRAPHITE -> getString(R.string.settings_theme_graphite)
             AppSettingsRepository.ThemeMode.LIGHT -> getString(R.string.settings_theme_light)
+        }
+        binding.tvLanguageValue.text = when (appSettings.getLanguage()) {
+            AppSettingsRepository.AppLanguage.ZH_CN -> getString(R.string.settings_language_zh_cn)
+            AppSettingsRepository.AppLanguage.EN -> getString(R.string.settings_language_en)
+            AppSettingsRepository.AppLanguage.FOLLOW_SYSTEM -> getString(R.string.settings_language_follow_system)
         }
         binding.tvSecuritySummary.setText(
             if (appSettings.isSecurityVerificationEnabled()) {

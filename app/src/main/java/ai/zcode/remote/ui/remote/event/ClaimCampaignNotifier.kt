@@ -33,7 +33,11 @@ object ClaimCampaignNotifier {
         if (Build.VERSION.SDK_INT >= 26) {
             manager.createNotificationChannel(NotificationChannel(CHANNEL, "活动领取提醒", NotificationManager.IMPORTANCE_HIGH))
         }
-        for (campaign in ClaimCampaign.parse(body)) {
+        for (campaign in ClaimCampaign.parse(
+            body,
+            fallbackTitle = context.getString(R.string.claim_available_title),
+            fallbackDetail = context.getString(R.string.claim_available_text),
+        )) {
             val key = "$sourceId|${campaign.key}"
             if (prefs.getBoolean(key, false)) continue
             // A mirrored/replayed copy of the same response is not a new server delivery.
@@ -58,7 +62,7 @@ object ClaimCampaignNotifier {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             val notification = NotificationCompat.Builder(context, CHANNEL)
                 .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle("${campaign.title} · 领取活动")
+                .setContentTitle("${campaign.title} · ${context.getString(R.string.claim_notif_title_suffix)}")
                 .setContentText("${campaign.detail} · $deviceName")
                 .setStyle(NotificationCompat.BigTextStyle().bigText("${campaign.detail} · $deviceName"))
                 .setContentIntent(pending)

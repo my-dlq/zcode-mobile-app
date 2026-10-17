@@ -22,7 +22,16 @@ data class ClaimCampaign(val id: String, val scope: String, val planId: String, 
                 .takeIf { it.key.length <= 2048 }
         }.getOrNull()
 
-        fun parse(body: String): List<ClaimCampaign> = runCatching {
+        /**
+         * 解析远端下发的可领取活动列表。
+         *
+         * @param fallbackTitle 活动名缺省时的兜底文案（本地化）；调用方应按当前语言
+         *                      传入 `getString(R.string.claim_available_title)`。
+         * @param fallbackDetail 权益明细缺省时的兜底文案（本地化）。
+         *
+         * 不让 parse 直接持 Context：保持纯函数便于测试，本地化资源在调用方解析。
+         */
+        fun parse(body: String, fallbackTitle: String, fallbackDetail: String): List<ClaimCampaign> = runCatching {
             if (body.length > 256 * 1024) return emptyList()
             val root = JSONObject(body)
             val scope = root.optString("scope")
@@ -48,8 +57,8 @@ data class ClaimCampaign(val id: String, val scope: String, val planId: String, 
                     val unit = if (benefit.optString("unit_type") == "token") "tokens" else benefit.optString("unit_type")
                     "${benefit.optString("show_name")} ${NumberFormat.getNumberInstance(Locale.US).format(amount)} $unit"
                 }.joinToString(" · ")
-                ClaimCampaign(id, scope, planId, plan?.optString("name").orEmpty().ifBlank { "可领取活动" },
-                    detail.ifBlank { "活动权益可领取" })
+                ClaimCampaign(id, scope, planId, plan?.optString("name").orEmpty().ifBlank { fallbackTitle },
+                    detail.ifBlank { fallbackDetail })
             }.distinctBy { it.key }
         }.getOrDefault(emptyList())
     }

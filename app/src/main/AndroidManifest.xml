@@ -129,6 +129,24 @@
             android:exported="false"
             android:theme="@style/Theme.ZCodeRemote" />
 
+        <!-- 语言设置：中 / English / 跟随系统 三选 -->
+        <activity
+            android:name=".ui.settings.LanguageSettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ZCodeRemote" />
+
+        <!-- AppCompat per-app language 持久化：
+             enabled=false + autoStoreLocales=true 让 AppCompat 自己存取用户语言偏好，
+             无需走系统服务，兼容 Android 13 以下机型 -->
+        <service
+            android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
+            android:enabled="false"
+            android:exported="false">
+            <meta-data
+                android:name="autoStoreLocales"
+                android:value="true" />
+        </service>
+
         <!-- 后台保活前台服务：息屏时保持远程会话进程与连接存活 -->
         <service
             android:name=".service.KeepAliveService"

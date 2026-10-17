@@ -136,6 +136,17 @@
     <string name="settings_theme_dark_summary">深色背景，夜间更舒适</string>
     <string name="settings_theme_graphite_summary">与 ZCode 远程页一致的中性灰配色</string>
 
+    <!-- 语言设置 -->
+    <string name="settings_language_title">语言</string>
+    <string name="settings_language_select_title">选择语言</string>
+    <string name="settings_language_follow_system">跟随系统</string>
+    <string name="settings_language_follow_system_summary">根据系统语言自动切换</string>
+    <string name="settings_language_zh_cn">中文</string>
+    <string name="settings_language_zh_cn_summary">应用界面显示为中文</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_en_summary">App UI in English</string>
+    <string name="settings_language_remote_hint">远程网页（zcode.z.ai）的显示语言由远端决定，不随本设置切换。</string>
+
     <!-- 弹窗 -->
     <string name="dialog_add_title">添加远程连接</string>
     <string name="dialog_edit_title">编辑远程连接</string>
@@ -192,4 +203,60 @@
     <string name="about_version_format">版本 %1$s</string>
     <string name="about_github_project">GitHub</string>
     <string name="toast_no_browser">未找到可打开链接的浏览器</string>
+
+    <!-- 原布局硬编码中文，统一收敛到 strings 便于本地化 -->
+    <string name="main_clipboard_detected">检测到剪贴板中的 ZCode 链接</string>
+    <string name="main_quick_connect">直连</string>
+    <string name="scan_back">返回</string>
+    <string name="connection_last_connected">上次连接</string>
+    <string name="floating_panel_title">ZCode 快捷控制面板</string>
+    <string name="floating_panel_close">关闭面板</string>
+    <string name="floating_menu_remote_settings">远程设置</string>
+    <string name="dialog_close">关闭</string>
+    <string name="dialog_label_device_name">设备名称</string>
+    <string name="dialog_label_remote_url">远程连接 URL</string>
+    <string name="dialog_paste_from_clipboard">从剪贴板粘贴</string>
+
+    <!-- Kotlin 代码中的用户可见文案，统一收敛 -->
+    <string name="default_device_name">ZCode 远程工作区</string>
+    <string name="toast_invalid_remote_url">无效的远程连接 URL</string>
+    <string name="toast_entered_settings_center">已进入设置中心</string>
+    <string name="toast_enter_settings_failed">进入设置中心失败，请稍后重试</string>
+    <string name="toast_reconnecting">正在重新连接…</string>
+    <string name="toast_entered_immersive">已进入沉浸全屏</string>
+    <string name="toast_exited_immersive">已退出沉浸全屏</string>
+    <string name="toast_connecting_config_mode">正在以配置中心模式连接…</string>
+    <string name="main_connection_count_format">共 %1$d 台设备</string>
+    <string name="toast_deleted">已删除</string>
+    <string name="toast_clipboard_empty">剪贴板为空</string>
+    <string name="toast_save_success">保存成功</string>
+    <string name="toast_camera_init_failed">相机初始化失败: %1$s</string>
+    <string name="toast_torch_unsupported">当前设备不支持手电筒</string>
+    <string name="toast_image_size_invalid">图片尺寸无效</string>
+    <string name="toast_image_decode_failed">图片解码失败</string>
+    <string name="toast_no_qr_found">未在图片中识别到二维码</string>
+    <string name="toast_image_too_large">图片过大，无法解析</string>
+    <string name="toast_qr_parse_failed">图片解析失败: 未识别到有效二维码</string>
+    <string name="claim_result_title">领取结果</string>
+    <string name="claim_action_done">完成</string>
+    <string name="claim_action_later">稍后</string>
+    <string name="claim_action_claim">领取</string>
+    <string name="claim_not_ready">活动尚未就绪或已结束，请稍后重试</string>
+    <string name="claim_available_title">可领取活动</string>
+    <string name="claim_available_text">活动权益可领取</string>
+    <string name="claim_notif_title_suffix">领取活动</string>
+    <string name="floating_fullscreen_exit">退出全屏</string>
+    <string name="floating_fullscreen_enter">沉浸全屏</string>
+
+    <!-- UrlParser 默认设备名（url 未带 name 参数时的兜底） -->
+    <string name="default_remote_device">我的远程设备</string>
+    <string name="default_zcode_device">ZCode 设备</string>
+    <string name="default_device_fallback">远程设备</string>
+    <string name="device_name_with_mid_format">设备 %1$s</string>
+
+    <!-- WebView 渲染进程异常 / 网络错误兜底 -->
+    <string name="error_renderer_crashed">页面渲染进程异常，正在重新连接</string>
+    <string name="error_renderer_recycled">系统回收了页面，正在重新连接</string>
+    <string name="error_network_generic">网络连接异常</string>
+    <string name="task_unnamed_background">后台任务</string>
 </resources>

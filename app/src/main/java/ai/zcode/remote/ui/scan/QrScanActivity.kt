@@ -136,7 +136,7 @@ class QrScanActivity : BaseActivity() {
                     imageAnalysis
                 )
             } catch (e: Exception) {
-                ToastUtils.show(this, "相机初始化失败: ${e.message}")
+                ToastUtils.show(this, getString(R.string.toast_camera_init_failed, e.message ?: ""))
             }
         }, ContextCompat.getMainExecutor(this))
     }
@@ -153,7 +153,7 @@ class QrScanActivity : BaseActivity() {
                 if (isTorchOn) R.string.scan_torch_off else R.string.scan_torch_on
             )
         } else {
-            ToastUtils.show(this, "当前设备不支持手电筒")
+            ToastUtils.show(this, getString(R.string.toast_torch_unsupported))
         }
     }
 
@@ -165,7 +165,7 @@ class QrScanActivity : BaseActivity() {
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
                 if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
-                    throw IllegalArgumentException("图片尺寸无效")
+                    throw IllegalArgumentException(getString(R.string.toast_image_size_invalid))
                 }
 
                 val options = BitmapFactory.Options().apply {
@@ -175,7 +175,7 @@ class QrScanActivity : BaseActivity() {
                 contentResolver.openInputStream(uri)?.use {
                     bitmap = BitmapFactory.decodeStream(it, null, options)
                 }
-                val decoded = bitmap ?: throw IllegalArgumentException("图片解码失败")
+                val decoded = bitmap ?: throw IllegalArgumentException(getString(R.string.toast_image_decode_failed))
                 val width = decoded.width
                 val height = decoded.height
                 val pixels = IntArray(width * height)
@@ -188,14 +188,14 @@ class QrScanActivity : BaseActivity() {
                         if (result != null && !result.text.isNullOrBlank()) {
                             handleScanResult(result.text)
                         } else {
-                            ToastUtils.show(this, "未在图片中识别到二维码")
+                            ToastUtils.show(this, getString(R.string.toast_no_qr_found))
                         }
                     }
                 }
             } catch (_: OutOfMemoryError) {
-                runOnUiThread { if (!isFinishing && !isDestroyed) ToastUtils.show(this, "图片过大，无法解析") }
+                runOnUiThread { if (!isFinishing && !isDestroyed) ToastUtils.show(this, getString(R.string.toast_image_too_large)) }
             } catch (_: Exception) {
-                runOnUiThread { if (!isFinishing && !isDestroyed) ToastUtils.show(this, "图片解析失败: 未识别到有效二维码") }
+                runOnUiThread { if (!isFinishing && !isDestroyed) ToastUtils.show(this, getString(R.string.toast_qr_parse_failed)) }
             } finally {
                 bitmap?.recycle()
             }
@@ -220,7 +220,7 @@ class QrScanActivity : BaseActivity() {
             return
         }
         val connection = RemoteConnection(
-            name = parsed.suggestedName,
+            name = parsed.resolveSuggestedName(this),
             url = parsed.originalUrl,
             mid = parsed.mid,
             sid = parsed.sid

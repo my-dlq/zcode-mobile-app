@@ -10,6 +10,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.ui.BaseActivity
 import ai.zcode.remote.utils.ToastUtils
+import ai.zcode.remote.R
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /** Main-thread reminders for task conversations and explicit notification entry. */
@@ -62,8 +63,8 @@ class ClaimCampaignDialogController(
         val message = result
         if (message != null) {
             result = null
-            show(MaterialAlertDialogBuilder(activity).setTitle("领取结果").setMessage(message)
-                .setPositiveButton("完成", null).create())
+            show(MaterialAlertDialogBuilder(activity).setTitle(R.string.claim_result_title).setMessage(message)
+                .setPositiveButton(R.string.claim_action_done, null).create())
             return
         }
         val entry = pending.values.firstOrNull { it.explicit || inConversation } ?: return
@@ -74,8 +75,8 @@ class ClaimCampaignDialogController(
         val prompt = MaterialAlertDialogBuilder(activity)
             .setTitle(campaign.title)
             .setMessage(campaign.detail)
-            .setNegativeButton("稍后", null)
-            .setPositiveButton("领取", null)
+            .setNegativeButton(R.string.claim_action_later, null)
+            .setPositiveButton(R.string.claim_action_claim, null)
             .create()
         show(prompt)
         prompt.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -88,7 +89,7 @@ class ClaimCampaignDialogController(
                 } else if (dialog === prompt) {
                     claimKey = null
                     prompt.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
-                    ToastUtils.show(activity, "活动尚未就绪或已结束，请稍后重试")
+                    ToastUtils.show(activity, activity.getString(R.string.claim_not_ready))
                 }
             }
         }
