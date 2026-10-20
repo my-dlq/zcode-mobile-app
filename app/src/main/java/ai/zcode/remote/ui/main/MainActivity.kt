@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.widget.PopupWindow
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -69,6 +70,14 @@ class MainActivity : BaseActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // 连接列表是应用的退出边界。默认 finish 会露出栈底保活的远程页，
+                // 整个任务退到后台才能回桌面，同时保留 WebView 和通知监听。
+                moveTaskToBack(true)
+            }
+        })
 
         repository = ConnectionRepository.getInstance(this)
         updateFlow = UpdateCheckFlow(this)
@@ -142,7 +151,7 @@ class MainActivity : BaseActivity() {
                 return
             }
             val connection = RemoteConnection(
-                name = parsed.suggestedName,
+                name = parsed.resolveSuggestedName(this),
                 url = parsed.originalUrl,
                 mid = parsed.mid,
                 sid = parsed.sid
@@ -166,7 +175,7 @@ class MainActivity : BaseActivity() {
             onSettingsClick = { connection ->
                 repository.updateLastConnected(connection.id)
                 RemoteControlActivity.start(this, connection.url, connection.name, startInSettingsMode = true)
-                ToastUtils.show(this, "正在以配置中心模式连接...")
+                ToastUtils.show(this, getString(R.string.toast_connecting_config_mode))
             },
             onEditClick = { connection ->
                 showEditDialog(connection)
@@ -287,7 +296,7 @@ class MainActivity : BaseActivity() {
                     return@setOnClickListener
                 }
                 val conn = RemoteConnection(
-                    name = parsed.suggestedName,
+                    name = parsed.resolveSuggestedName(this),
                     url = parsed.originalUrl,
                     mid = parsed.mid,
                     sid = parsed.sid
@@ -307,13 +316,13 @@ class MainActivity : BaseActivity() {
             binding.layoutEmpty.visibility = View.VISIBLE
             binding.cardConnectionList.visibility = View.GONE
             binding.tvDragSortHint.visibility = View.GONE
-            binding.tvConnectionCount.text = "共 0 台设备"
+            binding.tvConnectionCount.text = getString(R.string.main_connection_count_format, 0)
         } else {
             binding.connectionHeader.visibility = View.VISIBLE
             binding.layoutEmpty.visibility = View.GONE
             binding.cardConnectionList.visibility = View.VISIBLE
             binding.tvDragSortHint.visibility = View.VISIBLE
-            binding.tvConnectionCount.text = "共 ${list.size} 台设备"
+            binding.tvConnectionCount.text = getString(R.string.main_connection_count_format, list.size)
         }
     }
 
@@ -393,7 +402,7 @@ class MainActivity : BaseActivity() {
             .setPositiveButton(R.string.action_delete) { _, _ ->
                 repository.deleteConnection(connection.id)
                 refreshList()
-                ToastUtils.show(this, "已删除")
+                ToastUtils.show(this, getString(R.string.toast_deleted))
             }
             .setNegativeButton(R.string.action_cancel, null)
             .show()

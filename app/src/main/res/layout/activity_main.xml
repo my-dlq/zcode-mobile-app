@@ -113,7 +113,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="检测到剪贴板中的 ZCode 链接"
+                            android:text="@string/main_clipboard_detected"
                             android:textColor="?attr/zcTextPrimary"
                             android:textSize="14sp"
                             android:textStyle="bold" />
@@ -138,7 +138,7 @@
                         android:backgroundTint="?attr/zcPrimary"
                         android:insetTop="0dp"
                         android:insetBottom="0dp"
-                        android:text="直连"
+                        android:text="@string/main_quick_connect"
                         android:textColor="@color/white"
                         android:textSize="12sp"
                         app:cornerRadius="10dp" />

@@ -1,0 +1,262 @@
+<resources>
+    <string name="app_name">ZMobile</string>
+    <string name="topbar_toggle_theme">Toggle theme</string>
+    <string name="title_connections">Connections</string>
+    <string name="hint_drag_to_sort">Long press and drag to reorder</string>
+
+    <!-- Home actions -->
+    <string name="action_scan_qr">Scan to connect</string>
+    <string name="action_edit">Edit connection</string>
+    <string name="action_copy_url">Copy URL</string>
+    <string name="toast_url_copied">Connection URL copied</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+
+    <!-- List states -->
+    <string name="empty_connections_title">Scan to connect</string>
+    <string name="empty_connections_hint">Scan the QR code shown on your computer</string>
+
+    <!-- Home menu -->
+    <string name="menu_title">Open menu</string>
+    <string name="menu_scan_connect">Scan to connect</string>
+    <string name="menu_address_connect">Connect by URL</string>
+    <string name="menu_settings">Settings</string>
+    <string name="menu_about">About</string>
+    <string name="menu_zoom_in">Zoom in</string>
+    <string name="menu_zoom_out">Zoom out</string>
+    <string name="menu_zoom_value">Page zoom %1$d%%</string>
+    <string name="menu_more_options">More connection actions</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_display">Display &amp; Experience</string>
+    <string name="settings_fullscreen_title">Fullscreen</string>
+    <string name="settings_fullscreen_on">Immersive fullscreen enabled</string>
+    <string name="settings_fullscreen_off">Keep system status and navigation bars</string>
+    <string name="settings_display_title">Display &amp; Fullscreen</string>
+    <string name="settings_display_summary">Fullscreen and remote page top bar</string>
+    <string name="settings_display_on">Fullscreen on</string>
+    <string name="settings_display_off">Fullscreen off</string>
+    <string name="settings_display_summary_format">%1$s · %2$s</string>
+    <string name="settings_fullscreen_summary">Hides system status and navigation bars when enabled</string>
+    <string name="settings_topbar_title">Show top bar</string>
+    <string name="settings_topbar_summary">Show logo and menu on top of the remote page</string>
+    <string name="settings_topbar_on">Top bar shown</string>
+    <string name="settings_topbar_off">Top bar hidden</string>
+    <string name="settings_display_hint">The two switches are independent and can be combined freely. Even with the top bar hidden, remote settings are still accessible from the remote page sidebar.</string>
+    <string name="settings_theme_title">Theme</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_graphite">Graphite</string>
+    <string name="settings_zoom_title">Page zoom</string>
+    <string name="settings_zoom_summary">Adjust the overall scale of the remote page</string>
+    <string name="settings_zoom_value">%1$d%%</string>
+    <string name="settings_dashboard_title">Workspace &amp; tasks page style</string>
+    <string name="settings_dashboard_summary">UI source for the "Workspaces and tasks on this device" page</string>
+    <string name="settings_dashboard_native">Remote native</string>
+    <string name="settings_dashboard_adaptive">ZMobile adaptive</string>
+    <string name="settings_section_app">App</string>
+    <string name="settings_section_security">Security &amp; Privacy</string>
+    <string name="settings_section_general">General</string>
+    <string name="settings_notif_title">Notifications</string>
+    <string name="settings_notif_summary_on">Enabled</string>
+    <string name="settings_notif_summary_off">Disabled</string>
+    <string name="notif_settings_title">Notifications</string>
+    <string name="notif_settings_master">Receive task notifications</string>
+    <string name="notif_settings_master_summary">When off, no task event notifications will be shown</string>
+    <string name="notif_settings_section_events">Event types</string>
+    <string name="notif_settings_approval">Approval requests</string>
+    <string name="notif_settings_approval_summary">Notify when a task needs your approval to continue</string>
+    <string name="notif_settings_elicitation">Input requests</string>
+    <string name="notif_settings_elicitation_summary">Notify when a task needs more information to continue</string>
+    <string name="notif_settings_completed">Task completed</string>
+    <string name="notif_settings_completed_summary">Notify when a task finishes</string>
+    <string name="notif_settings_failed">Task failed</string>
+    <string name="notif_settings_failed_summary">Notify when a task fails</string>
+    <string name="settings_keepalive_title">Background keep-alive</string>
+    <string name="settings_keepalive_summary_on">Keeps the remote session alive when the screen is off (shows a persistent notification)</string>
+    <string name="settings_keepalive_summary_off">Remote sessions may drop when the app goes to background or the screen turns off</string>
+    <string name="settings_keepalive_battery_ok">Battery optimization ignored</string>
+    <string name="settings_keepalive_battery_guide">Consider disabling battery optimization so the system does not kill background connections</string>
+    <string name="keepalive_channel_name">Background keep-alive</string>
+    <string name="keepalive_channel_desc">Persistent notification required to keep remote sessions running</string>
+    <string name="keepalive_notif_title">ZMobile is running in background</string>
+    <string name="keepalive_notif_text">Keeping the remote session alive</string>
+
+    <!-- Task event notifications -->
+    <string name="notif_channel_approvals">Approval requests</string>
+    <string name="notif_channel_approvals_desc">Alerts when a task is waiting for your approval</string>
+    <string name="notif_channel_events">Task events</string>
+    <string name="notif_channel_events_desc">Alerts when a task completes or fails</string>
+    <string name="notif_approval_title">Task waiting for approval</string>
+    <string name="notif_approval_text">"%1$s" needs your approval to continue</string>
+    <string name="notif_elicitation_title">Task waiting for input</string>
+    <string name="notif_elicitation_text">"%1$s" needs more information to continue</string>
+    <string name="notif_completed_title">Task completed</string>
+    <string name="notif_completed_text">"%1$s" has finished</string>
+    <string name="notif_failed_title">Task failed</string>
+    <string name="notif_failed_text">"%1$s" failed. Tap to view details</string>
+    <string name="notif_task_unnamed">Untitled task</string>
+
+    <!-- Session health / update / security -->
+    <string name="settings_update_title">Updates</string>
+    <string name="settings_update_summary">Check for updates on launch</string>
+    <string name="settings_security_title">Security</string>
+    <string name="settings_security_summary_enabled">Security verification enabled</string>
+    <string name="settings_security_summary_disabled">Security verification disabled</string>
+    <string name="settings_security_pattern_title">Pattern lock</string>
+    <string name="settings_security_pattern_configured">Pattern configured</string>
+    <string name="settings_security_pattern_not_configured">Tap to set up a pattern</string>
+    <string name="settings_security_fingerprint_title">Fingerprint</string>
+    <string name="settings_security_fingerprint_summary">Prefer fingerprint when opening the app</string>
+    <string name="settings_security_fingerprint_unavailable">Device does not support fingerprint or none enrolled</string>
+    <string name="settings_security_fingerprint_verify_hint">Verify your fingerprint to enable fingerprint unlock</string>
+    <string name="settings_security_fingerprint_verify_rejected">Fingerprint verification failed; fingerprint unlock not enabled</string>
+    <string name="settings_security_set_pattern">Set security pattern</string>
+    <string name="settings_security_draw_pattern">Draw your unlock pattern</string>
+    <string name="settings_security_draw_pattern_again">Draw again to confirm</string>
+    <string name="settings_security_pattern_saved">Security pattern saved</string>
+    <string name="settings_security_pattern_mismatch">Patterns did not match. Please try again</string>
+    <string name="settings_security_pattern_too_short">Connect at least 4 dots</string>
+    <string name="settings_security_verify_title">Security verification</string>
+    <string name="settings_security_verify_hint">Draw the pattern to unlock ZMobile</string>
+    <string name="settings_security_verify_failed">Wrong pattern, please try again</string>
+    <string name="settings_security_pattern_lock_wait">Too many attempts. Try again in %1$s seconds</string>
+    <string name="settings_security_pattern_lock_retry">You can now draw the pattern again</string>
+    <string name="settings_security_lock_retry">You can now verify again</string>
+    <string name="settings_security_use_fingerprint">Use fingerprint</string>
+    <string name="settings_security_biometric_failed">Fingerprint verification failed, try again; falls back to pattern after 3 failures</string>
+    <string name="settings_security_biometric_failed_short">Fingerprint verification failed, please try again</string>
+    <string name="settings_security_biometric_fallback">Too many fingerprint failures. Please use the pattern</string>
+    <string name="settings_security_biometric_cancel">Fingerprint verification cancelled; you can use the pattern instead</string>
+    <string name="settings_security_biometric_cancelled">Fingerprint verification cancelled</string>
+    <string name="settings_theme_select_title">Select theme</string>
+    <string name="settings_theme_light_summary">Bright and clear interface</string>
+    <string name="settings_theme_dark_summary">Dark background, easier on the eyes at night</string>
+    <string name="settings_theme_graphite_summary">Neutral grays aligned with the ZCode remote page</string>
+
+    <!-- Language settings -->
+    <string name="settings_language_title">Language</string>
+    <string name="settings_language_select_title">Select language</string>
+    <string name="settings_language_follow_system">Follow system</string>
+    <string name="settings_language_follow_system_summary">Match the system language automatically</string>
+    <string name="settings_language_zh_cn">中文</string>
+    <string name="settings_language_zh_cn_summary">Display the app in Simplified Chinese</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_en_summary">Display the app in English</string>
+    <string name="settings_language_remote_hint">The remote web page (zcode.z.ai) language is determined by the remote service and does not follow this setting.</string>
+
+    <!-- Dialogs -->
+    <string name="dialog_add_title">Add remote connection</string>
+    <string name="dialog_edit_title">Edit remote connection</string>
+    <string name="hint_name">Device alias (e.g. Office PC)</string>
+    <string name="hint_url">Full ZCode remote control URL</string>
+    <string name="error_invalid_url">Please enter a valid ZCode remote URL</string>
+    <string name="confirm_delete_title">Confirm deletion</string>
+    <string name="confirm_delete_msg">Delete device "%1$s"?</string>
+
+    <!-- QR scan -->
+    <string name="scan_title">Scan ZCode remote QR code</string>
+    <string name="scan_hint">Point the camera at the remote control QR code shown by ZCode on your computer</string>
+    <string name="scan_album">Pick from gallery</string>
+    <string name="scan_torch_on">Turn on flashlight</string>
+    <string name="scan_torch_off">Turn off flashlight</string>
+    <string name="camera_permission_required">Camera permission is required to scan QR codes</string>
+
+    <!-- Remote control UI -->
+    <string name="remote_load_failed">Connection failed. Check your network or refresh</string>
+    <string name="remote_retry">Retry</string>
+    <string name="menu_refresh">Refresh page</string>
+    <string name="menu_toggle_fullscreen">Toggle fullscreen</string>
+    <string name="menu_copy_url">Copy URL</string>
+    <string name="menu_clear_cache">Clear web cache</string>
+    <string name="menu_back_home">Exit to device list</string>
+    <string name="toast_copied">Remote URL copied to clipboard</string>
+    <string name="toast_cache_cleared">Web cache cleared</string>
+    <string name="press_again_to_exit">Press back again to exit remote control</string>
+
+    <!-- Update check -->
+    <string name="action_check_update">Check for updates</string>
+    <string name="menu_auto_check_update">Check for updates on launch</string>
+    <string name="update_found_title">New version v%1$s available</string>
+    <string name="update_current_version">Current version %1$s</string>
+    <string name="update_file_size">Package size: %1$s</string>
+    <string name="action_update_now">Update now</string>
+    <string name="action_ignore_this_version">Ignore this version</string>
+    <string name="action_later">Later</string>
+    <string name="action_cancel_download">Cancel download</string>
+    <string name="update_downloading_preparing">Preparing download…</string>
+    <string name="update_downloading">Downloading %1$d%% (%2$s / %3$s)</string>
+    <string name="toast_already_latest">You are on the latest version</string>
+    <string name="toast_check_update_failed">Failed to check for updates. Check your network and try again</string>
+    <string name="toast_download_failed">Download failed: %1$s</string>
+    <string name="toast_download_completed">Download complete. Launching installer…</string>
+    <string name="toast_update_ignored">Ignored v%1$s. You will be reminded again after the next release</string>
+    <string name="toast_install_redirect_failed">Cannot open install permission settings. Please allow "Install unknown apps" in system settings</string>
+    <string name="toast_install_launch_failed">Cannot launch the installer. Please make sure "Install unknown apps" is allowed</string>
+
+    <!-- About page -->
+    <string name="about_title">About</string>
+    <string name="action_back">Back</string>
+    <string name="about_app_desc">Native Android remote control client for ZCode Web Remote Control</string>
+    <string name="about_version_format">Version %1$s</string>
+    <string name="about_github_project">GitHub</string>
+    <string name="toast_no_browser">No browser available to open the link</string>
+
+    <!-- Strings previously hardcoded in layouts -->
+    <string name="main_clipboard_detected">ZCode link detected in clipboard</string>
+    <string name="main_quick_connect">Connect</string>
+    <string name="scan_back">Back</string>
+    <string name="connection_last_connected">Last connected</string>
+    <string name="floating_panel_title">ZCode quick control panel</string>
+    <string name="floating_panel_close">Close panel</string>
+    <string name="floating_menu_remote_settings">Remote settings</string>
+    <string name="dialog_close">Close</string>
+    <string name="dialog_label_device_name">Device name</string>
+    <string name="dialog_label_remote_url">Remote connection URL</string>
+    <string name="dialog_paste_from_clipboard">Paste from clipboard</string>
+
+    <!-- User-visible strings previously hardcoded in Kotlin -->
+    <string name="default_device_name">ZCode remote workspace</string>
+    <string name="toast_invalid_remote_url">Invalid remote connection URL</string>
+    <string name="toast_entered_settings_center">Entered settings center</string>
+    <string name="toast_enter_settings_failed">Failed to open settings center, please try again</string>
+    <string name="toast_reconnecting">Reconnecting…</string>
+    <string name="toast_entered_immersive">Immersive fullscreen on</string>
+    <string name="toast_exited_immersive">Immersive fullscreen off</string>
+    <string name="toast_connecting_config_mode">Connecting in configuration mode…</string>
+    <string name="main_connection_count_format">%1$d device(s)</string>
+    <string name="toast_deleted">Deleted</string>
+    <string name="toast_clipboard_empty">Clipboard is empty</string>
+    <string name="toast_save_success">Saved</string>
+    <string name="toast_camera_init_failed">Camera initialization failed: %1$s</string>
+    <string name="toast_torch_unsupported">Flashlight not supported on this device</string>
+    <string name="toast_image_size_invalid">Invalid image size</string>
+    <string name="toast_image_decode_failed">Failed to decode image</string>
+    <string name="toast_no_qr_found">No QR code found in the image</string>
+    <string name="toast_image_too_large">Image too large to parse</string>
+    <string name="toast_qr_parse_failed">Failed to parse image: no valid QR code detected</string>
+    <string name="claim_result_title">Claim result</string>
+    <string name="claim_action_done">Done</string>
+    <string name="claim_action_later">Later</string>
+    <string name="claim_action_claim">Claim</string>
+    <string name="claim_not_ready">The campaign is not ready or has ended. Please try again later</string>
+    <string name="claim_available_title">Claimable campaign</string>
+    <string name="claim_available_text">Campaign benefits available</string>
+    <string name="claim_notif_title_suffix">Claim campaign</string>
+    <string name="floating_fullscreen_exit">Exit fullscreen</string>
+    <string name="floating_fullscreen_enter">Immersive fullscreen</string>
+
+    <!-- Default device names produced by UrlParser when the URL has no explicit name -->
+    <string name="default_remote_device">My remote device</string>
+    <string name="default_zcode_device">ZCode device</string>
+    <string name="default_device_fallback">Remote device</string>
+    <string name="device_name_with_mid_format">Device %1$s</string>
+
+    <!-- WebView render process / network error fallbacks -->
+    <string name="error_renderer_crashed">Page renderer crashed. Reconnecting…</string>
+    <string name="error_renderer_recycled">The system reclaimed the page. Reconnecting…</string>
+    <string name="error_network_generic">Network connection error</string>
+    <string name="task_unnamed_background">Background task</string>
+</resources>

@@ -18,6 +18,8 @@ class TaskEventBridge(
     private val onClaimCampaigns: (String) -> Unit = {},
     private val onClaimCampaignClicked: (String) -> Unit = {},
     private val onClaimCampaignStatus: (String, String, Boolean) -> Unit = { _, _, _ -> },
+    /** 任务名缺省时的本地化兜底文案，由调用方按当前语言传入（切语言后重建 Bridge 即可生效）。 */
+    private val defaultTaskName: String = "后台任务",
 ) {
     @Volatile
     var enabled = true
@@ -168,7 +170,7 @@ class TaskEventBridge(
             }
             if (!enabled) continue
             EnvelopeDecoder.dispatch(traffic) { text ->
-                val events = TaskEventParser.parse(text, deviceName, sourceId)
+                val events = TaskEventParser.parse(text, deviceName, sourceId, defaultTaskName)
                 for (event in events) {
                     TaskEventParser.logParsed(event)
                     onEvent(event)

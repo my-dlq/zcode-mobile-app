@@ -76,7 +76,7 @@ class AddConnectionDialog : DialogFragment() {
                 binding.etUrl.setText(clipText)
                 handleUrlChanged(clipText)
             } else {
-                ToastUtils.show(requireContext(), "剪贴板为空")
+                ToastUtils.show(requireContext(), getString(R.string.toast_clipboard_empty))
             }
         }
 
@@ -113,9 +113,13 @@ class AddConnectionDialog : DialogFragment() {
         if (rawUrl.isBlank()) return
         val currentName = binding.etName.text?.toString()?.trim() ?: ""
         val parsed = UrlParser.parse(rawUrl)
-        if (currentName.isEmpty() || currentName == "我的远程设备" || currentName == "ZCode 设备") {
-            if (parsed.suggestedName.isNotBlank()) {
-                binding.etName.setText(parsed.suggestedName)
+        // 输入框当前是空或仍是上一个默认建议名时，才把新解析出的建议名填进去；
+        // 用户手动改过的名字不被覆盖。判断走资源比较，避免和具体文案耦合。
+        val isDefaultName = parsed.isDefaultSuggestedName(requireContext(), currentName)
+        if (isDefaultName) {
+            val suggested = parsed.resolveSuggestedName(requireContext())
+            if (suggested.isNotBlank()) {
+                binding.etName.setText(suggested)
             }
         }
     }
@@ -134,7 +138,7 @@ class AddConnectionDialog : DialogFragment() {
             return
         }
         if (name.isEmpty()) {
-            name = parsed.suggestedName
+            name = parsed.resolveSuggestedName(requireContext())
         }
 
         val repository = ConnectionRepository.getInstance(requireContext())
@@ -152,7 +156,7 @@ class AddConnectionDialog : DialogFragment() {
 
         repository.saveConnection(connection)
         onSavedListener?.invoke(connection)
-        ToastUtils.show(requireContext(), "保存成功")
+        ToastUtils.show(requireContext(), getString(R.string.toast_save_success))
         dismiss()
     }
 

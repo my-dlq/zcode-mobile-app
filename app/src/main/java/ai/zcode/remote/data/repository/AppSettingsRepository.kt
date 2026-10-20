@@ -47,6 +47,24 @@ class AppSettingsRepository(context: Context) {
         prefs.edit().putString(KEY_THEME_MODE, mode.value).apply()
     }
 
+    /**
+     * 应用内语言偏好。
+     * 首次启动未设置时返回 [AppLanguage.FOLLOW_SYSTEM]，由 AppCompat per-app language
+     * 机制自然回落到系统语言；用户手动选择后写入偏好，启动时据此调用
+     * `AppCompatDelegate.setApplicationLocales()`。
+     */
+    fun getLanguage(): AppLanguage {
+        return when (prefs.getString(KEY_APP_LANGUAGE, AppLanguage.FOLLOW_SYSTEM.value)) {
+            AppLanguage.ZH_CN.value -> AppLanguage.ZH_CN
+            AppLanguage.EN.value -> AppLanguage.EN
+            else -> AppLanguage.FOLLOW_SYSTEM
+        }
+    }
+
+    fun setLanguage(language: AppLanguage) {
+        prefs.edit().putString(KEY_APP_LANGUAGE, language.value).apply()
+    }
+
     fun isPatternConfigured(): Boolean = prefs.contains(KEY_PATTERN_HASH)
 
     fun isPatternEnabled(): Boolean =
@@ -215,6 +233,18 @@ class AppSettingsRepository(context: Context) {
         ADAPTIVE("adaptive")
     }
 
+    /**
+     * 应用内显示语言。
+     * [FOLLOW_SYSTEM] 的 value 为空串，与 SharedPreferences 缺省值一致，
+     * 表示「跟随系统」；其余值对应 BCP-47 语言标签，直接交给
+     * `LocaleListCompat.forLanguageTags()` 使用。
+     */
+    enum class AppLanguage(val value: String) {
+        FOLLOW_SYSTEM(""),
+        ZH_CN("zh-CN"),
+        EN("en")
+    }
+
     companion object {
         private const val PREFS_NAME = "zcode_remote_prefs"
         private const val KEY_FULLSCREEN = "key_fullscreen_enabled"
@@ -235,6 +265,7 @@ class AppSettingsRepository(context: Context) {
         private const val KEY_NOTIF_FAILED = "key_notif_failed"
         private const val KEY_PAGE_ZOOM = "key_page_zoom"
         private const val KEY_DASHBOARD_MODE = "key_dashboard_mode"
+        private const val KEY_APP_LANGUAGE = "key_app_language"
 
         /** 页面缩放百分比范围与默认值：UI 滑杆与存储 clamp 共用，避免两处写死不一致。 */
         const val PAGE_ZOOM_MIN = 50

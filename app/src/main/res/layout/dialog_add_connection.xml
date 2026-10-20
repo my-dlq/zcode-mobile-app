@@ -29,7 +29,7 @@
             android:layout_width="32dp"
             android:layout_height="32dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="关闭"
+            android:contentDescription="@string/dialog_close"
             android:padding="6dp"
             android:src="@drawable/ic_close"
             app:tint="?attr/zcTextMuted" />
@@ -39,7 +39,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
-        android:text="设备名称"
+        android:text="@string/dialog_label_device_name"
         android:textColor="?attr/zcTextSecondary"
         android:textSize="13sp" />
 
@@ -79,7 +79,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="远程连接 URL"
+            android:text="@string/dialog_label_remote_url"
             android:textColor="?attr/zcTextSecondary"
             android:textSize="13sp" />
 
@@ -90,7 +90,7 @@
             android:background="?attr/selectableItemBackground"
             android:paddingHorizontal="8dp"
             android:paddingVertical="4dp"
-            android:text="从剪贴板粘贴"
+            android:text="@string/dialog_paste_from_clipboard"
             android:textColor="?attr/zcPrimaryLight"
             android:textSize="12sp" />
     </LinearLayout>

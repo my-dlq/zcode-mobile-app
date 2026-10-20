@@ -14,7 +14,7 @@ class FloatingControlDialog : BottomSheetDialogFragment() {
     private var _binding: DialogFloatingMenuBinding? = null
     private val binding get() = _binding!!
 
-    private var deviceName: String = "ZCode 远程工作区"
+    private var deviceName: String = ""
     private var isFullscreen: Boolean = true
 
     var onOpenSettingsListener: (() -> Unit)? = null
@@ -49,10 +49,14 @@ class FloatingControlDialog : BottomSheetDialogFragment() {
     }
 
     private fun initView() {
-        binding.tvMenuDeviceName.text = deviceName
+        // deviceName 缺省时回退到本地化的默认文案，避免首次创建对话框拿到空串
+        binding.tvMenuDeviceName.text =
+            deviceName.ifBlank { getString(R.string.default_device_name) }
 
         // 状态文字与图标
-        binding.tvFullscreenText.text = if (isFullscreen) "退出全屏" else "沉浸全屏"
+        binding.tvFullscreenText.text = getString(
+            if (isFullscreen) R.string.floating_fullscreen_exit else R.string.floating_fullscreen_enter
+        )
 
         binding.btnMenuClose.setOnClickListener { dismiss() }
 

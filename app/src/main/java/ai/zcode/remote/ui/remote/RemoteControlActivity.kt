@@ -14,6 +14,7 @@ import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.ValueCallback
@@ -53,8 +54,11 @@ class RemoteControlActivity : BaseActivity() {
     private lateinit var binding: ActivityRemoteControlBinding
     private lateinit var appSettings: AppSettingsRepository
     private var targetUrl: String = ""
-    private var deviceName: String = "ZCode 远程工作区"
+    /** 设备名缺省值，onCreate 中赋为 strings 资源里的默认文案，之后可能被 WebView 标题覆盖。 */
+    private var deviceName: String = ""
     private var pendingTaskId: String = ""
+    private var pageLoading = true
+    private var pendingSessionJump: Runnable? = null
     private var connectionId: String = ""
     private var isFullscreen = true
     private var isKeepScreenOn = true
@@ -139,13 +143,13 @@ class RemoteControlActivity : BaseActivity() {
         isFullscreen = appSettings.isFullscreenEnabled()
 
         targetUrl = intent.getStringExtra(EXTRA_URL) ?: ""
-        deviceName = intent.getStringExtra(EXTRA_NAME) ?: "ZCode 远程工作区"
+        deviceName = intent.getStringExtra(EXTRA_NAME) ?: getString(R.string.default_device_name)
         pendingTaskId = intent.getStringExtra(EXTRA_TASK_ID) ?: ""
         ClaimCampaignNotifier.acknowledgeIntent(this, intent)
         isSettingsModeRequested = intent.getBooleanExtra(EXTRA_SETTINGS_MODE, false)
 
         if (targetUrl.isBlank()) {
-            ToastUtils.show(this, "无效的远程连接 URL")
+            ToastUtils.show(this, getString(R.string.toast_invalid_remote_url))
             finish()
             return
         }
@@ -213,6 +217,7 @@ class RemoteControlActivity : BaseActivity() {
         eventBridge = TaskEventBridge(
             sourceId = sourceId,
             deviceName = deviceName,
+            defaultTaskName = getString(R.string.task_unnamed_background),
             onConnectionState = { state ->
                 runOnUiThread { handleConnectionState(state) }
             },
@@ -471,13 +476,18 @@ class RemoteControlActivity : BaseActivity() {
 
         // 配置 WebViewClient
         customWebViewClient = ZCodeWebViewClient(
+            appContext = applicationContext,
             onPageStart = {
+                pageLoading = true
+                pendingSessionJump?.let { handler.removeCallbacks(it) }
+                pendingSessionJump = null
                 handler.removeCallbacks(reconnectRunnable)
                 reconnectScheduled = false
                 binding.progressBar.visibility = View.VISIBLE
                 binding.layoutErrorOverlay.visibility = View.GONE
             },
             onPageFinish = { _ ->
+                pageLoading = false
                 handler.removeCallbacks(reconnectRunnable)
                 reconnectScheduled = false
                 binding.progressBar.visibility = View.GONE
@@ -485,25 +495,17 @@ class RemoteControlActivity : BaseActivity() {
                 // 无需额外轮询；设置页改完缩放返回走 onResume 那条路径）
                 customWebViewClient.applyPageZoom(binding.webView)
                 // 通知点击带来的会话跳转：页面加载完成后注入 JS 定位并点击任务条目
-                if (pendingTaskId.isNotEmpty()) {
-                    val tid = pendingTaskId
-                    pendingTaskId = "" // 只跳一次，SPA 内部导航不再重复
-                    binding.webView.postDelayed({
-                        binding.webView.evaluateJavascript(
-                            ai.zcode.remote.ui.remote.event.SessionJumpScript.build(tid), null
-                        )
-                    }, 1500) // 等任务列表渲染完成
-                }
+                jumpToPendingSession(1500)
                 if (isSettingsModeRequested && binding.layoutErrorOverlay.visibility != View.VISIBLE) {
                     binding.webView.postDelayed({
                         if (!isSettingsModeRequested || binding.layoutErrorOverlay.visibility == View.VISIBLE) return@postDelayed
                         customWebViewClient.openWorkspaceSettings(binding.webView) { opened ->
                             isSettingsModeRequested = false
                             if (opened) {
-                                ToastUtils.show(this@RemoteControlActivity, "已进入设置中心")
+                                ToastUtils.show(this@RemoteControlActivity, getString(R.string.toast_entered_settings_center))
                             } else {
                                 customWebViewClient.setDesktopViewport(binding.webView, false)
-                                ToastUtils.show(this@RemoteControlActivity, "进入设置中心失败，请稍后重试")
+                                ToastUtils.show(this@RemoteControlActivity, getString(R.string.toast_enter_settings_failed))
                             }
                         }
                     }, 500)
@@ -549,7 +551,8 @@ class RemoteControlActivity : BaseActivity() {
                 }
             },
             onTitleReceived = { title ->
-                if (deviceName == "ZCode 远程工作区" && title.isNotBlank()) {
+                // 仅当设备名仍是缺省值时才用 WebView 标题覆盖；用户显式命名过的连接不被标题替换
+                if (deviceName == getString(R.string.default_device_name) && title.isNotBlank()) {
                     deviceName = title
                 }
             },
@@ -591,17 +594,17 @@ class RemoteControlActivity : BaseActivity() {
         dialog.onOpenSettingsListener = {
             customWebViewClient.openWorkspaceSettings(binding.webView) { success ->
                 if (success) {
-                    ToastUtils.show(this@RemoteControlActivity, "已进入设置中心")
+                    ToastUtils.show(this@RemoteControlActivity, getString(R.string.toast_entered_settings_center))
                 } else {
                     customWebViewClient.setDesktopViewport(binding.webView, false)
-                    ToastUtils.show(this@RemoteControlActivity, "进入设置中心失败，请稍后重试")
+                    ToastUtils.show(this@RemoteControlActivity, getString(R.string.toast_enter_settings_failed))
                 }
             }
         }
 
         dialog.onRefreshListener = {
             binding.webView.reload()
-            ToastUtils.show(this, "正在重新连接...")
+            ToastUtils.show(this, getString(R.string.toast_reconnecting))
         }
 
         dialog.onToggleFullscreenListener = {
@@ -609,10 +612,10 @@ class RemoteControlActivity : BaseActivity() {
             appSettings.setFullscreenEnabled(isFullscreen)
             if (isFullscreen) {
                 ImmersiveHelper.enterImmersiveFullscreen(this)
-                ToastUtils.show(this, "已进入沉浸全屏")
+                ToastUtils.show(this, getString(R.string.toast_entered_immersive))
             } else {
                 ImmersiveHelper.exitImmersiveFullscreen(this)
-                ToastUtils.show(this, "已退出沉浸全屏")
+                ToastUtils.show(this, getString(R.string.toast_exited_immersive))
             }
         }
 
@@ -660,10 +663,53 @@ class RemoteControlActivity : BaseActivity() {
                         return false;
                     }
                     var r = el.getBoundingClientRect();
-                    return r.width > 0 && r.height > 0;
+                    if (r.width <= 0 || r.height <= 0 || r.bottom <= 0 || r.right <= 0 ||
+                        r.top >= window.innerHeight || r.left >= window.innerWidth) return false;
+                    for (var p = el; p && p.nodeType === 1; p = p.parentElement) {
+                        var ps = window.getComputedStyle(p);
+                        if (p.hidden || p.getAttribute('aria-hidden') === 'true' || p.hasAttribute('inert') ||
+                            ps.display === 'none' || ps.visibility === 'hidden' || parseFloat(ps.opacity) === 0) return false;
+                    }
+                    return true;
                 }
 
-                // 1. 优先关闭/收起处于打开状态的代码审查、终端等侧边栏面板（最高优先级）
+                // 2026-10-20 真机：长按正文进入原生选词后，返回不能直接离开会话。
+                // 清除 DOM 选区会同步结束 WebView 的复制工具栏；光标（折叠选区）
+                // 不在此消费返回，保留正常键盘和页面导航。
+                var selection = window.getSelection();
+                if (selection && !selection.isCollapsed) {
+                    selection.removeAllRanges();
+                    return 'true';
+                }
+
+                // 0. 菜单/弹层可能叠在会话、侧边面板或设置对话框之上，先交回原生
+                // Escape 关闭最上层。2026-10-20 真机复现：漏掉模型菜单时会直接点
+                // 「返回任务首页」，丢失当前会话位置。只检测打开且可见的浮层，
+                // 不把已关闭的过渡节点、常驻面板或设置页当成需要消解的菜单。
+                var openPopup = Array.from(document.querySelectorAll(
+                    'div[role="menu"][data-state="open"], div[role="listbox"][data-state="open"], ' +
+                    'div[data-slot="popover-content"][data-state="open"], ' +
+                    'div[data-slot="hover-card-content"][data-state="open"], ' +
+                    'div[role="dialog"][data-state="open"]'
+                )).find(isVisible);
+                if (openPopup) return 'dismiss-popup';
+
+                // 2026-10-20 真机：小火箭引导用页面内状态切步骤，不写浏览历史。
+                // 第一屏没有左上角返回，history.back() 会无效；仅在引导页内复用
+                // 页头的上一步/退出按钮，保留弹层优先级及普通会话的返回规则。
+                var onboarding = document.querySelector('[data-testid="onboarding-page"]');
+                if (onboarding && isVisible(onboarding)) {
+                    var guideExit = onboarding.querySelector('header button[aria-label="退出引导"]');
+                    if (guideExit && isVisible(guideExit)) {
+                        var guideBack = Array.from(guideExit.closest('header').querySelectorAll('button')).find(function(b) {
+                            return b !== guideExit && isVisible(b) && /^(返回|Back)$/i.test((b.textContent || '').trim());
+                        });
+                        (guideBack || guideExit).click();
+                        return 'true';
+                    }
+                }
+
+                // 1. 优先关闭/收起处于打开状态的代码审查、终端等侧边栏面板
                 // 1A. 移动端侧滑面板全屏遮罩（处于打开态时，直接 click 遮罩内的关闭触发器）
                 // ⚠️ 判据必须用与 class 同步翻转的 aria-hidden / pointer-events-none，**不能**用
                 // computed opacity：遮罩开合是 Tailwind class 切换 + 200ms opacity 过渡，过渡期间
@@ -718,11 +764,14 @@ class RemoteControlActivity : BaseActivity() {
                 }
 
                 // 4. 检查设置中心的“返回工作区”按钮
-                var settingsBack = Array.from(document.querySelectorAll('button[aria-label*="返回工作区"], button[aria-label*="工作区"], aside button:has(svg), nav button:has(svg)')).find(function(b) {
+                // 2026-10-20 真机：首页左上角的“切换设备”也在 aside 内，旧几何
+                // 兜底会把它当返回键。新版只在设置容器内找返回；旧版只兼容明确语义。
+                var settingsPage = document.querySelector('[data-testid="settings-page"]');
+                var settingsScope = settingsPage && isVisible(settingsPage) ? settingsPage : document;
+                var settingsBack = Array.from(settingsScope.querySelectorAll('button[data-testid="settings-back-button"], button[aria-label*="返回工作区"], button[aria-label="Back to Workspace"], button[aria-label="Back to workspace"]')).find(function(b) {
                     if (!isVisible(b)) return false;
                     var aria = (b.getAttribute('aria-label') || '') + ' ' + (b.getAttribute('title') || '') + ' ' + (b.textContent || '');
-                    var r = b.getBoundingClientRect();
-                    return /返回工作区|Back to Workspace/i.test(aria) || (r.top < 60 && r.left < 50 && b.closest('aside, nav'));
+                    return b.getAttribute('data-testid') === 'settings-back-button' || /返回工作区|Back to Workspace/i.test(aria);
                 });
                 if (settingsBack && isVisible(settingsBack)) {
                     settingsBack.click();
@@ -735,6 +784,7 @@ class RemoteControlActivity : BaseActivity() {
                 var headerBackBtn = allTopInteractives.find(function(b) {
                     if (b.id === '__zcode_detail_back') return false;
                     if (b.id === '__zcode_title_back') return false;
+                    if (b.getAttribute('aria-label') === '切换设备') return false;
                     if (!isVisible(b)) return false;
 
                     var r = b.getBoundingClientRect();
@@ -776,7 +826,7 @@ class RemoteControlActivity : BaseActivity() {
                 // 7. 检查是否处于根页面（工作区和任务列表首页）
                 var bodyText = document.body.innerText || '';
                 var hasHomeKeywords = /当前设备上的工作区和任务|已连接到当前桌面窗口|工作区和任务|Workspaces and Tasks|Connected to desktop/i.test(bodyText);
-                var hasHomeElements = !!document.querySelector('[data-testid^="task-item-"], button[aria-expanded]');
+                var hasHomeElements = Array.from(document.querySelectorAll('[data-testid="task-new-button"], [data-testid^="task-item-"], button[data-testid="virtual-project-toggle"]')).some(isVisible);
 
                 if (!isChatSession && (hasHomeKeywords || hasHomeElements)) {
                     return 'finish';
@@ -791,6 +841,17 @@ class RemoteControlActivity : BaseActivity() {
                 return 'false';
             })()""".trimIndent()
         ) { handled ->
+            if (handled == "\"dismiss-popup\"") {
+                // 用浏览器受信任键盘事件交给远端 Radix 的浮层栈处理；不合成 click、
+                // 不重复点击触发器，避免开关/子菜单双触发。此次返回只关闭浮层，
+                // 不继续执行页面回退。新版表格预览的 dialog-close 只有关闭文字，
+                // 没有 aria-label，同样由 Escape 处理，保留嵌套弹层的关闭顺序。
+                binding.webView.requestFocus()
+                binding.webView.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ESCAPE))
+                binding.webView.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ESCAPE))
+                lastBackPressTime = 0L
+                return@evaluateJavascript
+            }
             val pageHandled = handled == "true" || handled == "\"true\""
             if (pageHandled) {
                 lastBackPressTime = 0L
@@ -824,8 +885,19 @@ class RemoteControlActivity : BaseActivity() {
         }
     }
 
+    /**
+     * 加载远端页时刻意把 `Accept-Language` 钉为中文，避免 APP 切到英文后系统默认
+     * Accept-Language 变为 en 导致远端 SPA 跟着变英文——注入脚本中大量 aria-label
+     * 选择器按中文匹配（"设置"/"拖拽"/"返回工作区"等），远端变英文会让这些注入失效。
+     * 与 `ZCodeWebViewClient` 在 onPageStarted 注入的 `navigator.language` 锁定互补：
+     * 一个管 HTTP 请求头，一个管 JS 侧 navigator 读取。
+     */
     private fun loadUrl(url: String) {
-        binding.webView.loadUrl(url)
+        pageLoading = true
+        pendingSessionJump?.let { handler.removeCallbacks(it) }
+        pendingSessionJump = null
+        val headers = mapOf("Accept-Language" to "zh-CN,zh;q=0.9")
+        binding.webView.loadUrl(url, headers)
     }
 
     private fun registerNetworkCallback() {
@@ -953,6 +1025,17 @@ class RemoteControlActivity : BaseActivity() {
         claimDialogs.clear()
         val newName = intent.getStringExtra(EXTRA_NAME) ?: deviceName
         val newTaskId = intent.getStringExtra(EXTRA_TASK_ID) ?: ""
+        if (newUrl == targetUrl && newTaskId.isNotEmpty() &&
+            binding.layoutErrorOverlay.visibility != View.VISIBLE
+        ) {
+            // 2026-10-20：通知原先无条件重载，v4 会重新配对并丢失现有 WS。
+            // 同连接直接在现有页面导航；正在加载时由 onPageFinish 接续最新目标。
+            isSettingsModeRequested = false
+            pendingTaskId = newTaskId
+            binding.webView.evaluateJavascript("window.__zcodeJumpGen = (window.__zcodeJumpGen || 0) + 1", null)
+            jumpToPendingSession()
+            return
+        }
         // 保存当前页面的 taskId 到旧连接（切换前）
         saveCurrentTaskId()
         // 更新连接信息并重新加载
@@ -977,6 +1060,23 @@ class RemoteControlActivity : BaseActivity() {
         loadUrl(targetUrl)
         claimDialogs.setVisible(foregroundSessionVisible.get())
         campaign?.let { claimDialogs.receive(listOf(it), fromNotification = true) }
+    }
+
+    /** 原生延迟和页面内跳转都只保留最新目标，整页重载后仍可继续未完成的跳转。 */
+    private fun jumpToPendingSession(delayMs: Long = 0) {
+        pendingSessionJump?.let { handler.removeCallbacks(it) }
+        pendingSessionJump = null
+        if (pendingTaskId.isEmpty() || pageLoading) return
+        val tid = pendingTaskId
+        val jump = Runnable {
+            pendingSessionJump = null
+            if (isFinishing || isDestroyed || pageLoading || pendingTaskId != tid) return@Runnable
+            binding.webView.evaluateJavascript(
+                ai.zcode.remote.ui.remote.event.SessionJumpScript.build(tid), null,
+            )
+        }
+        pendingSessionJump = jump
+        handler.postDelayed(jump, delayMs)
     }
 
     override fun onResume() {
@@ -1057,6 +1157,7 @@ class RemoteControlActivity : BaseActivity() {
         """.trimIndent()) { result ->
             val taskId = result?.trim('"')?.trim() ?: ""
             foregroundSessionId.set(taskId)
+            if (taskId.isNotBlank() && taskId == pendingTaskId) pendingTaskId = ""
             if (!isFinishing && !isDestroyed) claimDialogs.setInConversation(taskId.isNotBlank())
         }
     }
@@ -1098,6 +1199,8 @@ class RemoteControlActivity : BaseActivity() {
     }
 
     override fun onDestroy() {
+        pendingSessionJump?.let { handler.removeCallbacks(it) }
+        pendingSessionJump = null
         claimDialogs.clear()
         if (current === this) current = null
         // 主页面销毁后交还事件源所有权：保活服务随即用隐藏 WebView 接管同一远程 URL，
