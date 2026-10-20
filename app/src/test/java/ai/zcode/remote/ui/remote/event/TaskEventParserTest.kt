@@ -6,6 +6,28 @@ import org.junit.Test
 class TaskEventParserTest {
 
     @Test
+    fun `explicit resolved uses the matching request key for both interaction kinds`() {
+        for (kind in listOf("permission", "elicitation")) {
+            val source = "explicit-pair-$kind"
+            val request = TaskEventParser.parse(
+                """{"event":"${kind}_request","taskId":"pair-task","interactionId":"request-a"}""",
+                "设备", source,
+            ).single()
+            val resolved = TaskEventParser.parse(
+                """{"event":"${kind}_resolved","taskId":"pair-task","interactionId":"request-a"}""",
+                "设备", source,
+            ).single()
+            assertEquals(TaskEventParser.TaskEvent.Type.RESOLVED, resolved.type)
+            assertEquals(request.eventKey, resolved.eventKey)
+            val next = TaskEventParser.parse(
+                """{"event":"${kind}_request","taskId":"pair-task","interactionId":"request-b"}""",
+                "设备", source,
+            ).single()
+            org.junit.Assert.assertNotEquals(resolved.eventKey, next.eventKey)
+        }
+    }
+
+    @Test
     fun `explicit and session completion in one frame are merged`() {
         val sourceId = "parser-merge"
         TaskEventParser.parse(

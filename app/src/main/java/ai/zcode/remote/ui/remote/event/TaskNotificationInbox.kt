@@ -10,8 +10,8 @@ import android.database.sqlite.SQLiteOpenHelper
  * 因此不能以“收到一次回调就直接 notify”为唯一保障。每个 eventKey 只会入库一次，
  * 已投递记录会保留一段时间，避免用户划掉的历史通知在重连快照中再次出现。
  */
-internal class TaskNotificationInbox(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION) {
+internal class TaskNotificationInbox(context: Context, databaseName: String = DATABASE_NAME) :
+    SQLiteOpenHelper(context.applicationContext, databaseName, null, DATABASE_VERSION) {
 
     data class Record(
         val rowId: Long,
@@ -127,18 +127,46 @@ internal class TaskNotificationInbox(context: Context) :
      * 尚未投递的 pending，刚入队的新审批会被一并误伤，表现为“几次后不再通知”。
      */
     @Synchronized
-    fun discardPendingInteraction(eventKey: String) {
+    fun discardPendingInteraction(event: TaskEventParser.TaskEvent) {
+        val eventKey = event.eventKey
         if (eventKey.isBlank()) return
-        writableDatabase.update(
-            TABLE,
-            ContentValues().apply {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            // 复用现有唯一键保存结束标记：resolved 先到或进程重建后，迟到请求也不能复活。
+            // 不覆盖已投递记录，继续保留原来的 90 天去重语义，无需迁移数据库。
+            db.insertWithOnConflict(TABLE, null, ContentValues().apply {
+                put(COL_EVENT_KEY, eventKey)
+                put(COL_TASK_ID, event.taskId)
+                put(COL_TYPE, TaskEventParser.TaskEvent.Type.RESOLVED.name)
+                put(COL_TITLE, event.taskTitle)
+                put(COL_DEVICE, event.deviceName)
                 put(COL_STATE, STATE_DISCARDED)
                 put(COL_LEASE_UNTIL, 0L)
-            },
-            "$COL_EVENT_KEY = ? AND $COL_STATE IN (?, ?)",
-            arrayOf(eventKey, STATE_PENDING, STATE_PROCESSING),
-        )
+                put(COL_NEXT_ATTEMPT_AT, 0L)
+                put(COL_CREATED_AT, System.currentTimeMillis())
+            }, SQLiteDatabase.CONFLICT_IGNORE)
+            db.update(
+                TABLE,
+                ContentValues().apply {
+                    put(COL_STATE, STATE_DISCARDED)
+                    put(COL_LEASE_UNTIL, 0L)
+                },
+                "$COL_EVENT_KEY = ? AND $COL_STATE IN (?, ?)",
+                arrayOf(eventKey, STATE_PENDING, STATE_PROCESSING),
+            )
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
     }
+
+    /** 领取后可能恰好收到 resolved；投递前必须复核，不能把 DISCARDED 写回 DELIVERED。 */
+    @Synchronized
+    fun isProcessing(rowId: Long): Boolean = readableDatabase.query(
+        TABLE, arrayOf(COL_STATE), "$COL_ROW_ID = ?", arrayOf(rowId.toString()),
+        null, null, null,
+    ).use { it.moveToFirst() && it.getString(0) == STATE_PROCESSING }
 
     private fun updateState(rowId: Long, state: String, nextAttemptAt: Long) {
         writableDatabase.update(

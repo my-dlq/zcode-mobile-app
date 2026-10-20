@@ -433,6 +433,13 @@ class ZCodeWebViewClient(
                 text-size-adjust: 100% !important;
             }
 
+            /* 对话输入及其独立占位提示统一字号，保留原有高度和富文本、光标行为。 */
+            [data-testid="v4-composer-input"],
+            [data-testid="v4-composer-input"] + [aria-hidden="true"] > .text-mobile-input-safe {
+                font-size: 14px !important;
+                line-height: 22px !important;
+            }
+
             /* 2. 任务会话模型选择器紧凑化：远端 Radix 两级 menu 在移动视口下
                默认 14px/32px。只作用于 z-[60] 的模型选择弹层，不影响聊天
                消息、输入框和设置中心页面；menuitemradio 保留右侧选中标记空间。
@@ -455,6 +462,14 @@ class ZCodeWebViewClient(
             }
             div[role="menu"].z-\\[60\\] [role="menuitemradio"] {
                 padding-right: 28px !important;
+            }
+            /* 新版思考强度在菜单项内包含标题和滑杆，不能套用单行 28px 高度。
+               2026-10-20 真机实测：固定高度会把 57px 内容裁掉，滑杆仅剩一条边。
+               只放开带真实滑杆标识的复合条目，保留模型/供应商单行菜单的紧凑布局。 */
+            div[role="menu"].z-\\[60\\] [role="menuitem"]:has([data-testid="composer-thought-slider"]) {
+                height: auto !important;
+                padding-top: 8px !important;
+                padding-bottom: 8px !important;
             }
             div[role="menu"].z-\\[60\\] [role="menuitem"] *,
             div[role="menu"].z-\\[60\\] [role="menuitemradio"] * {
@@ -600,6 +615,28 @@ class ZCodeWebViewClient(
                 height: 14px !important;
             }
 
+            /* Git 当前分支含名称和未提交更改说明，不能套用上面的单行 28px 高度。
+               2026-10-20：官方 command-item 的第二行溢出后与下一分支名称重叠。
+               仅放开带说明的当前分支项，让内容撑高；其余弹层和单行分支保持原样。 */
+            div[data-slot="popover-content"] [data-slot="command-item"][data-branch-current="true"]:has(p) {
+                height: auto !important;
+                min-height: 44px !important;
+                padding: 4px 8px !important;
+                align-items: flex-start !important;
+                box-sizing: border-box !important;
+            }
+            div[data-slot="popover-content"] [data-slot="command-item"][data-branch-current="true"]:has(p) > div {
+                gap: 2px !important;
+            }
+            div[data-slot="popover-content"] [data-slot="command-item"][data-branch-current="true"] > div > p {
+                margin: 0 !important;
+                padding-top: 0 !important;
+                font-size: 11px !important;
+                line-height: 15px !important;
+                white-space: normal !important;
+                overflow-wrap: anywhere !important;
+            }
+
             /* 任务会话顶部标题在窄屏被源码主动收窄：
                h1[data-testid="workspace-title"] 带 @max-[560px]:max-w-[30vw] 与
                @max-[420px]:max-w-[22vw]，手机视口 412px 命中后者 → 标题仅 22vw≈91px，
@@ -712,8 +749,10 @@ class ZCodeWebViewClient(
             /* 1. 左侧主导航栏：保持左侧紧凑垂直排列（仅图标，宽度 50px），绝不强行跑到顶部。
                作用域必须限定 workspace-sidebar 特征（主界面侧边栏专属 class）：
                裸 aside/nav 会误伤设置中心左栏与模型设置供应商列（同为 aside，
-               原生 56/64px 设计），导致内容挤压、横向溢出滚动条 */
-            aside[class*="workspace-sidebar"], div[class*="sidebar"], div[class*="settings-sidebar"] {
+               原生 56/64px 设计），导致内容挤压、横向溢出滚动条。
+               2026-10-20 新版任务区 class 含 [anchor-name:--sidebar-task-list-divider]，
+               class 子串 sidebar 会误命中它并压成 50px；div 只匹配侧栏完整类名。 */
+            aside[class*="workspace-sidebar"], div.workspace-sidebar, div.settings-sidebar {
                 width: 50px !important;
                 min-width: 50px !important;
                 max-width: 50px !important;
@@ -730,8 +769,10 @@ class ZCodeWebViewClient(
                整体隐藏造成"第一个供应商图标缺失" */
             aside[class*="workspace-sidebar"] button > span:not(:has(svg)):not(:has(img)),
             aside[class*="workspace-sidebar"] a > span:not(:has(svg)):not(:has(img)),
-            div[class*="sidebar"] button > span:not(:has(svg)):not(:has(img)),
-            div[class*="sidebar"] a > span:not(:has(svg)):not(:has(img)),
+            div.workspace-sidebar button > span:not(:has(svg)):not(:has(img)),
+            div.workspace-sidebar a > span:not(:has(svg)):not(:has(img)),
+            div.settings-sidebar button > span:not(:has(svg)):not(:has(img)),
+            div.settings-sidebar a > span:not(:has(svg)):not(:has(img)),
             nav button > span:not(:has(svg)):not(:has(img)),
             nav a > span:not(:has(svg)):not(:has(img)) {
                 display: none !important;
@@ -825,6 +866,32 @@ class ZCodeWebViewClient(
                 column-gap: 6px !important;
             }
 
+            /* 2026-10-20 真机：379px 视口扣除侧栏和内边距后只剩 287px，四列会
+               把名称挤到约 45px，组合键也拆行。窄屏每项分两层：名称/作用域、
+               按键/清除；只调整布局，保留远端录制、冲突提示及删除按钮。 */
+            @media (max-width: 640px) {
+                [data-testid="settings-shortcuts-section"]
+                div[data-testid^="settings-shortcut-row-"][class*="border-t"][class*="py-3"] {
+                    grid-template-columns: minmax(0, 1fr) auto !important;
+                    grid-template-areas: "name scope" "binding clear" !important;
+                    gap: 8px 12px !important;
+                }
+                [data-testid="settings-shortcuts-section"] [data-testid^="settings-shortcut-row-"] > :nth-child(1) {
+                    grid-area: name !important;
+                }
+                [data-testid="settings-shortcuts-section"] [data-testid^="settings-shortcut-row-"] > :nth-child(2) {
+                    grid-area: binding !important;
+                }
+                [data-testid="settings-shortcuts-section"] [data-testid^="settings-shortcut-row-"] > :nth-child(3) {
+                    grid-area: scope !important;
+                    justify-self: end !important;
+                }
+                [data-testid="settings-shortcuts-section"] [data-testid^="settings-shortcut-row-"] > :nth-child(4) {
+                    grid-area: clear !important;
+                    justify-self: end !important;
+                }
+            }
+
             /* 4. 下拉框、输入框自适应满宽，去除 PC 端 260px/320px 导致的挤压 */
             button[class*="w-[260px]"], div[class*="w-[260px]"],
             button[class*="w-[320px]"], div[class*="w-[320px]"],
@@ -853,7 +920,8 @@ class ZCodeWebViewClient(
                图标栏，强制 50px 后内部 nav(px-2 内边距 + 40px 按钮 ≈ 56px)横向溢出，
             	overflow-x:auto 产生左右滚动条。恢复原生尺寸并禁横向滚动 */
             aside[class*="min-w-0"], aside[class*="min-w-0"] nav,
-            aside[class*="min-w-0"] div[class*="sidebar"],
+            aside[class*="min-w-0"] div.workspace-sidebar,
+            aside[class*="min-w-0"] div.settings-sidebar,
             aside[class*="min-w-0"] nav[class*="overflow-y-auto"] {
                 width: auto !important;
                 min-width: 0 !important;
@@ -906,7 +974,7 @@ aside[class*="min-w-0"] nav {
                 pointer-events: none !important;
             }
 
-            /* 11. 设置中心左侧导航栏缩窄 + 图标居中 + 火箭禁用。
+            /* 11. 设置中心左侧导航栏缩窄 + 图标居中。
                原生结构：返回工作区(40px) + 14 个导航按钮(40×40 + 4px margin-bottom)
                + 3 个分组标题(space-y-4 间距 16px) + 底部账号/帮助 —— 总高超出 851
                出现滑动条，且分组间 16px gap 与组内 4px gap 混排导致图标间距不等。
@@ -925,7 +993,7 @@ aside[class*="min-w-0"] nav {
                网格布局：grid-cols-[64px] → 44px，主内容随侧边栏缩窄向左扩展。
                左箭头对齐：返回工作区按钮容器（px-2 pb-3 pt-3）改为 padding 12px 2px，
                与菜单图标一致（实测 center=22 对齐）。
-               小火箭（引导）：pointer-events:none + opacity:0.4，点击无效（用户要求） */
+               2026-10-20：按需求恢复小火箭引导入口，保留远端原有点击行为。 */
             aside[class*="min-w-0"] {
                 width: 44px !important;
                 min-width: 44px !important;
@@ -969,12 +1037,6 @@ aside[class*="min-w-0"] nav {
                 margin: 4px 0 2px !important;
                 padding: 0 !important;
             }
-            /* 小火箭图标（引导）点击无效 */
-            aside nav button[aria-label="引导"] {
-                pointer-events: none !important;
-                opacity: 0.4 !important;
-            }
-
             /* 12. 模型设置供应商编辑头部：名称+编辑按钮第一行；
                已启用/禁用/删除 第二行（删除在禁用右侧，三者同行）。
                原生：名称 + 编辑按钮 + 已启用标签 + 禁用按钮 挤在
@@ -1578,6 +1640,11 @@ aside[class*="min-w-0"] nav {
                     document.addEventListener('DOMContentLoaded', applyStyle);
                 }
 
+                // 2026-10-20 真机：onResume 重注时 resize/contextmenu 和 Observer
+                // 持续累积。样式与最新模式仍每次刷新，行为仅在当前文档成功安装一次。
+                // 标记在末尾写入，首轮安装异常时保留后续重试机会。
+                if (window.__zcodePageBehaviorsInstalled) return;
+
                 // 2. 拦截全局意外的右键菜单（保留文本输入框与聊天消息内容）
                 // ⚠️ Android WebView 长按文本会派发 contextmenu，preventDefault 会
                 // 抑制后续的选择复制菜单弹出——.history-message（任务会话的消息
@@ -1651,6 +1718,12 @@ aside[class*="min-w-0"] nav {
                             if (dx < 35 && dy < 35 && duration < 450) {
                                 // 编辑器、终端与 Diff 差异视图内部由 Monaco / 浏览器原生处理触控，FastTouch 跳过合成避免干扰
                                 if (touchTarget.closest('.monaco-editor, .xterm, [class*="diff"], [data-slot="diff"], pre, code')) return;
+
+                                // 2026-10-20 真机：引导页 label 会原生转发点击给内部复选框。
+                                // 对整张卡片合成 click 会先切换一次，稍后的原生点击再切回，
+                                // 表现为点击无效；仅此类卡片完全交给浏览器，保留单次切换。
+                                var guideChoice = touchTarget.closest('[data-testid="onboarding-page"] label');
+                                if (guideChoice && guideChoice.querySelector('button[role="checkbox"]')) return;
 
                                 // 向上寻找所有可能的可交互节点
                                 var clickable = touchTarget.closest('button, [role="button"], [role="tab"], a, select, [tabindex], [data-state], [data-slot], div[class*="item"], div[class*="provider"]') || touchTarget;
@@ -2099,7 +2172,7 @@ aside[class*="min-w-0"] nav {
                     }, true);
                 })();
 
-                // 13. 「+」添加上下文弹层不应唤起输入法。
+                // 13. 添加上下文、项目、模型和模式弹层不应唤起输入法。
                 // 现象（真机 992e8e14，2026-09-26）：点「+」弹出列表时输入法跟着弹出；
                 // 在列表里选中一个条目后输入法又弹一次。用户诉求：只有**直接点输入框**
                 // 才弹输入法，弹层开合一律不弹。
@@ -2118,12 +2191,29 @@ aside[class*="min-w-0"] nav {
                     if (window.__zcodeComposerImeFix) return;
                     window.__zcodeComposerImeFix = true;
                     var lastPointerTarget = null;
-                    document.addEventListener('pointerdown', function(e) { lastPointerTarget = e.target; }, true);
-                    document.addEventListener('touchstart', function(e) { lastPointerTarget = e.target; }, true);
+                    var composerInteractionUntil = 0;
+                    var composerSelector = '[data-testid="v4-composer-input"], .chat-composer-region, .chat-composer-input-surface';
+                    var composerTriggerSelector = 'button[data-testid="composer-workspace-trigger"], ' +
+                        'button[data-testid="chat-model-select-trigger"], button[data-testid="chat-mode-select-trigger"]';
+                    // 2026-10-20 真机：新版新任务预先聚焦编辑器但尚未显示键盘；
+                    // 点项目菜单后这个残留焦点会唤起输入法。新编辑器已没有旧容器类名。
+                    // 在 click 已确定目标后解除焦点，避免键盘收起引起重排，
+                    // 把本次触摸的落点变成列表中的项目而误选。
+                    function recordComposerPointer(e) {
+                        lastPointerTarget = e.target;
+                        var target = e.target && e.target.closest ? e.target : null;
+                        if (!target) return;
+                        if (target.closest(composerTriggerSelector) ||
+                            (target.closest('[role="menu"], [role="listbox"], [data-slot="popover-content"]') && composerPopoverOpen())) {
+                            composerInteractionUntil = Date.now() + 500;
+                        }
+                    }
+                    document.addEventListener('pointerdown', recordComposerPointer, true);
+                    document.addEventListener('touchstart', recordComposerPointer, true);
                     function composerEditable() {
                         var ae = document.activeElement;
                         if (!ae || !ae.isContentEditable) return null;
-                        return ae.closest('.chat-composer-region, .chat-composer-input-surface') ? ae : null;
+                        return ae.closest(composerSelector) ? ae : null;
                     }
                     function blurComposer() {
                         var ed = composerEditable();
@@ -2131,6 +2221,13 @@ aside[class*="min-w-0"] nav {
                         try { ed.blur(); } catch (err) {}
                     }
                     function composerPopoverOpen() {
+                        // 新版模型和模式菜单由触发器的 aria-expanded 标记开合，
+                        // 不依赖菜单文案或门户挂载位置，也覆盖模型二级菜单。
+                        var triggers = document.querySelectorAll(composerTriggerSelector);
+                        for (var j = 0; j < triggers.length; j++) {
+                            if (triggers[j].getAttribute('aria-expanded') === 'true') return true;
+                        }
+                        if (document.querySelector('[data-testid="composer-project-menu"][data-state="open"]')) return true;
                         var pops = document.querySelectorAll('div[data-slot="popover-content"]');
                         for (var i = 0; i < pops.length; i++) {
                             var t = pops[i].textContent || '';
@@ -2140,6 +2237,10 @@ aside[class*="min-w-0"] nav {
                     }
                     // ① 点「+」：收起焦点；Radix 可能在稍后再移动焦点，故延迟补一次
                     document.addEventListener('click', function(ev) {
+                        if (ev.target && ev.target.closest &&
+                            ev.target.closest(composerTriggerSelector)) {
+                            blurComposer();
+                        }
                         var btn = ev.target && ev.target.closest
                             ? ev.target.closest('button[data-testid="chat-attachment-button"]') : null;
                         if (!btn) return;
@@ -2151,8 +2252,10 @@ aside[class*="min-w-0"] nav {
                     document.addEventListener('focusin', function(e) {
                         var t = e.target;
                         if (!t || !t.isContentEditable) return;
-                        if (!t.closest('.chat-composer-region, .chat-composer-input-surface')) return;
-                        if (!composerPopoverOpen()) return;          // 弹层没开：不管
+                        if (!t.closest(composerSelector)) return;
+                        // 选择项目、模型或模式后菜单可能已卸载，短暂覆盖远端的编辑器焦点恢复。
+                        // 用户直接点编辑器始终放行；项目搜索框也不在此拦截范围内。
+                        if (!composerPopoverOpen() && Date.now() >= composerInteractionUntil) return;
                         if (lastPointerTarget && (lastPointerTarget === t || t.contains(lastPointerTarget))) return;  // 用户直接点：放行
                         try { t.blur(); } catch (err) {}
                     }, true);
@@ -2494,9 +2597,87 @@ aside[class*="min-w-0"] nav {
                         return origFocus.call(this, options);
                     };
                 })();
+                window.__zcodePageBehaviorsInstalled = true;
             })();
         """.trimIndent()
 
+        webView.evaluateJavascript(js, null)
+        injectSettingsLayoutGuards(webView)
+    }
+
+    /** 设置中心复用主滚动区，模块切换和键盘缩放需分别处理，避免干预会话滚动。 */
+    private fun injectSettingsLayoutGuards(webView: WebView) {
+        val js = """
+            (function() {
+                if (window.__zcodeSettingsLayoutInstalled) return;
+                window.__zcodeSettingsLayoutInstalled = true;
+
+                var settingsRoot = null;
+                var activeSection = null;
+                var sectionFrame = null;
+                function syncSection() {
+                    sectionFrame = null;
+                    var root = document.querySelector('[data-testid="settings-page"]');
+                    var section = root && root.getAttribute('data-active-section');
+                    if (root && section && (root !== settingsRoot || section !== activeSection)) {
+                        // 2026-10-20 真机：长页切到记忆/归档会继承原 scrollTop，顶部被裁切。
+                        // 仅模块标识变化时归零；加载、表单编辑、展开卡片都保留用户位置。
+                        var main = root.querySelector('main');
+                        if (main) main.scrollTop = 0;
+                    }
+                    settingsRoot = root;
+                    activeSection = section;
+                }
+                function scheduleSection() {
+                    if (!sectionFrame) sectionFrame = requestAnimationFrame(syncSection);
+                }
+                function observeSections() {
+                    if (!document.body) return;
+                    syncSection();
+                    new MutationObserver(scheduleSection).observe(document.body, {
+                        childList: true, subtree: true, attributes: true,
+                        attributeFilter: ['data-active-section']
+                    });
+                }
+                if (document.body) observeSections();
+                else document.addEventListener('DOMContentLoaded', observeSections, { once: true });
+
+                var focusFrame = null;
+                var focusSettleTimer = null;
+                function revealModelInput() {
+                    focusFrame = null;
+                    if (!document.querySelector('[data-testid="settings-page"]')) return;
+                    var input = document.activeElement;
+                    if (!input || !input.matches('input, textarea') ||
+                        input.closest('[inert], [aria-hidden="true"]')) return;
+                    var scroll = input.closest('[data-model-settings-scroll="true"]');
+                    if (!scroll || !scroll.closest('[role="dialog"][data-state="open"]')) return;
+                    var bounds = scroll.getBoundingClientRect();
+                    var field = input.getBoundingClientRect();
+                    var viewport = window.visualViewport;
+                    var top = Math.max(bounds.top, viewport ? viewport.offsetTop : 0) + 8;
+                    var bottom = Math.min(bounds.bottom, viewport ? viewport.offsetTop + viewport.height : innerHeight) - 8;
+                    if (bottom <= top || field.height <= 0) return;
+                    // 只滚弹窗正文，不用 scrollIntoView 带动背景设置页或整个 WebView。
+                    // resize 会在原生键盘边距重排后再次计算，固定按钮区保持原布局。
+                    if (field.top < top || field.height > bottom - top) {
+                        scroll.scrollTop += field.top - top;
+                    } else if (field.bottom > bottom) {
+                        scroll.scrollTop += field.bottom - bottom;
+                    }
+                }
+                function scheduleFocus() {
+                    if (!focusFrame) focusFrame = requestAnimationFrame(revealModelInput);
+                    // Android 会在键盘动画末尾再次执行默认焦点滚动，覆盖首帧校正。
+                    // 连续 resize 只保留最后一次收尾，不监听 scroll，保留手动滑动能力。
+                    clearTimeout(focusSettleTimer);
+                    focusSettleTimer = setTimeout(revealModelInput, 250);
+                }
+                document.addEventListener('focusin', scheduleFocus);
+                window.addEventListener('resize', scheduleFocus);
+                if (window.visualViewport) window.visualViewport.addEventListener('resize', scheduleFocus);
+            })();
+        """.trimIndent()
         webView.evaluateJavascript(js, null)
     }
 

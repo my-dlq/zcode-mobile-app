@@ -46,7 +46,7 @@ class UrlParserTest {
         assertNull(info.explicitName)
         // 建议名走本地化资源：格式串 + mid 前 8 位
         val expected = context.getString(
-            ai.zcode.remote.debug.R.string.device_name_with_mid_format, "abcdef12"
+            ai.zcode.remote.R.string.device_name_with_mid_format, "abcdef12"
         )
         assertEquals(expected, info.resolveSuggestedName(context))
     }
@@ -62,7 +62,7 @@ class UrlParserTest {
         val info = UrlParser.parse("")
         assertFalse(info.isValidZCodeUrl)
         // 空 URL 的兜底名也应本地化
-        val expected = context.getString(ai.zcode.remote.debug.R.string.default_remote_device)
+        val expected = context.getString(ai.zcode.remote.R.string.default_remote_device)
         assertEquals(expected, info.resolveSuggestedName(context))
     }
 
@@ -73,7 +73,7 @@ class UrlParserTest {
         // 空串视为默认
         assertTrue(info.isDefaultSuggestedName(context, ""))
         // 本地化后的兜底名视为默认
-        val defaultDevice = context.getString(ai.zcode.remote.debug.R.string.default_zcode_device)
+        val defaultDevice = context.getString(ai.zcode.remote.R.string.default_zcode_device)
         assertTrue(info.isDefaultSuggestedName(context, defaultDevice))
         // 用户手动改过的名字不被覆盖
         assertFalse(info.isDefaultSuggestedName(context, "我的办公室电脑"))

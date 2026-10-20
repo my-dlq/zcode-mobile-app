@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.widget.PopupWindow
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -69,6 +70,14 @@ class MainActivity : BaseActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // 连接列表是应用的退出边界。默认 finish 会露出栈底保活的远程页，
+                // 整个任务退到后台才能回桌面，同时保留 WebView 和通知监听。
+                moveTaskToBack(true)
+            }
+        })
 
         repository = ConnectionRepository.getInstance(this)
         updateFlow = UpdateCheckFlow(this)

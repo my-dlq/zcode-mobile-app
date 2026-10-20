@@ -171,8 +171,15 @@ object TaskEventParser {
                 firstString(it, "interactionId", "interaction_id", "requestId", "request_id")
             }
         val version = interaction ?: firstString(node, "lastActivityAt", "last_activity_at", "timestamp")
+        // 结束事件沿用对应请求的键；type 仍为 RESOLVED，不能把它混成新的请求。
+        // 2026-10-20 复核：同一 interactionId 原先因 RESOLVED 后缀而无法清理信箱。
+        val keyType = when (type) {
+            "permission_resolved" -> TaskEvent.Type.PERMISSION_REQUEST
+            "elicitation_resolved" -> TaskEvent.Type.ELICITATION_REQUEST
+            else -> mapped
+        }
         val eventKey = if (version.isNullOrEmpty()) "" else
-            "$sourceId|$taskId|${mapped.name}|$version"
+            "$sourceId|$taskId|${keyType.name}|$version"
         return TaskEvent(mapped, taskId, summary.take(80), deviceName, eventKey)
     }
 

@@ -26,21 +26,31 @@ object SessionJumpScript {
     var mine = new WeakSet();
     var wentHome = false;
 
+    var visible = function(el) {
+        if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+        for (var p = el; p && p.nodeType === 1; p = p.parentElement) {
+            var s = window.getComputedStyle(p);
+            if (p.hidden || p.getAttribute('aria-hidden') === 'true' || p.hasAttribute('inert') ||
+                s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0) return false;
+        }
+        return true;
+    };
+
     // 当前会话视图的会话 ID（无 [data-session-id] 时为空 = 列表页/其他页）
     var currentSessionId = function() {
-        var p = document.querySelector('[data-session-id]');
+        var p = Array.from(document.querySelectorAll('[data-session-id]')).find(visible);
         return p ? (p.getAttribute('data-session-id') || '') : '';
     };
 
     var find = function() {
+        if (!onListPage()) return false;
         var els = document.querySelectorAll('[data-testid]');
         for (var i = 0; i < els.length; i++) {
             var t = els[i].getAttribute('data-testid') || '';
             // 只匹配任务条目本身（task-item-<完整 taskId>），避免 indexOf 把
             // 前缀相同的其它条目（如 task-item-<id>-sub）误判为目标
             if (t !== 'task-item-' + tid) continue;
-            if (els[i].getClientRects().length === 0) continue;
-            if (!els[i].isConnected) continue;
+            if (!visible(els[i])) continue;
             if (tried.has(els[i])) continue; // 已点过等跳转，不重复点击
             tried.add(els[i]);
             els[i].scrollIntoView({block: 'center'});
@@ -50,21 +60,29 @@ object SessionJumpScript {
         return false;
     };
 
-    // 是否处于任务列表页：存在 task-item 或存在 session item，且无 [data-session-id]
+    // 2026-10-20 真机：全部项目折叠后 task-item 为 0，不能靠任务行识别首页。
+    // 首页用可见的新任务入口识别；展开操作进一步收窄到同一侧栏的项目分组。
     // 会话页（任务会话视图）没有任何 task-item，此时绝不能点任何按钮——
     // 否则会误触会话页的"Git 工具/切换 Git 分支/状态面板"等折叠触发器，
     // 出现"git 工具弹层 → 审批弹层 → 思考弹层 → 消失"的刷屏
-    var onListPage = function() {
-        return document.querySelector('[data-session-id]') == null &&
-            document.querySelectorAll('[data-testid^="task-item-"]').length > 0;
+    var listRoot = function() {
+        if (currentSessionId()) return null;
+        // 新版设置为覆盖层，背后的任务入口仍有尺寸；不能误认成可操作首页。
+        if (visible(document.querySelector('[data-testid="settings-page"]')) ||
+            visible(document.querySelector('[data-testid="onboarding-page"]'))) return null;
+        var entry = document.querySelector('[data-testid="task-new-button"]');
+        if (!visible(entry)) return null;
+        return entry.closest('aside');
     };
+    var onListPage = function() { return !!listRoot(); };
 
     // 展开工作区分组（aria-expanded=false 的按钮）——仅限列表页：
     // 不在列表页绝不点击任何按钮（会话页按钮全是弹层触发器）
     var expandNext = function() {
         if (!onListPage()) return false;
-        var heads = document.querySelectorAll('button[aria-expanded="false"]');
+        var heads = listRoot().querySelectorAll('button[data-testid="virtual-project-toggle"][aria-expanded="false"]');
         for (var i = 0; i < heads.length; i++) {
+            if (!visible(heads[i])) continue;
             if (tried.has(heads[i])) continue;
             tried.add(heads[i]);
             mine.add(heads[i]);
@@ -77,7 +95,7 @@ object SessionJumpScript {
     // 恢复我们展开的分组（跳转完成后收起，保持页面整洁）——仅限列表页
     var restore = function() {
         if (!onListPage()) return false;
-        var heads = document.querySelectorAll('button[aria-expanded="true"]');
+        var heads = listRoot().querySelectorAll('button[data-testid="virtual-project-toggle"][aria-expanded="true"]');
         for (var i = 0; i < heads.length; i++) {
             if (!mine.has(heads[i])) continue;
             mine.delete(heads[i]);
@@ -94,22 +112,36 @@ object SessionJumpScript {
 
     var tick = function() {
         if (stale()) { restore(); stop(); return; }
+        if (Date.now() > deadline) { restore(); stop(); return; }
+        // 同连接通知复用现有页面，设置/引导覆盖层可能仍盖着目标会话。
+        // 先使用明确的退出入口返回工作区，不能误点覆盖层背后的任务行。
+        var settings = document.querySelector('[data-testid="settings-page"]');
+        var onboarding = document.querySelector('[data-testid="onboarding-page"]');
+        if (visible(settings) || visible(onboarding)) {
+            var exit = visible(onboarding)
+                ? onboarding.querySelector('button[aria-label="退出引导"]')
+                : settings.querySelector('[data-testid="settings-back-button"], button[aria-label="返回工作区"], button[aria-label="Back to workspace"]');
+            if (visible(exit) && !tried.has(exit)) {
+                tried.add(exit);
+                exit.click();
+            }
+            return;
+        }
         // 目标会话已打开（当前会话 ID 与目标一致）才算成功。
         // 不能只凭“页面处于会话视图”就停止：通知点击后若远端恢复的是
         // 上一次会话（非目标），会误停在旧会话页 —— 表现为点 A 通知跳到 B。
         var sid = currentSessionId();
         if (sid === tid) { restore(); stop(); return; }
         if (find()) return; // 点击后等会话切换，由下一轮 tick 确认
-        if (Date.now() > deadline) { restore(); stop(); return; }
         if (!onListPage() && sid !== '') {
             // 处于其它会话视图：先返回任务首页（列表），回到列表后由
             // 后续 tick 的 find()/expandNext() 继续找目标。找不到返回
             // 按钮时不能放弃——继续等页面渲染（可能有异步加载延迟）。
             if (!wentHome) {
-                wentHome = true;
                 var backBtn = document.querySelector(
                     'button[aria-label="返回任务首页"], button[aria-label="返回工作区"], button[aria-label="Back to workspace"]');
-                if (backBtn) {
+                if (visible(backBtn)) {
+                    wentHome = true;
                     backBtn.click();
                     return;
                 }

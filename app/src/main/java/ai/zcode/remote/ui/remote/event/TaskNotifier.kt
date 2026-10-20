@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Bundle
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -27,17 +28,15 @@ object TaskNotifier {
     private const val CHANNEL_APPROVALS = "zcode_task_approvals"
     private const val TAG = "ZCodeEvent"
     private const val RESOLVE_COOLDOWN_MS = 30_000L
-    private const val MAX_RECENT_REQUESTS = 256
+    internal const val EXTRA_INTERACTION_KEY = "ai.zcode.remote.interaction_key"
     private const val RETRY_DELAY_MS = 15_000L
     private const val FOREGROUND_CHECK_DELAY_MS = 1_000L
 
     private val executor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "ZCodeNotificationConsumer").apply { isDaemon = true }
     }
-    /** taskId → 最近一次已投递交互请求的 eventKey，用于让 resolved 精确配对。 */
-    private val recentRequestKeys = HashMap<String, String>()
-    /** eventKey → 最近一次投递时间，用于分辨真实的交互结束与快照抖动。 */
-    private val recentRequestTimes = HashMap<String, Long>()
+    /** 投递和撤销共用同一锁，避免比较完交互键后又被新通知替换。 */
+    private val interactionLock = Any()
     @Volatile private var inboxInstance: TaskNotificationInbox? = null
     private var consumerRunning = false
 
@@ -80,22 +79,23 @@ object TaskNotifier {
     /** 应用或保活服务重建后恢复未完成消费；过期租约会自动重试。 */
     fun resumePending(context: Context) = drainAsync(context.applicationContext)
 
-    private fun handleResolved(context: Context, event: TaskEventParser.TaskEvent) {
+    private fun handleResolved(context: Context, event: TaskEventParser.TaskEvent): Unit = synchronized(interactionLock) {
         val key = event.eventKey
-        val resolvedAt = synchronized(recentRequestTimes) { recentRequestTimes[key] ?: 0L }
-        if (System.currentTimeMillis() - resolvedAt < RESOLVE_COOLDOWN_MS) {
+        if (key.isBlank() || event.taskId.isBlank()) return@synchronized
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val id = event.taskId.hashCode()
+        // 配对身份存在系统通知自身，进程重建也不会忘记当前横幅属于 A 还是 B。
+        // 旧版本无身份的通知宁可保留，绝不按 taskId 猜测后误撤销新审批。
+        val active = manager.activeNotifications.firstOrNull { it.id == id && it.tag == null }
+        val matches = active?.notification?.extras?.getString(EXTRA_INTERACTION_KEY) == key
+        if (matches && System.currentTimeMillis() - active!!.postTime < RESOLVE_COOLDOWN_MS) {
             Log.d(TAG, "resolved ignored during cooldown: id=" + event.taskId + " key=" + key)
-            return
+            return@synchronized
         }
         // 只清理与该交互严格对应的未投递记录。同一任务连续出现第二次审批时，
         // 旧 resolved 的 eventKey 与新请求不同，绝不会误伤新通知。
-        if (key.isNotEmpty()) {
-            inbox(context).discardPendingInteraction(key)
-        }
-        if (event.taskId.isNotEmpty()) {
-            (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-                .cancel(event.taskId.hashCode())
-        }
+        inbox(context).discardPendingInteraction(event)
+        if (matches) manager.cancel(id)
     }
 
     private fun drainAsync(context: Context, delayMs: Long = 0L) {
@@ -125,8 +125,9 @@ object TaskNotifier {
     private fun consumeRecord(
         record: TaskNotificationInbox.Record,
         context: Context,
-    ): Boolean {
-        return try {
+    ): Boolean = synchronized(interactionLock) {
+        try {
+            if (!inbox(context).isProcessing(record.rowId)) return@synchronized true
             when (post(record, context)) {
                 ConsumeResult.DELIVERED -> {
                     inbox(context).markDelivered(record.rowId)
@@ -185,6 +186,9 @@ object TaskNotifier {
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(intent)
+            .addExtras(Bundle().apply {
+                if (isInteraction(event)) putString(EXTRA_INTERACTION_KEY, event.eventKey)
+            })
             .setAutoCancel(true)
             .build()
         return try {
@@ -199,24 +203,6 @@ object TaskNotifier {
             }
             if (isInteraction(event)) manager.cancel(id)
             manager.notify(id, notification)
-            if (isInteraction(event) && event.eventKey.isNotEmpty()) {
-                val now = System.currentTimeMillis()
-                val key = event.eventKey
-                synchronized(recentRequestKeys) {
-                    recentRequestKeys[event.taskId] = key
-                    if (recentRequestKeys.size > MAX_RECENT_REQUESTS) {
-                        val oldest = recentRequestKeys.entries.minByOrNull { it.value }?.key
-                        if (oldest != null) recentRequestKeys.remove(oldest)
-                    }
-                }
-                synchronized(recentRequestTimes) {
-                    recentRequestTimes[key] = now
-                    if (recentRequestTimes.size > MAX_RECENT_REQUESTS) {
-                        val oldestKey = recentRequestTimes.entries.minByOrNull { it.value }?.key
-                        if (oldestKey != null) recentRequestTimes.remove(oldestKey)
-                    }
-                }
-            }
             Log.i(TAG, "notification posted: type=${event.type} id=${event.taskId} key=${event.eventKey}")
             ConsumeResult.DELIVERED
         } catch (e: Exception) {
