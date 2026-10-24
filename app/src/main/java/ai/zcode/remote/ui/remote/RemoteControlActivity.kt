@@ -1087,7 +1087,6 @@ class RemoteControlActivity : BaseActivity() {
         // 重新读一次设置再应用（该函数内部会读取最新值）。
         isFullscreen = appSettings.isFullscreenEnabled()
         setupImmersiveAndScreen()
-        ai.zcode.remote.ui.main.MainActivity.markVisiblePage("remote")
         // 页面恢复到前台可见：记录可见状态并持续跟踪当前会话 ID。
         // 若用户正停留在该会话页（正在对话），审批/提问弹层已在页面上，
         // 系统通知跳过（见 TaskNotifier.notify 的前台会话判断）。
@@ -1266,10 +1265,7 @@ class RemoteControlActivity : BaseActivity() {
     private fun exitToDeviceList() {
         lastBackPressTime = 0L
         try {
-            startActivity(
-                Intent(this, ai.zcode.remote.ui.main.MainActivity::class.java)
-                    .putExtra(ai.zcode.remote.ui.main.MainActivity.EXTRA_FROM_REMOTE, true)
-            )
+            ai.zcode.remote.ui.main.MainActivity.start(this)
         } catch (e: Exception) {
             finish()
         }

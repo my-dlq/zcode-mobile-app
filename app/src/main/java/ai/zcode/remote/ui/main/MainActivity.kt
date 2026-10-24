@@ -51,19 +51,8 @@ class MainActivity : BaseActivity() {
             return
         }
 
-        // singleTask 已移除（改 standard 以保住后台 Remote 的 WebView）。
-        // 需要手动单实例去重 + launcher 切回恢复：
-        // - 从 Remote 返回列表启动的本实例：清理旧 Main 实例，保留自己
-        // - launcher 切回（用户上次停留在远程页）：自删，让栈顶 Remote 自然显示
-        val fromRemoteReturn = intent.getBooleanExtra(EXTRA_FROM_REMOTE, false)
-        val remoteAlive = RemoteControlActivity.hasLiveInstance()
-        if (!fromRemoteReturn && intent.action == Intent.ACTION_MAIN &&
-            intent.data == null && remoteAlive && lastVisiblePage == "remote"
-        ) {
-            // 用户上次停留在远程页时切出：新 Main 自删，恢复显示远程页
-            finish()
-            return
-        }
+        // 普通启动停留连接列表，由用户选择连接；保留 standard 模式，
+        // 不清除后台 Remote 的 WebView，避免中断事件监听。
         // 单实例去重：清理栈中旧的 Main（可能被 Remote 或其他页面压住）
         current?.takeIf { it !== this }?.finish()
         current = this
@@ -86,26 +75,10 @@ class MainActivity : BaseActivity() {
         initListeners()
         handleIncomingIntent(intent)
         updateFlow.check(manual = false)
-
-        // 进程被系统回收后从 launcher 恢复：intent 无 data 且无存活远程页
-        // → 自动重新打开远程页并跳转到上次的任务会话
-        if (savedInstanceState == null && intent.data == null &&
-            intent.action == Intent.ACTION_MAIN && !remoteAlive
-        ) {
-            val lastUrl = repository.getLastActiveUrl()
-            if (lastUrl != null) {
-                val lastName = repository.getLastActiveName() ?: ""
-                val lastTaskId = repository.getLastActiveTaskId()
-                ai.zcode.remote.ui.remote.RemoteControlActivity.start(
-                    this, lastUrl, lastName, taskId = lastTaskId
-                )
-            }
-        }
     }
 
     override fun onResume() {
         super.onResume()
-        lastVisiblePage = "main"
         refreshList()
         checkClipboardForZCodeUrl()
     }
@@ -124,20 +97,12 @@ class MainActivity : BaseActivity() {
     }
 
     companion object {
-        /** 从远程页"返回列表"启动 Main 时的标记（standard 模式下区分来源）。 */
-        const val EXTRA_FROM_REMOTE = "extra_from_remote"
-
         /** 唯一的 MainActivity 实例引用（standard 模式单实例去重）。 */
         @Volatile
         private var current: MainActivity? = null
 
-        /** 上次前台页面（main/remote），供 launcher 切回时恢复。 */
-        @Volatile
-        private var lastVisiblePage: String = "main"
-
-        /** 各页面在 onResume 时更新"当前可见页面"。 */
-        fun markVisiblePage(page: String) {
-            lastVisiblePage = page
+        fun start(context: Context) {
+            context.startActivity(Intent(context, MainActivity::class.java))
         }
     }
 
