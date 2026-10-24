@@ -33,7 +33,7 @@ The following screenshots show the current app on a real device. Click an image 
 ## Features
 
 - **Connection Management:** Connect by scanning a QR code, entering a URL, or using a clipboard shortcut. Save, edit, copy, delete, and reorder multiple connections by long-pressing and dragging.
-- **Session Memory:** Remembers the most recent task session for each connection and attempts to restore the connection and session when the app resumes.
+- **Startup:** Opens the connection list after exiting and restarting the app so you can choose a connection, without automatically reopening the previous session.
 - **Event Notifications:** Supports task completion, task failure, approval requests, and questions. Each type can be enabled separately; tapping a notification opens the corresponding task session.
 - **Background Keep-Alive:** An optional foreground service and screen-off WakeLock reduce background disconnections, with guidance for battery optimization settings.
 - **Display Settings:** Supports immersive full-screen mode, a configurable top bar, and full-page scaling. Includes Light, Dark, and Graphite themes.
@@ -41,7 +41,7 @@ The following screenshots show the current app on a real device. Click an image 
 - **Mobile Interaction:** Handles Back actions by page level, keeps inputs clear of the keyboard, reduces accidental touches, and supports long-press text selection.
 - **Security Features:** Supports fingerprint authentication and pattern verification.
 - **Interface Language:** Supports Simplified Chinese, English, and following the system language.
-- **Campaign Reminders:** Shows an in-session pop-up when the account has an available ZCode token reward campaign.
+- **Campaign Reminders:** Shows a campaign banner at the bottom of the task list when the account has an available ZCode token reward campaign, while retaining the in-session pop-up.
 - **In-App Updates:** Can check GitHub Releases on startup, download APKs, launch the system installer, and ignore a selected version.
 
 ## Quick Start
@@ -85,7 +85,7 @@ You can save multiple connections. **Only the most recently opened connection is
 | Remote task home page | Press Back again within the prompted time window to open the app's connection list |
 | App connection list | Return directly to the phone's home screen |
 
-Returning to the phone's home screen from the connection list retains the remote page in the background, and background keep-alive continues according to your settings. If the background page is still alive, reopening the app returns to the connection list. If Android has reclaimed the process, the app attempts to restore the most recent connection and session.
+Returning to the phone's home screen from the connection list retains the remote page in the background, and background keep-alive continues according to your settings. Restarting the app after exiting opens the connection list, including after Android has reclaimed the process. Tap a connection to open its remote page.
 
 ## Frequently Asked Questions
 
