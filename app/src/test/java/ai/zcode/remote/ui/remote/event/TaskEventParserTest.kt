@@ -236,4 +236,55 @@ class TaskEventParserTest {
         assertEquals(TaskEventParser.TaskEvent.Type.PERMISSION_REQUEST, events.single().type)
         assertEquals("flat-task", events.single().taskId)
     }
+
+    @Test
+    fun `task index liveStatus completed does not replay a historical session`() {
+        val sourceId = "parser-live-status-history"
+        // 任务索引快照里老任务只有 liveStatus（没有 activity.phase）。
+        TaskEventParser.parse(
+            """{"payload":{"kind":"snapshot","snapshot":{"tasks":[
+                {"address":{"taskId":"old-task"},
+                 "meta":{"title":"历史任务","status":"completed","createdAt":900,"updatedAt":1000},
+                 "liveStatus":"completed"}
+            ]}}}""".trimIndent(),
+            "设备", sourceId,
+        )
+
+        // 会话索引快照随后才补上真实 phase，不能当成“刚刚完成”。
+        val events = TaskEventParser.parse(
+            """{"payload":{"kind":"snapshot","snapshot":{"sessions":[
+                {"sessionId":"old-task","title":"历史任务","phase":"completedSuccess",
+                 "sessionEnded":true,"lastActivityAt":1000,"createdAt":900}
+            ]}}}""".trimIndent(),
+            "设备", sourceId,
+        )
+
+        assertEquals(0, events.count { it.type == TaskEventParser.TaskEvent.Type.TASK_COMPLETED })
+    }
+
+    @Test
+    fun `task index liveStatus completed notifies a live completion`() {
+        val sourceId = "parser-live-status-live"
+        TaskEventParser.parse(
+            """{"payload":{"kind":"snapshot","snapshot":{"tasks":[
+                {"address":{"taskId":"live-task"},
+                 "meta":{"title":"实时任务","status":"running","createdAt":900,"updatedAt":1000},
+                 "liveStatus":"running"}
+            ]}}}""".trimIndent(),
+            "设备", sourceId,
+        )
+
+        val finishedAt = System.currentTimeMillis() + 1000
+        val events = TaskEventParser.parse(
+            """{"payload":{"kind":"snapshot","snapshot":{"tasks":[
+                {"address":{"taskId":"live-task"},
+                 "meta":{"title":"实时任务","status":"completed","createdAt":900,"updatedAt":$finishedAt},
+                 "liveStatus":"completed"}
+            ]}}}""".trimIndent(),
+            "设备", sourceId,
+        )
+
+        assertEquals(1, events.count { it.type == TaskEventParser.TaskEvent.Type.TASK_COMPLETED })
+        assertEquals("live-task", events.single().taskId)
+    }
 }

@@ -217,21 +217,26 @@ class TaskSessionTrackerTest {
     @Test
     fun `task reactivated after error emits a second failure with distinct key`() {
         val tracker = TaskSessionTracker()
-        tracker.update("connection-a", listOf(state("task", "running").copy(lastActivityAt = 100L)), "设备 A")
+        val base = System.currentTimeMillis()
+        tracker.update(
+            "connection-a",
+            listOf(state("task", "running").copy(lastActivityAt = base - 1000)),
+            "设备 A",
+        )
         val first = tracker.update(
             "connection-a",
-            listOf(state("task", "error").copy(lastActivityAt = 200L)),
+            listOf(state("task", "error").copy(lastActivityAt = base + 1000)),
             "设备 A",
         ).single()
         // 失败后用户重新发起：running 带更新的活动时间戳
         tracker.update(
             "connection-a",
-            listOf(state("task", "running").copy(lastActivityAt = 300L)),
+            listOf(state("task", "running").copy(lastActivityAt = base + 2000)),
             "设备 A",
         )
         val second = tracker.update(
             "connection-a",
-            listOf(state("task", "error").copy(lastActivityAt = 400L)),
+            listOf(state("task", "error").copy(lastActivityAt = base + 3000)),
             "设备 A",
         ).single()
 
@@ -262,5 +267,52 @@ class TaskSessionTrackerTest {
         )
         assertTrue(stale.isEmpty())
         assertTrue(repeated.isEmpty())
+    }
+
+    @Test
+    fun `stale terminal transition after baseline is ignored`() {
+        val tracker = TaskSessionTracker()
+        val stale = state("old-task", "running").copy(
+            createdAt = 900L,
+            lastActivityAt = 1_000L,
+        )
+        tracker.update("connection-a", listOf(stale), "设备 A")
+
+        val events = tracker.update(
+            "connection-a",
+            listOf(state("old-task", "completedSuccess").copy(
+                createdAt = 900L,
+                lastActivityAt = 1_000L,
+            )),
+            "设备 A",
+        )
+
+        assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun `fresh terminal transition after baseline still notifies`() {
+        val tracker = TaskSessionTracker()
+        tracker.update(
+            "connection-a",
+            listOf(state("live-task", "running").copy(
+                createdAt = 900L,
+                lastActivityAt = 1_000L,
+            )),
+            "设备 A",
+        )
+
+        val finishedAt = System.currentTimeMillis() + 1_000
+        val events = tracker.update(
+            "connection-a",
+            listOf(state("live-task", "completedSuccess").copy(
+                createdAt = 900L,
+                lastActivityAt = finishedAt,
+            )),
+            "设备 A",
+        )
+
+        assertEquals(1, events.count { it.type == TaskEventParser.TaskEvent.Type.TASK_COMPLETED })
+        assertEquals("live-task", events.single().taskId)
     }
 }

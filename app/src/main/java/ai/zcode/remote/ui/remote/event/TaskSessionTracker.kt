@@ -104,20 +104,16 @@ internal class TaskSessionTracker {
             // 都应产生完成通知，但 error 必须优先走失败通知。
             val isDone = isSuccessfulTerminal(next)
             val wasDone = prev?.let(::isSuccessfulTerminal) == true
-            val newlyTerminal = isDone && (
-                (prev != null && !wasDone) ||
-                    (prev == null && !isInitialSnapshot &&
-                        occurredAfterBaseline(next, source))
-                )
-            if (!isInitialSnapshot && newlyTerminal) {
+            // 终态迁移也要过时间基线：同一会话的终态可能由另一条流“补发”
+            // （任务索引先给 liveStatus，会话索引随后才给真实 phase），
+            // 不能当成监听期间发生的完成/失败。
+            val completionEdge = isDone && !wasDone && occurredAfterBaselineForEdge(next, prev, source)
+            if (!isInitialSnapshot && completionEdge) {
                 events.add(next.toEvent(TaskEventParser.TaskEvent.Type.TASK_COMPLETED, deviceName, sourceId))
             }
-            val newError = next.phase == ERROR_PHASE && (
-                (prev != null && prev.phase != ERROR_PHASE) ||
-                    (prev == null && !isInitialSnapshot &&
-                        occurredAfterBaseline(next, source))
-                )
-            if (!isInitialSnapshot && newError) {
+            val errorEdge = next.phase == ERROR_PHASE && prev?.phase != ERROR_PHASE &&
+                occurredAfterBaselineForEdge(next, prev, source)
+            if (!isInitialSnapshot && errorEdge) {
                 events.add(next.toEvent(TaskEventParser.TaskEvent.Type.TASK_FAILED, deviceName, sourceId))
             }
         }
@@ -188,6 +184,22 @@ internal class TaskSessionTracker {
         source: SourceState,
     ): Boolean {
         val stamp = state.createdAt ?: state.lastActivityAt ?: return false
+        return stamp > source.baselineAtMillis
+    }
+
+    /**
+     * 终态迁移的时间判据。首次见到的会话沿用 createdAt 判断是否属于历史；
+     * 已有快照的会话以最近活动时间为准（老会话今天才完成时 createdAt 永远早于
+     * 基线，lastActivityAt 才会更新）。时间戳缺失时保持原有行为放行，避免
+     * 报文缺字段导致完成/失败通知静默。
+     */
+    private fun occurredAfterBaselineForEdge(
+        state: SessionState,
+        previous: SessionState?,
+        source: SourceState,
+    ): Boolean {
+        if (previous == null) return occurredAfterBaseline(state, source)
+        val stamp = state.lastActivityAt ?: state.createdAt ?: return true
         return stamp > source.baselineAtMillis
     }
 
