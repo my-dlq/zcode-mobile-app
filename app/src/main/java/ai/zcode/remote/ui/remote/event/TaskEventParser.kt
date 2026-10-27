@@ -563,7 +563,7 @@ object TaskEventParser {
             ?: firstString(task, "taskId") ?: return null
         val activity = task.optJSONObject("activity")
         val phase = firstString(activity, "phase")
-            ?: firstString(task, "liveStatus")
+            ?: phaseFromLiveStatus(firstString(task, "liveStatus"))
             ?: firstString(meta, "status")?.let(::phaseFromDisplayStatus)
         // task.upserted 与 session.upserted 的交互布局不同：计数在
         // activity.pendingInteractions（复数），详情在 meta.pendingInteraction。
@@ -614,7 +614,7 @@ object TaskEventParser {
             sessionId = id,
             title = firstString(task, "title") ?: firstString(meta, "title"),
             phase = firstString(task, "displayStatus")?.let(::phaseFromDisplayStatus)
-                ?: firstString(task, "liveStatus")
+                ?: phaseFromLiveStatus(firstString(task, "liveStatus"))
                 ?: firstString(activity, "phase"),
             sessionEnded = null,
             permissionCount = permCount,
@@ -653,6 +653,19 @@ object TaskEventParser {
         "completed" -> "completedSuccess"
         "error" -> "error"
         "running" -> "running"
+        else -> null
+    }
+
+    /**
+     * 任务索引/任务列表的 liveStatus 与会话 phase 是两套词表：
+     * liveStatus 用 completed，会话 phase 用 completedSuccess。必须归一化后再交给
+     * 状态差分，否则已完成任务会被记成“非终态”，等会话索引补上真实 phase 时
+     * 被误判成监听期间刚完成并弹出历史通知。
+     */
+    private fun phaseFromLiveStatus(status: String?): String? = when (status) {
+        "completed" -> "completedSuccess"
+        "running", "waiting" -> "running"
+        "error" -> "error"
         else -> null
     }
 
