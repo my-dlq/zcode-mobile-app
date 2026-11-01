@@ -2597,6 +2597,206 @@ aside[class*="min-w-0"] nav {
                         return origFocus.call(this, options);
                     };
                 })();
+                // 19. 微信输入法「文字整理」一次性灌入多段文本时只剩最后一段（2026-10-27）。
+                // 现象：语音转文字后点「整理」，输入框里只剩最后一段，前面的段落消失。
+                // 用户体感是「文本太长被截断」，实测与长度完全无关——单段 2 万字完好，
+                // 两段各 1 个字符（A\nB）就只剩 A。长文本才容易被察觉，是因为 AI 整理后
+                // 的文本变长且会分段，而分段才带换行。
+                // 根因（Chromium + Lexical 0.42 源码核对，并用 CDP 走真实 Blink IME 通道复现）：
+                //   ① IME 用 setComposingText 一次性写入含换行的多段文本；
+                //   ② Blink SetComposition 用 TypingCommand::kSelectInsertedText 把整段插进
+                //      contenteditable，DOM 里出现多个段落节点；
+                //   ③ Lexical 的 onBeforeInput 对 insertCompositionText 直接放行（该事件的
+                //      preventDefault 在 Chromium 里无效，拦不住），随后 onInput /
+                //      compositionend 的 ${'$'}updateSelectedTextFromDOM 只读 domSelection.anchorNode
+                //      这一个文本节点同步回模型；
+                //   ④ reconciler 用「只有一段」的模型覆盖 DOM，其余段落被物理删除。
+                // 与 ZMobile 注入层无关：第 13 条的 blur、全局 user-select CSS、UA 伪装都不影响
+                // （实测「长文本灌入后立刻 blur」文本完好，Chromium 对 contenteditable 也没有
+                //  maxlength 上限）。
+                // 修法：compositionstart 记模型纯文本快照与光标扁平偏移，compositionend 时
+                //   若 IME 文本含换行，则按「快照 + IME 文本」重建编辑器状态。
+                //   重建统一用单段落 + LineBreakNode：多段落会被序列化成 \n\n，把用户的换行翻倍。
+                //   只在含换行时介入，正常拼音、英文、Enter 换行都不受影响。
+                // 依赖：只用 rootElement.__lexicalEditor 与 editor.getEditorState().toJSON() /
+                //   parseEditorState() / setEditorState()，不依赖打包后被 tree-shake 的
+                //   window.lexical 全局。
+                (function() {
+                    if (window.__zcodeMultilineImeFix) return;
+                    window.__zcodeMultilineImeFix = true;
+
+                    var COMPOSER = '[data-testid="v4-composer-input"]';
+                    var DEBUG = false;
+                    var state = null;
+
+                    function log() {
+                        if (!DEBUG && !window.__zcodeMultilineImeFixDebug) return;
+                        try {
+                            console.log.apply(console, ['[ime-multiline-fix]'].concat([].slice.call(arguments)));
+                        } catch (e) {}
+                    }
+
+                    function editorOf(el) {
+                        while (el) {
+                            if (el.__lexicalEditor) return el.__lexicalEditor;
+                            el = el.parentElement;
+                        }
+                        return null;
+                    }
+
+                    function findEditor(target) {
+                        var node = target;
+                        if (node && node.nodeType !== 1) node = node.parentElement;
+                        var ed = editorOf(node);
+                        if (ed) return ed;
+                        ed = editorOf(document.querySelector(COMPOSER));
+                        if (ed) return ed;
+                        return editorOf(document.activeElement);
+                    }
+
+                    // 模型纯文本：linebreak 记 1 个 \n，块级子节点之间也记 1 个 \n，
+                    // 与 Lexical getTextContent() 的语义一致。
+                    function modelText(editor) {
+                        var j = editor.getEditorState().toJSON();
+                        var ch = (j.root && j.root.children) || [];
+                        return ch.map(function(b) {
+                            return (b.children || []).map(function(l) {
+                                return l.type === 'linebreak' ? '\n' : (l.text || '');
+                            }).join('');
+                        }).join('\n');
+                    }
+
+                    // DOM 文本偏移 → 模型扁平偏移
+                    function domOffsetToFlat(rootEl, node, offset) {
+                        if (!rootEl || !node || !rootEl.contains(node)) return null;
+                        var total = 0;
+                        var found = null;
+                        function walk(n) {
+                            if (found !== null) return;
+                            if (n.nodeType === 3) {
+                                if (n === node) { found = total + offset; return; }
+                                total += n.nodeValue.length;
+                                return;
+                            }
+                            if (n.nodeName === 'BR') { total += 1; return; }
+                            for (var i = 0; i < n.childNodes.length; i++) {
+                                walk(n.childNodes[i]);
+                                if (found !== null) return;
+                            }
+                        }
+                        var blocks = rootEl.children;
+                        for (var i = 0; i < blocks.length; i++) {
+                            if (i > 0) total += 1;
+                            walk(blocks[i]);
+                            if (found !== null) return found;
+                        }
+                        return found;
+                    }
+
+                    function snapshot(editor) {
+                        var text = modelText(editor);
+                        var start = text.length;
+                        var end = text.length;
+                        try {
+                            var rootEl = editor.getRootElement();
+                            var sel = window.getSelection();
+                            if (rootEl && sel && sel.rangeCount) {
+                                var a = domOffsetToFlat(rootEl, sel.anchorNode, sel.anchorOffset);
+                                if (a !== null) {
+                                    start = a;
+                                    var f = domOffsetToFlat(rootEl, sel.focusNode, sel.focusOffset);
+                                    end = (f === null) ? a : f;
+                                    if (end < start) { var t = start; start = end; end = t; }
+                                }
+                            }
+                        } catch (e) {}
+                        return { text: text, start: start, end: end };
+                    }
+
+                    // 把纯文本重建为「单段落 + linebreak」，模板取自当前状态以保留格式字段。
+                    function buildState(json, text) {
+                        var root = json.root || {};
+                        var children = root.children || [];
+                        var tplP = null;
+                        var tplT = null;
+                        for (var i = 0; i < children.length; i++) {
+                            if (children[i].type !== 'paragraph') continue;
+                            tplP = children[i];
+                            var ls = children[i].children || [];
+                            for (var j = 0; j < ls.length; j++) {
+                                if (ls[j].type === 'text') { tplT = ls[j]; break; }
+                            }
+                            if (tplT) break;
+                        }
+                        var baseP = tplP ? JSON.parse(JSON.stringify(tplP))
+                            : { type: 'paragraph', version: 1, children: [], direction: null, format: '', indent: 0, textFormat: 0, textStyle: '' };
+                        var baseT = tplT
+                            ? { detail: tplT.detail, format: tplT.format, mode: tplT.mode, style: tplT.style, type: 'text', version: tplT.version }
+                            : { detail: 0, format: 0, mode: 'normal', style: '', type: 'text', version: 1 };
+
+                        var leaves = [];
+                        var lines = text.split('\n');
+                        for (var k = 0; k < lines.length; k++) {
+                            if (k > 0) leaves.push({ type: 'linebreak', version: 1 });
+                            if (lines[k]) {
+                                var t = JSON.parse(JSON.stringify(baseT));
+                                t.text = lines[k];
+                                leaves.push(t);
+                            }
+                        }
+                        var p = JSON.parse(JSON.stringify(baseP));
+                        p.children = leaves;
+                        return { root: Object.assign({}, root, { children: [p] }) };
+                    }
+
+                    function applyText(editor, text) {
+                        var json = editor.getEditorState().toJSON();
+                        var parsed = editor.parseEditorState(buildState(json, text));
+                        editor.setEditorState(parsed, { tag: 'ime-multiline-fix' });
+                        // 光标落到末尾，并让 Lexical 下次从 DOM 选区反同步。
+                        try {
+                            var rootEl = editor.getRootElement();
+                            if (!rootEl) return;
+                            var r = document.createRange();
+                            r.selectNodeContents(rootEl);
+                            r.collapse(false);
+                            var sel = window.getSelection();
+                            sel.removeAllRanges();
+                            sel.addRange(r);
+                        } catch (e) {}
+                    }
+
+                    function onStart(e) {
+                        var editor = findEditor(e.target);
+                        if (!editor) { state = null; return; }
+                        state = { editor: editor, snap: snapshot(editor), data: null };
+                    }
+
+                    function onUpdate(e) {
+                        if (!state) return;
+                        if (typeof e.data === 'string' && e.data.length) state.data = e.data;
+                    }
+
+                    function onEnd(e) {
+                        var st = state;
+                        state = null;
+                        if (!st) return;
+                        if (typeof e.data === 'string' && e.data.length) st.data = e.data;
+                        var d = st.data;
+                        // 不含换行 → 单段，Lexical 的单节点同步本来就够用，不介入。
+                        if (d === null || (d.indexOf('\n') === -1 && d.indexOf('\r') === -1)) return;
+                        var want = st.snap.text.slice(0, st.snap.start) + d + st.snap.text.slice(st.snap.end);
+                        var have = modelText(st.editor);
+                        if (have === want) return;   // 幂等：已正确或已修过
+                        applyText(st.editor, want);
+                        log('repaired', { had: have.length, want: want.length, segs: d.split('\n').length });
+                    }
+
+                    document.addEventListener('compositionstart', onStart, true);
+                    document.addEventListener('compositionupdate', onUpdate, true);
+                    document.addEventListener('compositionend', onEnd, true);
+                })();
+
                 window.__zcodePageBehaviorsInstalled = true;
             })();
         """.trimIndent()
