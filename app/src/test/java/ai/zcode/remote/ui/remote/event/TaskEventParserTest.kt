@@ -6,6 +6,12 @@ import org.junit.Test
 class TaskEventParserTest {
 
     @Test
+    fun `events preserve their stable source for notification routing`() {
+        val events = TaskEventParser.parse("""{"event":"permission_request","taskId":"task","interactionId":"interaction"}""", "重名设备", "connection-id")
+        assertEquals("connection-id", events.single().sourceId)
+    }
+
+    @Test
     fun `explicit resolved uses the matching request key for both interaction kinds`() {
         for (kind in listOf("permission", "elicitation")) {
             val source = "explicit-pair-$kind"

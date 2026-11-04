@@ -51,6 +51,12 @@ class ConnectionRepository(context: Context) {
         }
 
         saveList(list)
+        // 同一地址重新添加后允许新连接使用；旧 ID 的删除标记仍阻止旧通知复活。
+        val savedId = if (index >= 0) list[index].id else connection.id
+        prefs.edit()
+            .putStringSet(KEY_DELETED_SOURCE_IDS, prefs.getStringSet(KEY_DELETED_SOURCE_IDS, emptySet()).orEmpty() - savedId)
+            .putStringSet(KEY_DELETED_URLS, prefs.getStringSet(KEY_DELETED_URLS, emptySet()).orEmpty() - normalizeUrl(connection.url))
+            .apply()
     }
 
     /** 保存用户手动排序后的连接顺序。 */
@@ -105,11 +111,35 @@ class ConnectionRepository(context: Context) {
         // lastTaskId 不在 copyInto 中覆盖——它由 updateLastTaskId 独立更新
     }
 
-    fun deleteConnection(id: String) {
+    fun deleteConnection(id: String): RemoteConnection? {
         val list = getAllConnections()
+        val removed = list.firstOrNull { it.id == id } ?: return null
         list.removeAll { it.id == id }
-        saveList(list)
+        val editor = prefs.edit()
+            .putString(KEY_CONNECTIONS, gson.toJson(list))
+            .putStringSet(KEY_DELETED_SOURCE_IDS, prefs.getStringSet(KEY_DELETED_SOURCE_IDS, emptySet()).orEmpty() + id)
+            .putStringSet(KEY_DELETED_URLS, prefs.getStringSet(KEY_DELETED_URLS, emptySet()).orEmpty() + normalizeUrl(removed.url))
+        if (activeConnectionId == id ||
+            prefs.getString(KEY_LAST_ACTIVE_URL, null)?.let(::normalizeUrl) == normalizeUrl(removed.url)
+        ) {
+            activeConnectionId = null
+            editor.remove(KEY_LAST_ACTIVE_URL).remove(KEY_LAST_ACTIVE_NAME).remove(KEY_LAST_ACTIVE_TASK_ID)
+        }
+        editor.apply()
+        return removed
     }
+
+    /** 连接 ID 是首选身份；旧版隐藏监听使用 URL 时仍可精确解析。 */
+    fun findBySourceId(sourceId: String): RemoteConnection? =
+        getAllConnections().firstOrNull { it.id == sourceId }
+            ?: sourceId.takeIf { it.startsWith("http://") || it.startsWith("https://") }?.let(::findByUrl)
+
+    /** 持久化删除标记，挡住已排队的旧页面回调和服务恢复 Intent。 */
+    fun isSourceDeleted(sourceId: String): Boolean = sourceId.isNotBlank() && (
+        sourceId in prefs.getStringSet(KEY_DELETED_SOURCE_IDS, emptySet()).orEmpty() ||
+            ((sourceId.startsWith("http://") || sourceId.startsWith("https://")) &&
+                normalizeUrl(sourceId) in prefs.getStringSet(KEY_DELETED_URLS, emptySet()).orEmpty())
+        )
 
     fun updateLastConnected(id: String) {
         val list = getAllConnections()
@@ -166,6 +196,8 @@ class ConnectionRepository(context: Context) {
         private const val KEY_LAST_ACTIVE_URL = "key_last_active_url"
         private const val KEY_LAST_ACTIVE_NAME = "key_last_active_name"
         private const val KEY_LAST_ACTIVE_TASK_ID = "key_last_active_task_id"
+        private const val KEY_DELETED_SOURCE_IDS = "key_deleted_source_ids"
+        private const val KEY_DELETED_URLS = "key_deleted_connection_urls"
 
         @Volatile
         private var instance: ConnectionRepository? = null

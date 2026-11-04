@@ -60,15 +60,15 @@ object UpdateChecker {
     }
 
     /** 解析 Release JSON，挑选 release 产出的 APK 资产 */
-    private fun parseRelease(json: String): UpdateInfo? {
+    internal fun parseRelease(json: String): UpdateInfo? {
         return try {
             val release = Gson().fromJson(json, ReleaseResponse::class.java)
             val tag = release.tagName?.takeIf { it.isNotBlank() } ?: return null
 
-            // 优先匹配仓库约定的 release 产物名（排除 -debug），找不到时回退任一 apk 资产
+            // 只接受当前标签对应的正式产物。宽泛正则与“任一 APK”兜底都会误选 debug 包。
             val assets = release.assets.orEmpty().filterNotNull()
-            val apkAsset = assets.firstOrNull { it.name?.matches(RELEASE_APK_REGEX) == true }
-                ?: assets.firstOrNull { it.name?.endsWith(".apk", ignoreCase = true) == true }
+            val version = tag.removePrefix("v").removePrefix("V")
+            val apkAsset = assets.firstOrNull { it.name.equals("zcode-mobile-app-v$version.apk", ignoreCase = true) }
                 ?: return null
             val url = apkAsset.downloadUrl?.takeIf { it.isNotBlank() } ?: return null
 
@@ -104,5 +104,4 @@ object UpdateChecker {
     /** 构建 Release 页面地址（备用跳转入口） */
     fun releasePageUrl(): String = "https://github.com/my-dlq/zcode-mobile-app/releases/latest"
 
-    private val RELEASE_APK_REGEX = Regex("""zcode-mobile-app-v\d[\w.\-]*\.apk""", RegexOption.IGNORE_CASE)
 }

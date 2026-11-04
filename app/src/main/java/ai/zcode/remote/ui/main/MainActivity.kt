@@ -366,6 +366,9 @@ class MainActivity : BaseActivity() {
             .setMessage(getString(R.string.confirm_delete_msg, connection.name))
             .setPositiveButton(R.string.action_delete) { _, _ ->
                 repository.deleteConnection(connection.id)
+                ai.zcode.remote.ui.remote.RemoteControlActivity.closeConnection(connection.id, connection.url)
+                ai.zcode.remote.service.KeepAliveService.forgetConnection(connection.id, connection.url)
+                ai.zcode.remote.ui.remote.event.TaskNotifier.discardConnection(this, connection.id, connection.url)
                 refreshList()
                 ToastUtils.show(this, getString(R.string.toast_deleted))
             }

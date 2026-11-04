@@ -29,6 +29,7 @@ object TaskNotifier {
     private const val TAG = "ZCodeEvent"
     private const val RESOLVE_COOLDOWN_MS = 30_000L
     internal const val EXTRA_INTERACTION_KEY = "ai.zcode.remote.interaction_key"
+    internal const val EXTRA_SOURCE_ID = "ai.zcode.remote.source_id"
     private const val RETRY_DELAY_MS = 15_000L
     private const val FOREGROUND_CHECK_DELAY_MS = 1_000L
 
@@ -60,6 +61,7 @@ object TaskNotifier {
     /** WebView 事件生产入口，不在回调线程同步发布通知。 */
     fun notify(context: Context, event: TaskEventParser.TaskEvent) {
         val appContext = context.applicationContext
+        if (ConnectionRepository.getInstance(appContext).isSourceDeleted(sourceIdOf(event))) return
         if (event.type == TaskEventParser.TaskEvent.Type.RESOLVED) {
             handleResolved(appContext, event)
             return
@@ -78,6 +80,23 @@ object TaskNotifier {
 
     /** 应用或保活服务重建后恢复未完成消费；过期租约会自动重试。 */
     fun resumePending(context: Context) = drainAsync(context.applicationContext)
+
+    /** 删除连接后撤回横幅与待投递记录，旧事件键仍保留去重标记。 */
+    fun discardConnection(context: Context, id: String, url: String): Unit = synchronized(interactionLock) {
+        for (source in setOf(id, url)) inbox(context).discardSource(source)
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        for (active in manager.activeNotifications) {
+            val extras = active.notification.extras
+            val source = extras.getString(EXTRA_SOURCE_ID).orEmpty()
+            val legacyKey = extras.getString(EXTRA_INTERACTION_KEY).orEmpty()
+            if (source == id || source == url || legacyKey.startsWith("$id|") || legacyKey.startsWith("$url|")) {
+                manager.cancel(active.tag, active.id)
+            }
+        }
+    }
+
+    private fun sourceIdOf(event: TaskEventParser.TaskEvent): String =
+        event.sourceId.ifBlank { event.eventKey.substringBefore('|', "") }
 
     private fun handleResolved(context: Context, event: TaskEventParser.TaskEvent): Unit = synchronized(interactionLock) {
         val key = event.eventKey
@@ -152,11 +171,12 @@ object TaskNotifier {
 
     private fun post(record: TaskNotificationInbox.Record, context: Context): ConsumeResult {
         val event = record.event
+        if (ConnectionRepository.getInstance(context).isSourceDeleted(sourceIdOf(event))) return ConsumeResult.DISCARDED
         // 用户正停留在某任务会话页时，该会话自身的消息（审批/提问/完成/失败）
         // 已在页面上实时可见，弹系统通知属于打扰 → 抑制；其他会话的消息不受
         // 影响照常通知。RESOLVED 不经过这里（notify 入口已分流）。
         if (event.taskId.isNotEmpty() &&
-            RemoteControlActivity.isForegroundSession(event.taskId)
+            RemoteControlActivity.isForegroundSession(event.taskId, sourceIdOf(event))
         ) return ConsumeResult.DISCARDED
         val settings = AppSettingsRepository.getInstance(context)
         if (!settings.isNotificationEnabled() || !isEnabledForType(settings, event.type)) {
@@ -176,7 +196,7 @@ object TaskNotifier {
 
         val (title, text) = notificationText(context, event)
         val intent = PendingIntent.getActivity(
-            context, (event.deviceName + ":" + event.taskId).hashCode(),
+            context, (sourceIdOf(event).ifBlank { event.deviceName } + ":" + event.taskId).hashCode(),
             buildLaunchIntent(context, event),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -188,6 +208,7 @@ object TaskNotifier {
             .setContentIntent(intent)
             .addExtras(Bundle().apply {
                 if (isInteraction(event)) putString(EXTRA_INTERACTION_KEY, event.eventKey)
+                putString(EXTRA_SOURCE_ID, sourceIdOf(event))
             })
             .setAutoCancel(true)
             .build()
@@ -252,9 +273,12 @@ object TaskNotifier {
     }
 
     private fun buildLaunchIntent(context: Context, event: TaskEventParser.TaskEvent): Intent {
-        val connection = findConnection(context, event.deviceName)
+        val connection = findConnection(context, event)
         return if (connection != null) {
             Intent(context, RemoteControlActivity::class.java).apply {
+                // Intent extras 不参与 PendingIntent 身份比较，以连接与任务 URI 隔离同名设备。
+                data = android.net.Uri.Builder().scheme("zcode-notification").authority("task")
+                    .appendPath(connection.id).appendPath(event.taskId).build()
                 putExtra(RemoteControlActivity.EXTRA_URL, connection.url)
                 putExtra(RemoteControlActivity.EXTRA_NAME, connection.name)
                 if (event.taskId.isNotEmpty()) putExtra(RemoteControlActivity.EXTRA_TASK_ID, event.taskId)
@@ -267,9 +291,16 @@ object TaskNotifier {
         }
     }
 
-    private fun findConnection(context: Context, deviceName: String) = try {
-        if (deviceName.isBlank()) null else ConnectionRepository.getInstance(context)
-            .getAllConnections().firstOrNull { it.name == deviceName }
+    private fun findConnection(context: Context, event: TaskEventParser.TaskEvent) = try {
+        val repository = ConnectionRepository.getInstance(context)
+        val sourceId = sourceIdOf(event)
+        val exact = repository.findBySourceId(sourceId)
+        when {
+            exact != null -> exact
+            event.sourceId.isNotBlank() || repository.isSourceDeleted(sourceId) -> null
+            // 兼容没有身份信息的旧记录；重名时回首页由用户选择，不能猜第一个。
+            else -> repository.getAllConnections().filter { it.name == event.deviceName }.singleOrNull()
+        }
     } catch (_: Exception) { null }
 
     private fun inbox(context: Context): TaskNotificationInbox {

@@ -32,6 +32,7 @@ internal class TaskNotificationInbox(context: Context, databaseName: String = DA
             put(COL_TYPE, event.type.name)
             put(COL_TITLE, event.taskTitle)
             put(COL_DEVICE, event.deviceName)
+            put(COL_SOURCE_ID, event.sourceId)
             put(COL_STATE, STATE_PENDING)
             put(COL_LEASE_UNTIL, 0L)
             put(COL_NEXT_ATTEMPT_AT, now)
@@ -56,7 +57,7 @@ internal class TaskNotificationInbox(context: Context, databaseName: String = DA
             )
             val cursor = db.query(
                 TABLE,
-                arrayOf(COL_ROW_ID, COL_TASK_ID, COL_TYPE, COL_TITLE, COL_DEVICE, COL_EVENT_KEY),
+                arrayOf(COL_ROW_ID, COL_TASK_ID, COL_TYPE, COL_TITLE, COL_DEVICE, COL_EVENT_KEY, COL_SOURCE_ID),
                 "$COL_STATE = ? AND $COL_NEXT_ATTEMPT_AT <= ?",
                 arrayOf(STATE_PENDING, now.toString()),
                 null, null, "$COL_ROW_ID ASC", "1",
@@ -86,6 +87,7 @@ internal class TaskNotificationInbox(context: Context, databaseName: String = DA
                         taskTitle = it.getString(3).orEmpty(),
                         deviceName = it.getString(4).orEmpty(),
                         eventKey = it.getString(5).orEmpty(),
+                        sourceId = it.getString(6).orEmpty(),
                     ),
                 )
             }
@@ -141,6 +143,7 @@ internal class TaskNotificationInbox(context: Context, databaseName: String = DA
                 put(COL_TYPE, TaskEventParser.TaskEvent.Type.RESOLVED.name)
                 put(COL_TITLE, event.taskTitle)
                 put(COL_DEVICE, event.deviceName)
+                put(COL_SOURCE_ID, event.sourceId)
                 put(COL_STATE, STATE_DISCARDED)
                 put(COL_LEASE_UNTIL, 0L)
                 put(COL_NEXT_ATTEMPT_AT, 0L)
@@ -168,6 +171,18 @@ internal class TaskNotificationInbox(context: Context, databaseName: String = DA
         null, null, null,
     ).use { it.moveToFirst() && it.getString(0) == STATE_PROCESSING }
 
+    /** 删除连接时终止其待投递记录，保留结束标记阻止迟到帧重新入队。 */
+    @Synchronized
+    fun discardSource(sourceId: String) {
+        if (sourceId.isBlank()) return
+        val prefix = "$sourceId|"
+        writableDatabase.update(TABLE, ContentValues().apply {
+            put(COL_STATE, STATE_DISCARDED)
+            put(COL_LEASE_UNTIL, 0L)
+        }, "$COL_STATE IN (?, ?) AND ($COL_SOURCE_ID = ? OR substr($COL_EVENT_KEY, 1, ?) = ?)",
+            arrayOf(STATE_PENDING, STATE_PROCESSING, sourceId, prefix.length.toString(), prefix))
+    }
+
     private fun updateState(rowId: Long, state: String, nextAttemptAt: Long) {
         writableDatabase.update(
             TABLE,
@@ -190,6 +205,7 @@ internal class TaskNotificationInbox(context: Context, databaseName: String = DA
                 "$COL_TYPE TEXT NOT NULL, " +
                 "$COL_TITLE TEXT NOT NULL, " +
                 "$COL_DEVICE TEXT NOT NULL, " +
+                "$COL_SOURCE_ID TEXT NOT NULL DEFAULT '', " +
                 "$COL_STATE TEXT NOT NULL, " +
                 "$COL_LEASE_UNTIL INTEGER NOT NULL, " +
                 "$COL_NEXT_ATTEMPT_AT INTEGER NOT NULL, " +
@@ -201,7 +217,10 @@ internal class TaskNotificationInbox(context: Context, databaseName: String = DA
         )
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        // 只追加身份列，旧记录和唯一事件键原样保留，避免升级后重放历史通知。
+        if (oldVersion < 2) db.execSQL("ALTER TABLE $TABLE ADD COLUMN $COL_SOURCE_ID TEXT NOT NULL DEFAULT ''")
+    }
 
     private fun stableKey(event: TaskEventParser.TaskEvent): String =
         event.eventKey.ifBlank {
@@ -211,7 +230,7 @@ internal class TaskNotificationInbox(context: Context, databaseName: String = DA
 
     private companion object {
         const val DATABASE_NAME = "zcode_task_notifications.db"
-        const val DATABASE_VERSION = 1
+        const val DATABASE_VERSION = 2
         const val TABLE = "event_inbox"
         const val COL_ROW_ID = "row_id"
         const val COL_EVENT_KEY = "event_key"
@@ -219,6 +238,7 @@ internal class TaskNotificationInbox(context: Context, databaseName: String = DA
         const val COL_TYPE = "event_type"
         const val COL_TITLE = "task_title"
         const val COL_DEVICE = "device_name"
+        const val COL_SOURCE_ID = "source_id"
         const val COL_STATE = "state"
         const val COL_LEASE_UNTIL = "lease_until"
         const val COL_NEXT_ATTEMPT_AT = "next_attempt_at"

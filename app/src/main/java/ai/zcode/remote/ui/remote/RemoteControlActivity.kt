@@ -157,6 +157,10 @@ class RemoteControlActivity : BaseActivity() {
         // 反查 connectionId：用于 onPause 时保存当前任务会话到对应连接
         val repo = ConnectionRepository.getInstance(this)
         connectionId = repo.findByUrl(targetUrl)?.id ?: ""
+        if (repo.isSourceDeleted(connectionId.ifEmpty { targetUrl })) {
+            finish()
+            return
+        }
         // 不管从哪条路径进入（列表点击/通知点击/深链接/自动恢复），
         // 都更新 lastActive 指向当前连接——确保下次恢复/通知跳转到正确的连接
         if (connectionId.isNotEmpty()) {
@@ -1016,6 +1020,7 @@ class RemoteControlActivity : BaseActivity() {
         setIntent(intent)
         ClaimCampaignNotifier.acknowledgeIntent(this, intent)
         val newUrl = intent.getStringExtra(EXTRA_URL) ?: return
+        if (ConnectionRepository.getInstance(this).isSourceDeleted(newUrl)) return
         val campaign = ClaimCampaignNotifier.campaignFromIntent(intent)
         if (newUrl == targetUrl && campaign != null) {
             // Notification taps keep the currently open conversation intact.
@@ -1201,15 +1206,16 @@ class RemoteControlActivity : BaseActivity() {
         pendingSessionJump?.let { handler.removeCallbacks(it) }
         pendingSessionJump = null
         claimDialogs.clear()
-        if (current === this) current = null
+        val ownedEventSource = current === this
+        if (ownedEventSource) current = null
         // 主页面销毁后交还事件源所有权：保活服务随即用隐藏 WebView 接管同一远程 URL，
         // 填补 Activity WebView 销毁后的监听空窗（服务内部保证与主页面不并存）。
-        ai.zcode.remote.service.KeepAliveService.releaseEventSource(
-            this,
-            url = targetUrl,
-            name = deviceName,
-            sourceId = connectionId.ifEmpty { targetUrl },
-        )
+        // 已删除或交接的页面不能重新启动监听；旧页面销毁也不能覆盖新连接的目标。
+        if (ownedEventSource && !eventSourceHandedOver && targetUrl.isNotBlank()) {
+            ai.zcode.remote.service.KeepAliveService.releaseEventSource(
+                this, url = targetUrl, name = deviceName, sourceId = connectionId.ifEmpty { targetUrl },
+            )
+        }
         handler.removeCallbacks(foregroundSessionTick)
         handler.removeCallbacks(reconnectRunnable)
         unregisterNetworkCallback()
@@ -1298,6 +1304,21 @@ class RemoteControlActivity : BaseActivity() {
         /** 是否已有远程页存活（供 MainActivity 切回判断/自动恢复去重）。 */
         fun hasLiveInstance(): Boolean = current != null
 
+        /** 删除连接时关闭它的页面，禁止 onDestroy 再把已删除目标交回服务。 */
+        fun closeConnection(id: String, url: String) {
+            val activity = current ?: return
+            if (activity.connectionId != id && !(activity.connectionId.isBlank() && activity.targetUrl == url)) return
+            activity.eventSourceHandedOver = true
+            current = null
+            foregroundSessionVisible.set(false)
+            foregroundSessionId.set("")
+            activity.handler.removeCallbacksAndMessages(null)
+            if (activity::eventBridge.isInitialized) activity.eventBridge.dispose()
+            activity.eventBridgeAlive = false
+            activity.binding.webView.stopLoading()
+            activity.finish()
+        }
+
         /**
          * 主页面事件源健康自检（由 KeepAliveService 周期巡检调用）。
          * 页面注入的捕获脚本每 10s 上报一次心跳；若主 Activity 存在但其事件桥的
@@ -1339,8 +1360,9 @@ class RemoteControlActivity : BaseActivity() {
          * 用户是否正停留在该任务会话页（页面前台可见且显示此会话）。
          * 此时审批/提问弹层已在页面上，TaskNotifier 跳过系统通知。
          */
-        fun isForegroundSession(taskId: String): Boolean =
-            foregroundSessionVisible.get() && foregroundSessionId.get() == taskId
+        fun isForegroundSession(taskId: String, sourceId: String = ""): Boolean =
+            foregroundSessionVisible.get() && foregroundSessionId.get() == taskId &&
+                (sourceId.isBlank() || current?.connectionId == sourceId || current?.targetUrl == sourceId)
 
         fun start(
             context: Context,
