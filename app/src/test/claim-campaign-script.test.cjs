@@ -13,8 +13,9 @@ const delivery = {scope:'fixture-account', serverTime:100, deliveries:[{campaign
 }}]};
 
 function harness({previewOnly=false, success=true, interactive=false, taskSession=false, missingCaptcha=false, officialBanner=false,
-  rpcVersion='current', configError=null}={}) {
-  const state={queries:0,claims:0,configCalls:[],reports:[],deliveries:[],clicks:[],statuses:[],now:1000000};
+  rpcVersion='current', configError=null, marketingError=null, httpStatus=200, httpCode=0, changeAccount=false,
+  pageUrl='https://zcode.z.ai/remote/v4?mid=fixture-device&app_version=3.17.2'}={}) {
+  const state={queries:0,claims:0,configCalls:[],reports:[],deliveries:[],clicks:[],statuses:[],httpRequests:[],tokenReads:0,now:1000000};
   const nodes=new Map();
   function element(tag='div') {
     const e={tagName:tag.toUpperCase(),children:[],dataset:{},style:{},hidden:false,textContent:'',
@@ -34,7 +35,9 @@ function harness({previewOnly=false, success=true, interactive=false, taskSessio
   official.scrollIntoView=()=>{state.officialScrolls=(state.officialScrolls||0)+1;};
   official.click=()=>{state.officialClicks=(state.officialClicks||0)+1;};
   const svc={
-    marketingTouchService:{async query(){state.queries++;if(previewOnly)throw Error('unsupported');return delivery;},async report(x){state.reports.push(x);}},
+    credentialService:{async load(key){assert.equal(key,'zcodejwttoken');state.tokenReads++;
+      return changeAccount&&state.tokenReads>1?'fixture-new-account':'fixture-secret-token';}},
+    marketingTouchService:{async query(){state.queries++;if(marketingError)throw typeof marketingError==='string'?Error(marketingError):marketingError;if(previewOnly)throw Error('unsupported');return delivery;},async report(x){state.reports.push(x);}},
     codingPlanSubscriptionService:{async getManualClaimPlanPreviews(){return {plans:[{planId:'fixture-plan',name:'Fixture offer'}]};},
       async getRequestVerificationConfig(){if(configError)throw Error(configError);return {enabled:true,sceneId:'fixture-scene',region:'cn'};},
       async claimManualPlan(args){state.claims++;assert.equal(args.captchaVerifyParam,'fixture-verification');return {success,code:3007};}}
@@ -57,7 +60,9 @@ function harness({previewOnly=false, success=true, interactive=false, taskSessio
     }});
   }
   const root={memoizedState:{memoizedState:svc}}, fiber={__reactFiberFixture:root};
-  const context={console,Set,Promise,Date:{now:()=>state.now},
+  const context={console,Set,Promise,URL,TextEncoder,Uint8Array,AbortController,Date:{now:()=>state.now},
+    async fetch(url,options){state.httpRequests.push({url,options});return {ok:httpStatus===200,status:httpStatus,
+      async json(){return {code:httpCode,data:{server_time:100,deliveries:delivery.deliveries}};}};},
     setTimeout(){return 1;},clearTimeout(){},setInterval(){},MutationObserver:class{observe(){}},
     document:{createElement:element,body:element(),head:element(),
       getElementById:id=>nodes.get(id),querySelectorAll:selector=>{
@@ -70,7 +75,7 @@ function harness({previewOnly=false, success=true, interactive=false, taskSessio
         if(selector==='[data-testid="manual-claim-plan-banner"]')return officialBanner?official:null;
         return null;
       }}};
-  context.window={addEventListener(){},__zcodeNative:{onClaimCampaigns:body=>state.deliveries.push(JSON.parse(body)),onClaimCampaignClicked:key=>state.clicks.push(key),
+  context.window={location:{href:pageUrl},crypto:require('node:crypto').webcrypto,addEventListener(){},__zcodeNative:{onClaimCampaigns:body=>state.deliveries.push(JSON.parse(body)),onClaimCampaignClicked:key=>state.clicks.push(key),
     onClaimCampaignStatus:(key,message,finished)=>state.statuses.push({key,message,finished})},
     initAliyunCaptcha:cfg=>{
       nodes.get('zcode-claim-captcha-trigger').onclick=()=>cfg.success('fixture-verification');
@@ -80,7 +85,9 @@ function harness({previewOnly=false, success=true, interactive=false, taskSessio
     }};
   vm.runInNewContext(source,context);
   return {state,context,nodes,footerBar,buttons:()=>context.document.querySelectorAll('#zcode-claim-offers button'),
-    settle:()=>new Promise(resolve=>setImmediate(resolve))};
+    settle:()=>new Promise(resolve=>setImmediate(resolve)),
+    async settleHttp(){for(let i=0;i<100&&state.tokenReads<2;i++)await new Promise(resolve=>setTimeout(resolve,2));
+      await new Promise(resolve=>setImmediate(resolve));}};
 }
 
 test('discovery renders the claim banner in the task-list footer without claiming',async()=>{
@@ -187,4 +194,67 @@ test('a stale notification cannot claim or acknowledge another offer',async()=>{
 test('an incomplete service object is not treated as the plan service',async()=>{
   const h=harness({missingCaptcha:true});await h.settle();
   assert.equal(h.state.queries,0);assert.equal(h.buttons().length,0);
+});
+
+const unavailableMarketing = "Unknown channel: Channel name 'marketing-touch' timed out after 1000ms";
+
+test('missing remote marketing channel uses the authenticated official API and delivers a reminder',async()=>{
+  // 真机 RPC 把错误类型放在 name，message 本身不含 Unknown channel 前缀。
+  const error=Object.assign(Error("Channel name 'marketing-touch' timed out after 1000ms"),{name:'Unknown channel'});
+  const h=harness({marketingError:error});await h.settleHttp();
+  assert.equal(h.state.httpRequests.length,1);
+  const {url,options}=h.state.httpRequests[0];
+  assert.equal(new URL(url).origin,'https://zcode.z.ai');
+  assert.equal(new URL(url).pathname,'/api/v1/marketing/touch');
+  assert.equal(options.headers.Authorization,'Bearer fixture-secret-token');
+  assert.equal(options.headers['X-Device-Mid'],'fixture-device');
+  assert.equal(options.headers['X-ZCode-App-Version'],'3.17.2');
+  assert.equal(options.credentials,'omit');assert.equal(options.redirect,'error');
+  assert.equal(h.state.deliveries.length,1);assert.equal(h.buttons().length,1);
+  assert.equal(h.state.deliveries[0].serverTime,100000);
+  assert.match(h.state.deliveries[0].scope,/^web-[a-f0-9]{64}$/);
+  assert.equal(JSON.stringify(h.state.deliveries).includes('fixture-secret-token'),false);
+  assert.equal(h.state.claims,0);assert.deepEqual(h.state.reports,[]);
+});
+
+test('fallback delivers in a conversation and reports only after an explicit successful claim',async()=>{
+  const h=harness({marketingError:unavailableMarketing,taskSession:true});await h.settleHttp();
+  assert.equal(h.state.deliveries.length,1);assert.equal(h.buttons().length,0);
+  const key=h.state.deliveries[0].scope+'|fixture-campaign|fixture-plan';
+  assert.equal(h.context.window.__zcodeClaims.claim(key),true);await h.settle();await h.settle();
+  for(let i=0;i<100&&!h.state.httpRequests.some(r=>r.options.method==='POST');i++) {
+    await new Promise(resolve=>setTimeout(resolve,2));
+  }
+  assert.equal(h.state.claims,1);
+  const report=h.state.httpRequests.find(r=>r.options.method==='POST');
+  assert.ok(report);assert.equal(new URL(report.url).pathname,'/api/v1/marketing/touch/action');
+  assert.deepEqual(JSON.parse(report.options.body),{campaign_id:'fixture-campaign',action_type:'confirm'});
+});
+
+test('unsupported sites and missing desktop versions never receive authentication headers',async()=>{
+  for(const pageUrl of ['https://untrusted.example/remote?mid=x&app_version=3.17.2',
+    'http://zcode.z.ai/remote?mid=x&app_version=3.17.2','https://zcode.z.ai/remote?mid=x']) {
+    const h=harness({marketingError:unavailableMarketing,pageUrl});await h.settle();
+    assert.equal(h.state.httpRequests.length,0);assert.equal(h.state.tokenReads,0);
+    assert.equal(h.state.deliveries.length,0);
+  }
+});
+
+test('an account change while fetching cannot produce a reminder for the former account',async()=>{
+  const h=harness({marketingError:unavailableMarketing,changeAccount:true});await h.settleHttp();
+  assert.equal(h.state.deliveries.length,0);
+});
+
+test('HTTP and business errors cannot manufacture campaign deliveries',async()=>{
+  for(const params of [{httpStatus:401},{httpCode:1001}]) {
+    const h=harness({marketingError:unavailableMarketing,...params});
+    for(let i=0;i<25;i++)await new Promise(resolve=>setTimeout(resolve,2));
+    assert.equal(h.state.httpRequests.length,1);assert.equal(h.state.deliveries.length,0);
+    assert.equal(h.state.claims,0);
+  }
+});
+
+test('ordinary RPC network failures do not trigger an authenticated HTTP request',async()=>{
+  const h=harness({marketingError:'network temporarily unavailable'});await h.settle();
+  assert.equal(h.state.httpRequests.length,0);
 });

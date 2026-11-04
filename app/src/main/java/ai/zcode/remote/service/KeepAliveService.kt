@@ -58,6 +58,27 @@ class KeepAliveService : Service() {
         var activityOwnsEventSource = false
             private set
 
+        @Volatile private var currentService: KeepAliveService? = null
+
+        /** 删除目标时只清理现有服务，不为清理动作另启动前台服务。 */
+        fun forgetConnection(id: String, url: String) {
+            val service = currentService ?: return
+            service.handler.post {
+                if (service.monitorSourceId == id ||
+                    ((service.monitorSourceId.isBlank() || service.monitorSourceId == service.monitorUrl) && service.monitorUrl == url)
+                ) {
+                    service.disposeEventSource()
+                    service.monitorUrl = ""
+                    service.monitorName = ""
+                    service.monitorSourceId = ""
+                    if (!RemoteControlActivity.hasLiveInstance()) activityOwnsEventSource = false
+                    if (!AppSettingsRepository.getInstance(service).isKeepAliveEnabled() &&
+                        !RemoteControlActivity.hasLiveInstance()
+                    ) service.stopSelf()
+                }
+            }
+        }
+
         private const val CHANNEL_ID = "zcode_keepalive"
         private const val NOTIFICATION_ID = 901
         private const val WAKE_LOCK_TAG = "zcode-mobile-app:keepalive"
@@ -81,6 +102,7 @@ class KeepAliveService : Service() {
             name: String = "",
             sourceId: String = "",
         ) {
+            if (ConnectionRepository.getInstance(context).isSourceDeleted(sourceId.ifBlank { url })) return
             val intent = Intent(context, KeepAliveService::class.java).apply {
                 if (url.isNotEmpty()) putExtra(EXTRA_URL, url)
                 if (name.isNotEmpty()) putExtra(EXTRA_NAME, name)
@@ -140,6 +162,7 @@ class KeepAliveService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        currentService = this
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
@@ -154,13 +177,26 @@ class KeepAliveService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         isRunning = true
+        // 即使目标已被删除，也先履行前台服务启动约定再退出，避免迟到启动命令
+        // 留下系统的 startForeground 超时检查（2026-10-27，API 35 模拟器复现）。
+        val promoted = promoteToForeground()
         intent?.getStringExtra(EXTRA_URL)?.takeIf { it.isNotEmpty() }?.let {
-            monitorUrl = it
-            monitorName = intent.getStringExtra(EXTRA_NAME) ?: ""
-            monitorSourceId = intent.getStringExtra(EXTRA_SOURCE_ID) ?: ""
+            val sourceId = intent.getStringExtra(EXTRA_SOURCE_ID).orEmpty().ifBlank { it }
+            // 删除前已排队的旧启动命令不能重新覆盖恢复目标。
+            if (!ConnectionRepository.getInstance(this).isSourceDeleted(sourceId)) {
+                monitorUrl = it
+                monitorName = intent.getStringExtra(EXTRA_NAME) ?: ""
+                monitorSourceId = sourceId
+            }
         }
         refreshEventSource()
-        if (!promoteToForeground()) {
+        if (monitorUrl.isBlank() && !RemoteControlActivity.hasLiveInstance() &&
+            !AppSettingsRepository.getInstance(this).isKeepAliveEnabled()
+        ) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (!promoted) {
             handler.postDelayed({
                 if (isRunning && !promoteToForeground()) stopSelf()
             }, RETRY_MS)
@@ -184,6 +220,7 @@ class KeepAliveService : Service() {
     }
 
     override fun onDestroy() {
+        if (currentService === this) currentService = null
         handler.removeCallbacksAndMessages(null)
         try {
             unregisterReceiver(screenReceiver)
@@ -369,6 +406,13 @@ class KeepAliveService : Service() {
     }
 
     private fun refreshEventSource() {
+        val repository = ConnectionRepository.getInstance(this)
+        if (repository.isSourceDeleted(monitorSourceId.ifBlank { monitorUrl })) {
+            disposeEventSource()
+            monitorUrl = ""
+            monitorName = ""
+            monitorSourceId = ""
+        }
         if (activityOwnsEventSource || RemoteControlActivity.hasLiveInstance()) {
             // 主页面活着不等于事件源健康：vivo 等 ROM 会在后台回收 WebView 渲染
             // 进程而保留 Activity（前台服务保住了宿主进程）。渲染进程死后页面 JS
@@ -384,7 +428,7 @@ class KeepAliveService : Service() {
             return
         }
         if (monitorUrl.isBlank()) {
-            val lastUrl = ConnectionRepository.getInstance(this).getLastActiveUrl()
+            val lastUrl = repository.getLastActiveUrl()
             if (lastUrl.isNullOrBlank()) {
                 // 无任何历史连接：隐藏事件源没有可接管目标，保持空转等用户下次连接。
                 disposeEventSource()
@@ -392,7 +436,7 @@ class KeepAliveService : Service() {
             }
             monitorUrl = lastUrl
             monitorName = ConnectionRepository.getInstance(this).getLastActiveName() ?: ""
-            monitorSourceId = monitorUrl
+            monitorSourceId = repository.findByUrl(lastUrl)?.id ?: lastUrl
         }
         val desiredSourceId = monitorSourceId.ifBlank { monitorUrl }
         if (monitorWebView != null && monitorActiveSourceId == desiredSourceId) {

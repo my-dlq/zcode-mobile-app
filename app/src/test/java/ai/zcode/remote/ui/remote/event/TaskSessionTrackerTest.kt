@@ -6,6 +6,38 @@ import org.junit.Test
 
 class TaskSessionTrackerTest {
 
+    @Test
+    fun `missing terminal timestamp notifies once without inheriting historical age`() {
+        for (phase in listOf("completedSuccess", "error")) {
+            val tracker = TaskSessionTracker()
+            tracker.update("missing", listOf(state("task").copy(createdAt = 900, lastActivityAt = 1000)), "设备")
+            val events = tracker.update("missing", listOf(state("task", phase).copy(createdAt = 900)), "设备")
+            val duplicate = tracker.update("missing", listOf(state("task", phase).copy(lastActivityAt = System.currentTimeMillis() + 1000)), "设备")
+            assertEquals(1, events.size)
+            assertEquals(if (phase == "error") TaskEventParser.TaskEvent.Type.TASK_FAILED else TaskEventParser.TaskEvent.Type.TASK_COMPLETED, events.single().type)
+            assertTrue(duplicate.isEmpty())
+        }
+    }
+
+    @Test
+    fun `remote activity progression survives clock skew`() {
+        val tracker = TaskSessionTracker()
+        val remoteNow = System.currentTimeMillis() - 60_000
+        tracker.update("skew", listOf(state("task").copy(lastActivityAt = remoteNow)), "设备")
+        val events = tracker.update("skew", listOf(state("task", "completedSuccess").copy(lastActivityAt = remoteNow + 1000)), "设备")
+        assertEquals(1, events.size)
+    }
+
+    @Test
+    fun `older terminal patch cannot notify even when phone clock is behind`() {
+        val tracker = TaskSessionTracker()
+        val future = System.currentTimeMillis() + 60_000
+        tracker.update("stale", listOf(state("task").copy(lastActivityAt = future)), "设备")
+        assertTrue(tracker.update("stale", listOf(state("task", "completedSuccess").copy(lastActivityAt = future - 1000)), "设备").isEmpty())
+        val fresh = tracker.update("stale", listOf(state("task", "completedSuccess").copy(lastActivityAt = future + 1000)), "设备")
+        assertEquals(1, fresh.size)
+    }
+
     private fun state(
         id: String,
         phase: String? = "running",

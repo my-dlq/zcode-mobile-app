@@ -26,10 +26,11 @@ class UpdateDialog : DialogFragment() {
     private val binding get() = _binding!!
 
     private lateinit var updateInfo: UpdateInfo
-    private lateinit var downloader: UpdateDownloader
+    private var downloader: UpdateDownloader? = null
 
     fun setUpdateInfo(info: UpdateInfo) {
         this.updateInfo = info
+        arguments = (arguments ?: Bundle()).apply { putSerializable(ARG_UPDATE_INFO, info) }
     }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
@@ -40,10 +41,15 @@ class UpdateDialog : DialogFragment() {
             .create()
 
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-        // 对话框在 Activity 重建（旋转等）后 updateInfo 会丢失，直接随宿主重建流程重新检查，
-        // 简化处理：配置变更时关闭对话框即可（手机竖屏应用影响极小）
+        // Fragment 重建不保留普通字段，更新信息必须从参数恢复。
         if (!::updateInfo.isInitialized) {
-            isCancelable = true
+            @Suppress("DEPRECATION")
+            val restored = arguments?.getSerializable(ARG_UPDATE_INFO) as? UpdateInfo
+            if (restored != null) updateInfo = restored
+        }
+        if (!::updateInfo.isInitialized) {
+            // 兼容没有参数的旧恢复状态，关闭空弹窗且不访问未创建的下载器。
+            binding.root.post { if (isAdded) dismissAllowingStateLoss() }
             return dialog
         }
 
@@ -77,34 +83,40 @@ class UpdateDialog : DialogFragment() {
         }
 
         binding.btnCancelDownload.setOnClickListener {
-            downloader.cancel()
+            downloader?.cancel()
             resetToInfoState()
         }
     }
 
     /** 切换到下载进度态：隐藏信息按钮区，显示进度条与取消按钮 */
     private fun startDownload() {
+        val downloader = downloader ?: return
         binding.layoutButtons.visibility = View.GONE
         binding.layoutProgress.visibility = View.VISIBLE
         binding.progressBar.progress = 0
 
         downloader.download(
             updateInfo,
-            listener = { percent, downloadedBytes, totalBytes ->
-                binding.progressBar.progress = percent
-                binding.tvProgressText.text = getString(
+            listener = progress@{ percent, downloadedBytes, totalBytes ->
+                val viewBinding = _binding ?: return@progress
+                if (!isAdded) return@progress
+                viewBinding.progressBar.progress = percent
+                viewBinding.tvProgressText.text = getString(
                     R.string.update_downloading,
                     percent,
                     formatFileSize(downloadedBytes),
                     formatFileSize(totalBytes)
                 )
             },
-            onCompleted = { apkFile ->
-                ToastUtils.show(requireContext(), getString(R.string.toast_download_completed))
-                downloader.installApk(requireContext(), apkFile)
+            onCompleted = completed@{ apkFile ->
+                val attachedContext = context ?: return@completed
+                if (_binding == null || !isAdded) return@completed
+                ToastUtils.show(attachedContext, getString(R.string.toast_download_completed))
+                downloader.installApk(attachedContext, apkFile)
                 dismiss()
             },
-            onError = { message ->
+            onError = failed@{ message ->
+                if (_binding == null || !isAdded) return@failed
                 if (message == "cancelled") {
                     resetToInfoState()
                 } else {
@@ -130,11 +142,13 @@ class UpdateDialog : DialogFragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
-        downloader.shutdown()
+        downloader?.shutdown()
+        downloader = null
         _binding = null
     }
 
     companion object {
+        private const val ARG_UPDATE_INFO = "update_info"
         fun newInstance(info: UpdateInfo): UpdateDialog {
             return UpdateDialog().apply {
                 setUpdateInfo(info)
