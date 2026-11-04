@@ -29,6 +29,8 @@ object TaskEventParser {
         val deviceName: String,
         /** 远端交互实例的稳定身份；同一任务的第二次审批必须使用不同 key。 */
         val eventKey: String = "",
+        /** 稳定连接身份；设备名只用于展示，不能用于通知路由。 */
+        val sourceId: String = "",
     ) {
         enum class Type {
             PERMISSION_REQUEST, ELICITATION_REQUEST,
@@ -109,7 +111,7 @@ object TaskEventParser {
             // 否则同一会话的第二次审批会被误认为历史事件。
             val key = if (event.eventKey.isNotEmpty()) event.eventKey
                 else "${event.taskId}:${event.type}"
-            if (seen.add(key)) events.add(event)
+            if (seen.add(key)) events.add(event.copy(sourceId = sourceId))
         }
         return events
     }

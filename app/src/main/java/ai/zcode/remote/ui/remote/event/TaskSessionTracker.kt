@@ -50,6 +50,12 @@ internal class TaskSessionTracker {
 
         for (patch in incoming) {
             val prev = source.sessions[patch.sessionId]
+            // 迟到的旧终态不能覆盖更新的 running 状态，否则虽然本帧不通知，
+            // 下一份真正完成也会因“已经终态”而被吞掉。
+            if (patch.lastActivityAt != null && prev?.lastActivityAt != null &&
+                patch.lastActivityAt < prev.lastActivityAt &&
+                (patch.phase in TERMINAL_PHASES || patch.sessionEnded == true)
+            ) continue
             // 终态后任务被重新激活（失败/完成后用户再次发起，复用同一 sessionId，
             // 索引条目从 error/completed 回到 running 且活动时间戳更新）时，
             // 必须放行让状态回到 running，否则第二次终态不会产生新事件。
@@ -107,12 +113,12 @@ internal class TaskSessionTracker {
             // 终态迁移也要过时间基线：同一会话的终态可能由另一条流“补发”
             // （任务索引先给 liveStatus，会话索引随后才给真实 phase），
             // 不能当成监听期间发生的完成/失败。
-            val completionEdge = isDone && !wasDone && occurredAfterBaselineForEdge(next, prev, source)
+            val completionEdge = isDone && !wasDone && occurredAfterBaselineForEdge(patch, next, prev, source)
             if (!isInitialSnapshot && completionEdge) {
                 events.add(next.toEvent(TaskEventParser.TaskEvent.Type.TASK_COMPLETED, deviceName, sourceId))
             }
             val errorEdge = next.phase == ERROR_PHASE && prev?.phase != ERROR_PHASE &&
-                occurredAfterBaselineForEdge(next, prev, source)
+                occurredAfterBaselineForEdge(patch, next, prev, source)
             if (!isInitialSnapshot && errorEdge) {
                 events.add(next.toEvent(TaskEventParser.TaskEvent.Type.TASK_FAILED, deviceName, sourceId))
             }
@@ -188,18 +194,22 @@ internal class TaskSessionTracker {
     }
 
     /**
-     * 终态迁移的时间判据。首次见到的会话沿用 createdAt 判断是否属于历史；
-     * 已有快照的会话以最近活动时间为准（老会话今天才完成时 createdAt 永远早于
-     * 基线，lastActivityAt 才会更新）。时间戳缺失时保持原有行为放行，避免
-     * 报文缺字段导致完成/失败通知静默。
+     * 首次见到的会话仍走历史基线。已见会话先比较同一远端的活动版本，
+     * 避免手机时钟领先时把真实的新完成拦掉；旧版本/相同历史版本仍被过滤。
+     * 必须检查原始 patch：合并后的时间可能继承自旧 running 帧，不能用来
+     * 证明这次终态发生在过去。缺活动时间的终态沿用边沿通知，后续快照去重。
      */
     private fun occurredAfterBaselineForEdge(
+        patch: SessionState,
         state: SessionState,
         previous: SessionState?,
         source: SourceState,
     ): Boolean {
         if (previous == null) return occurredAfterBaseline(state, source)
-        val stamp = state.lastActivityAt ?: state.createdAt ?: return true
+        val stamp = patch.lastActivityAt ?: return true
+        previous.lastActivityAt?.let { previousStamp ->
+            if (stamp != previousStamp) return stamp > previousStamp
+        }
         return stamp > source.baselineAtMillis
     }
 
@@ -218,7 +228,7 @@ internal class TaskSessionTracker {
             generation.takeIf { it > 0 }?.toString() ?:
             "${permissionCount ?: 0}:${userInputCount ?: 0}:${title.orEmpty()}"
         val eventKey = "$sourceId|$sessionId|${type.name}|$version"
-        return TaskEventParser.TaskEvent(type, sessionId, eventTitle.take(80), deviceName, eventKey)
+        return TaskEventParser.TaskEvent(type, sessionId, eventTitle.take(80), deviceName, eventKey, sourceId)
     }
 
     private companion object {

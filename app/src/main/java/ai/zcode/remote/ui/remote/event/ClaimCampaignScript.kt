@@ -212,6 +212,66 @@ object ClaimCampaignScript {
             bridge.onClaimCampaignStatus(activeClaimKey, text, !busy);
         }
     }
+    async function marketingContext(svc) {
+        // 2026-11-04：远程 RPC 未开放 marketing-touch，旧套餐预览接口也已停止返回数据。
+        // 兼容请求只发往当前官方 HTTPS 站点；凭证留在页面内，不交给原生或持久化。
+        var page = new URL(window.location.href);
+        if (page.origin !== 'https://zcode.z.ai') throw Error('unsupported marketing origin');
+        var mid = page.searchParams.get('mid');
+        var version = page.searchParams.get('app_version');
+        if (!mid || !version || !/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(version)) {
+            throw Error('missing desktop identity');
+        }
+        var token = await svc.credentialService.load('zcodejwttoken');
+        if (typeof token !== 'string' || !token.trim()) throw Error('desktop not signed in');
+        token = token.trim();
+        // 账户切换必须生成不同通知身份；摘要不能还原凭证，也不会把凭证明文写进通知键。
+        var digest = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(
+            JSON.stringify([page.origin, mid, token])));
+        var scope = 'web-' + Array.from(new Uint8Array(digest)).map(function (b) {
+            return b.toString(16).padStart(2, '0');
+        }).join('');
+        return {origin:page.origin, scope:scope, token:token, headers:{
+            'Authorization':'Bearer ' + token, 'X-Device-Mid':mid,
+            'X-Client-Language':'zh-CN', 'X-ZCode-App-Version':version
+        }};
+    }
+    async function marketingRequest(svc, action) {
+        var context = await marketingContext(svc);
+        if (action && action.scope !== context.scope) throw Error('marketing identity changed');
+        var controller = new AbortController();
+        var timer = setTimeout(function () { controller.abort(); }, 15000);
+        try {
+            var path = '/api/v1/marketing/touch' + (action ? '/action' : '?seq=' + Date.now());
+            var headers = Object.assign({}, context.headers);
+            if (action) headers['Content-Type'] = 'application/json';
+            var response = await fetch(context.origin + path, {
+                method:action ? 'POST' : 'GET', headers:headers, signal:controller.signal,
+                credentials:'omit', redirect:'error', cache:'no-store',
+                body:action ? JSON.stringify({campaign_id:action.campaignId, action_type:'confirm'}) : undefined
+            });
+            if (!response.ok) throw Error('marketing HTTP ' + response.status);
+            var body = await response.json();
+            if (!body || body.code !== 0) throw Error('marketing response rejected');
+            if ((await svc.credentialService.load('zcodejwttoken') || '').trim() !== context.token) {
+                throw Error('marketing identity changed');
+            }
+            if (action) return;
+            if (!body.data || !Array.isArray(body.data.deliveries)) throw Error('invalid marketing data');
+            return {scope:context.scope, serverTime:Number(body.data.server_time || 0) * 1000,
+                deliveries:body.data.deliveries, httpFallback:true};
+        } finally { clearTimeout(timer); }
+    }
+    async function queryCampaigns(svc) {
+        try { return await svc.marketingTouchService.query({locale:'zh-CN'}); }
+        catch (e) {
+            // 只在能力缺失时切换通道；普通网络/鉴权失败仍交回重试，不改变接口语义。
+            var reason = String(e && e.name || '') + ': ' + String(e && e.message || e);
+            if (!/Unknown channel:.*marketing-touch|Method not found:\s*query\s*$/i.test(reason)) throw e;
+            console.info('[ZCodeClaim] marketing RPC unavailable; using official HTTPS API');
+            return await marketingRequest(svc);
+        }
+    }
     async function refresh(force) {
         if (querying || (!force && Date.now() - lastQuery < REFRESH_MS)) return;
         var svc = findServices();
@@ -221,16 +281,17 @@ object ClaimCampaignScript {
         }
         querying = true;
         try {
-            // Each query is a server delivery, mirroring the desktop marketing poller.
-            var result = await svc.marketingTouchService.query({locale: 'zh-CN'});
+            var result = await queryCampaigns(svc);
             if (!result || !Array.isArray(result.deliveries) || !result.scope) throw Error('invalid delivery');
             offers = result.deliveries.map(function (d) {
                 var plan = planOf(d);
-                return plan && { plan: plan, key: result.scope + '|' + d.campaign_id + '|' + plan.id, scope: result.scope };
+                return plan && { plan: plan, key: result.scope + '|' + d.campaign_id + '|' + plan.id,
+                    scope: result.scope, httpFallback: result.httpFallback === true };
             }).filter(Boolean);
             lastQuery = Date.now();
             renderOffers();
             bridge.onClaimCampaigns(JSON.stringify(result));
+            console.info('[ZCodeClaim] campaign query succeeded; claimable=' + offers.length);
         } catch (e) {
             // Older desktops may only expose plan previews. These provide an entry, without manufacturing deliveries.
             try {
@@ -240,6 +301,7 @@ object ClaimCampaignScript {
                 });
                 lastQuery = Date.now(); renderOffers();
             } catch (ignored) {
+                console.warn('[ZCodeClaim] campaign query and legacy preview both failed; will retry');
                 services = null;
                 servicesGeneration++;
             }
@@ -312,8 +374,10 @@ object ClaimCampaignScript {
             if (result && result.success) {
                 if (offer.plan.delivery && findServices().marketingTouchService) {
                     // Report a successful explicit user action, never report close/impression during discovery.
-                    await findServices().marketingTouchService.report({scope:offer.scope, campaignId:offer.plan.delivery.campaign_id,
-                        actionType:'confirm', locale:'zh-CN'}).catch(function () {});
+                    var report = {scope:offer.scope, campaignId:offer.plan.delivery.campaign_id,
+                        actionType:'confirm', locale:'zh-CN'};
+                    await (offer.httpFallback ? marketingRequest(findServices(), report) :
+                        findServices().marketingTouchService.report(report)).catch(function () {});
                 }
                 status(offer.plan.name + ' 领取成功');
                 offers = offers.filter(function (o) { return o.key !== offer.key; });
