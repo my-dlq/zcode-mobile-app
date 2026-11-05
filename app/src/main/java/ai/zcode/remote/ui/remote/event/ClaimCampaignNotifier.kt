@@ -25,6 +25,7 @@ object ClaimCampaignNotifier {
 
     @Synchronized
     fun receive(context: Context, sourceId: String, deviceName: String, body: String): List<ClaimCampaign> {
+        val connection = ConnectionRepository.getInstance(context).findBySourceId(sourceId) ?: return emptyList()
         if (!AppSettingsRepository.getInstance(context).isNotificationEnabled()) return emptyList()
         val received = mutableListOf<ClaimCampaign>()
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -46,13 +47,10 @@ object ClaimCampaignNotifier {
             if (deliveredAt > 0) prefs.edit().putLong("delivery|$key", deliveredAt).apply()
             // Foreground dialogs still work when Android notification permission is denied.
             if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) continue
-            val connection = ConnectionRepository.getInstance(context).getAllConnections()
-                .firstOrNull { it.id == sourceId || it.url == sourceId }
-                ?: ConnectionRepository.getInstance(context).getAllConnections().firstOrNull { it.name == deviceName }
-                ?: continue
             val launch = Intent(context, RemoteControlActivity::class.java).apply {
                 putExtra(RemoteControlActivity.EXTRA_URL, connection.url)
                 putExtra(RemoteControlActivity.EXTRA_NAME, connection.name)
+                putExtra(RemoteControlActivity.EXTRA_SOURCE_ID, connection.loginSpace.sourceId)
                 putExtra(EXTRA_KEY, campaign.key)
                 putExtra(EXTRA_SOURCE, sourceId)
                 putExtra(EXTRA_CAMPAIGN, campaign.toJson())
@@ -61,6 +59,7 @@ object ClaimCampaignNotifier {
             val pending = PendingIntent.getActivity(context, key.hashCode(), launch,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             val notification = NotificationCompat.Builder(context, CHANNEL)
+                .addExtras(android.os.Bundle().apply { putString(EXTRA_SOURCE, sourceId) })
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle("${campaign.title} · ${context.getString(R.string.claim_notif_title_suffix)}")
                 .setContentText("${campaign.detail} · $deviceName")
@@ -89,6 +88,14 @@ object ClaimCampaignNotifier {
 
     fun acknowledgeIntent(context: Context, intent: Intent) {
         acknowledge(context, intent.getStringExtra(EXTRA_SOURCE).orEmpty(), intent.getStringExtra(EXTRA_KEY).orEmpty())
+    }
+
+    fun sourceFromIntent(intent: Intent): String = intent.getStringExtra(EXTRA_SOURCE).orEmpty()
+
+    fun discardSource(context: Context, sourceId: String) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.activeNotifications.filter { it.notification.extras.getString(EXTRA_SOURCE) == sourceId }
+            .forEach { manager.cancel(it.tag, it.id) }
     }
 
     fun campaignFromIntent(intent: Intent): ClaimCampaign? =

@@ -32,6 +32,7 @@ import ai.zcode.remote.ui.remote.event.TaskNotifier
 import ai.zcode.remote.ui.main.MainActivity
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebViewCompat
+import ai.zcode.remote.ui.remote.web.ConnectionWebProfile
 
 /**
  * 后台保活前台服务：远程会话期间息屏/切后台后保持进程存活，避免 WebView 会话
@@ -59,12 +60,14 @@ class KeepAliveService : Service() {
             private set
 
         @Volatile private var currentService: KeepAliveService? = null
+        /** 过滤同一进程内迟到的旧启动命令，不能覆盖新页面选中的目标。 */
+        @Volatile private var expectedSourceId: String = ""
 
         /** 删除目标时只清理现有服务，不为清理动作另启动前台服务。 */
-        fun forgetConnection(id: String, url: String) {
+        fun forgetConnection(id: String, url: String, sourceId: String = id) {
             val service = currentService ?: return
             service.handler.post {
-                if (service.monitorSourceId == id ||
+                if (service.monitorSourceId == sourceId ||
                     ((service.monitorSourceId.isBlank() || service.monitorSourceId == service.monitorUrl) && service.monitorUrl == url)
                 ) {
                     service.disposeEventSource()
@@ -125,12 +128,16 @@ class KeepAliveService : Service() {
 
         /** 主页面取得事件源所有权。必须在加载远程页面前调用，请求服务销毁残留隐藏源。 */
         fun acquireEventSource(context: Context, url: String, name: String, sourceId: String) {
+            expectedSourceId = sourceId
             activityOwnsEventSource = true
+            // 等待 onStartCommand 才销毁会让新页面与隐藏连接短暂并存，必须先停止旧源。
+            currentService?.disposeEventSource()
             keepAlive(context, url, name, sourceId)
         }
 
         /** 主页面销毁后交还事件源所有权，保活服务接管后台事件监听。 */
         fun releaseEventSource(context: Context, url: String, name: String, sourceId: String) {
+            expectedSourceId = sourceId
             activityOwnsEventSource = false
             keepAlive(context, url, name, sourceId)
         }
@@ -142,7 +149,7 @@ class KeepAliveService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
     private val handler = Handler(Looper.getMainLooper())
-    private var monitorWebView: WebView? = null
+    @Volatile private var monitorWebView: WebView? = null
     private var monitorBridge: TaskEventBridge? = null
     private var monitorCaptureScript: ScriptHandler? = null
     private var monitorUrl: String = ""
@@ -183,10 +190,13 @@ class KeepAliveService : Service() {
         intent?.getStringExtra(EXTRA_URL)?.takeIf { it.isNotEmpty() }?.let {
             val sourceId = intent.getStringExtra(EXTRA_SOURCE_ID).orEmpty().ifBlank { it }
             // 删除前已排队的旧启动命令不能重新覆盖恢复目标。
-            if (!ConnectionRepository.getInstance(this).isSourceDeleted(sourceId)) {
-                monitorUrl = it
-                monitorName = intent.getStringExtra(EXTRA_NAME) ?: ""
-                monitorSourceId = sourceId
+            if ((expectedSourceId.isBlank() || expectedSourceId == sourceId) &&
+                !ConnectionRepository.getInstance(this).isSourceDeleted(sourceId)) {
+                ConnectionRepository.getInstance(this).findBySourceId(sourceId)?.let { connection ->
+                    monitorUrl = connection.url
+                    monitorName = connection.name
+                    monitorSourceId = connection.loginSpace.sourceId
+                }
             }
         }
         refreshEventSource()
@@ -297,7 +307,18 @@ class KeepAliveService : Service() {
             Log.w(TAG, "hidden monitor skipped: no target url")
             return
         }
+        val connection = ConnectionRepository.getInstance(this).findBySourceId(monitorSourceId) ?: return
+        val space = connection.loginSpace
+        if (connection.url != url) return
+        monitorSourceId = space.sourceId
         val webView = WebView(this)
+        try {
+            ConnectionWebProfile.bind(webView, space)
+        } catch (failure: Exception) {
+            webView.destroy()
+            throw failure
+        }
+        monitorWebView = webView
         val settings = webView.settings
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
@@ -309,7 +330,10 @@ class KeepAliveService : Service() {
                 "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
         settings.cacheMode = WebSettings.LOAD_DEFAULT
 
-        val sourceId = monitorSourceId.ifBlank { url }
+        val sourceId = space.sourceId
+        val name = monitorName
+        fun isCurrent(): Boolean = monitorWebView === webView &&
+            ConnectionRepository.getInstance(this).isLoginSpaceCurrent(space)
         val bridge = TaskEventBridge(
             sourceId = sourceId,
             deviceName = monitorName.ifBlank { getString(R.string.default_device_name) },
@@ -318,13 +342,13 @@ class KeepAliveService : Service() {
                 // 隐藏监听只补事件，不参与页面自身的恢复调度。
             },
             onEvent = { event ->
-                TaskNotifier.notify(this, event)
+                if (isCurrent()) TaskNotifier.notify(this, event)
             },
             onClaimCampaigns = { body ->
-                ai.zcode.remote.ui.remote.event.ClaimCampaignNotifier.receive(this, sourceId, monitorName, body)
+                if (isCurrent()) ai.zcode.remote.ui.remote.event.ClaimCampaignNotifier.receive(this, sourceId, name, body)
             },
             onClaimCampaignClicked = { key ->
-                ai.zcode.remote.ui.remote.event.ClaimCampaignNotifier.acknowledge(this, sourceId, key)
+                if (isCurrent()) ai.zcode.remote.ui.remote.event.ClaimCampaignNotifier.acknowledge(this, sourceId, key)
             },
         )
         monitorBridge = bridge
@@ -333,6 +357,7 @@ class KeepAliveService : Service() {
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                if (!isCurrent()) return
                 view?.evaluateJavascript(
                     EventCaptureScript.build(TaskEventBridge.BRIDGE_NAME),
                     null,
@@ -346,7 +371,7 @@ class KeepAliveService : Service() {
                 Log.e(TAG, "hidden event monitor renderer gone; will recreate on next health check")
                 // 渲染进程已死，页面连接随之断开。立即销毁旧 WebView，由下一次巡检
                 // 重建——重建前先确认主页面没有重新出现，避免双事件源并存。
-                handler.post { disposeEventSource() }
+                handler.post { if (monitorWebView === webView) disposeEventSource() }
                 return true
             }
         }
@@ -364,10 +389,9 @@ class KeepAliveService : Service() {
         }.onFailure {
             Log.w(TAG, "hidden monitor document-start inject failed: ${it.message}")
         }
-        monitorWebView = webView
         monitorStartedAtElapsedMs = SystemClock.elapsedRealtime()
         webView.loadUrl(url)
-        Log.i(TAG, "hidden event monitor started: source=$sourceId url=${url.take(160)}")
+        Log.i(TAG, "隐藏事件源已启动：source=$sourceId")
     }
 
 
@@ -428,15 +452,15 @@ class KeepAliveService : Service() {
             return
         }
         if (monitorUrl.isBlank()) {
-            val lastUrl = repository.getLastActiveUrl()
-            if (lastUrl.isNullOrBlank()) {
+            val connection = repository.getLastActiveConnection()
+            if (connection == null) {
                 // 无任何历史连接：隐藏事件源没有可接管目标，保持空转等用户下次连接。
                 disposeEventSource()
                 return
             }
-            monitorUrl = lastUrl
-            monitorName = ConnectionRepository.getInstance(this).getLastActiveName() ?: ""
-            monitorSourceId = repository.findByUrl(lastUrl)?.id ?: lastUrl
+            monitorUrl = connection.url
+            monitorName = connection.name
+            monitorSourceId = connection.loginSpace.sourceId
         }
         val desiredSourceId = monitorSourceId.ifBlank { monitorUrl }
         if (monitorWebView != null && monitorActiveSourceId == desiredSourceId) {

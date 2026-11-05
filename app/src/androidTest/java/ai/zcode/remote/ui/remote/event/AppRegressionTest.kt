@@ -183,7 +183,7 @@ class AppRegressionTest {
             val initial = instrumentation.startActivitySync(Intent(context, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as SettingsActivity
             host = initial
             instrumentation.runOnMainSync {
-                UpdateDialog.newInstance(UpdateInfo("v0.3.3", "0.3.3", "https://example.invalid/update.apk", 10, "更新说明"))
+                UpdateDialog.newInstance(UpdateInfo("v0.3.3", "0.3.3", "https://example.invalid/update.apk", 10, "## 更新说明\n\n- **修复通知**"))
                     .showNow(initial.supportFragmentManager, "restored-update")
                 initial.recreate()
             }
@@ -196,6 +196,10 @@ class AppRegressionTest {
             instrumentation.runOnMainSync {
                 val dialog = restoredHost.supportFragmentManager.findFragmentByTag("restored-update") as UpdateDialog
                 assertTrue(dialog.requireDialog().findViewById<TextView>(R.id.tvUpdateTitle).text.contains("0.3.3"))
+                val notes = dialog.requireDialog().findViewById<TextView>(R.id.tvReleaseNotes).text
+                assertTrue(notes is android.text.Spanned)
+                assertTrue(notes.contains("修复通知"))
+                assertFalse(notes.contains("**"))
                 dialog.dismissNow()
             }
         } finally {

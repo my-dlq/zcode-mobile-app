@@ -281,6 +281,7 @@ object TaskNotifier {
                     .appendPath(connection.id).appendPath(event.taskId).build()
                 putExtra(RemoteControlActivity.EXTRA_URL, connection.url)
                 putExtra(RemoteControlActivity.EXTRA_NAME, connection.name)
+                putExtra(RemoteControlActivity.EXTRA_SOURCE_ID, connection.loginSpace.sourceId)
                 if (event.taskId.isNotEmpty()) putExtra(RemoteControlActivity.EXTRA_TASK_ID, event.taskId)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }

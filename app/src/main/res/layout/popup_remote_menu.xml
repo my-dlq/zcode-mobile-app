@@ -12,6 +12,20 @@
     android:paddingTop="8dp"
     android:paddingBottom="8dp">
 
+    <TextView
+        android:id="@+id/menuItemLogin"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:background="?attr/selectableItemBackground"
+        android:gravity="center_vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:text="@string/connection_login_title"
+        android:textColor="?attr/zcTextPrimary"
+        android:textSize="14sp"
+        android:clickable="true"
+        android:focusable="true" />
+
     <LinearLayout
         android:id="@+id/menuItemZoomOut"
         android:layout_width="match_parent"

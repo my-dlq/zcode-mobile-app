@@ -227,7 +227,7 @@ class QrScanActivity : BaseActivity() {
         )
         // 扫码页会直接启动远程页，不经过 MainActivity 的结果回调，
         // 因此必须在这里持久化，否则只能跳转而不会出现在设备列表。
-        ConnectionRepository.getInstance(this).saveConnection(connection)
+        val saved = ConnectionRepository.getInstance(this).saveConnection(connection)
 
         val resultIntent = Intent().apply {
             putExtra(EXTRA_SCANNED_URL, connection.url)
@@ -235,7 +235,7 @@ class QrScanActivity : BaseActivity() {
         }
         setResult(RESULT_OK, resultIntent)
 
-        RemoteControlActivity.start(this, connection.url, connection.name)
+        RemoteControlActivity.start(this, saved.url, saved.name, connectionId = saved.id)
         finish()
     }
 

@@ -85,6 +85,20 @@
         android:layout_height="1dp"
         android:background="?attr/zcBorderColor" />
 
+    <TextView
+        android:id="@+id/tvLoginNotice"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?attr/zcBgDark"
+        android:textColor="?attr/zcTextSecondary"
+        android:textSize="13sp"
+        android:padding="12dp"
+        android:minHeight="48dp"
+        android:gravity="center_vertical"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone" />
+
     <!-- 网页容器（剩余空间） -->
     <FrameLayout
         android:layout_width="match_parent"

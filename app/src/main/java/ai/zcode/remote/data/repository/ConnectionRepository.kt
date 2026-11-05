@@ -1,6 +1,7 @@
 package ai.zcode.remote.data.repository
 
 import ai.zcode.remote.data.model.RemoteConnection
+import ai.zcode.remote.data.model.ConnectionLoginSpace
 import android.net.Uri
 import android.content.Context
 import android.content.SharedPreferences
@@ -36,14 +37,25 @@ class ConnectionRepository(context: Context) {
         }
     }
 
-    fun saveConnection(connection: RemoteConnection) {
+    @Synchronized
+    fun saveConnection(connection: RemoteConnection): RemoteConnection {
         val list = getAllConnections()
-        val index = list.indexOfFirst { existing ->
-            existing.id == connection.id || sameConnection(existing, connection)
-        }
+        val byId = list.indexOfFirst { it.id == connection.id }
+        val index = if (byId >= 0) byId else list.indexOfFirst { sameConnection(it, connection) }
+        val lastId = prefs.getString(KEY_LAST_ACTIVE_ID, null)
+        val wasLastActive = index >= 0 && (
+            activeConnectionId == list[index].id ||
+                if (!lastId.isNullOrBlank()) lastId == list[index].id
+                else prefs.getString(KEY_LAST_ACTIVE_URL, null)?.let(::normalizeUrl) == normalizeUrl(list[index].url)
+            )
 
         if (index >= 0) {
             val existing = list[index]
+            if (!sameLoginTarget(existing, connection)) {
+                enqueueProfileDeletion(existing.loginSpace)
+                existing.loginGeneration++
+                existing.lastTaskId = ""
+            }
             connection.copyInto(existing)
         } else {
             // 新连接追加到末尾（不再插入到开头），保持用户手动排序的顺序
@@ -57,9 +69,17 @@ class ConnectionRepository(context: Context) {
             .putStringSet(KEY_DELETED_SOURCE_IDS, prefs.getStringSet(KEY_DELETED_SOURCE_IDS, emptySet()).orEmpty() - savedId)
             .putStringSet(KEY_DELETED_URLS, prefs.getStringSet(KEY_DELETED_URLS, emptySet()).orEmpty() - normalizeUrl(connection.url))
             .apply()
+        if (wasLastActive) {
+            val saved = list[index]
+            prefs.edit().putString(KEY_LAST_ACTIVE_URL, saved.url)
+                .putString(KEY_LAST_ACTIVE_NAME, saved.name)
+                .putString(KEY_LAST_ACTIVE_TASK_ID, saved.lastTaskId).apply()
+        }
+        return if (index >= 0) list[index] else connection
     }
 
     /** 保存用户手动排序后的连接顺序。 */
+    @Synchronized
     fun saveOrder(orderedIds: List<String>) {
         val list = getAllConnections()
         val idToConn = list.associateBy { it.id }
@@ -75,9 +95,21 @@ class ConnectionRepository(context: Context) {
         val firstUrl = normalizeUrl(first.url)
         val secondUrl = normalizeUrl(second.url)
         if (firstUrl.isNotEmpty() && secondUrl.isNotEmpty() && firstUrl == secondUrl) return true
-        return first.mid.isNotBlank() && first.sid.isNotBlank() &&
+        return sameLoginTarget(first, second) && first.mid.isNotBlank() && first.sid.isNotBlank() &&
             first.mid == second.mid && first.sid == second.sid
     }
+
+    private fun sameLoginTarget(first: RemoteConnection, second: RemoteConnection): Boolean =
+        origin(first.url) == origin(second.url) &&
+            if (first.mid.isNotBlank() && second.mid.isNotBlank()) first.mid == second.mid
+            else normalizeUrl(first.url) == normalizeUrl(second.url)
+
+    private fun origin(url: String): String = runCatching {
+        val uri = Uri.parse(url)
+        val scheme = uri.scheme.orEmpty().lowercase()
+        val port = if (uri.port >= 0) uri.port else if (scheme == "https") 443 else 80
+        "$scheme://${uri.host.orEmpty().lowercase()}:$port"
+    }.getOrDefault(url)
 
     private fun normalizeUrl(rawUrl: String): String {
         return try {
@@ -111,36 +143,51 @@ class ConnectionRepository(context: Context) {
         // lastTaskId 不在 copyInto 中覆盖——它由 updateLastTaskId 独立更新
     }
 
+    @Synchronized
     fun deleteConnection(id: String): RemoteConnection? {
         val list = getAllConnections()
         val removed = list.firstOrNull { it.id == id } ?: return null
+        enqueueProfileDeletion(removed.loginSpace)
         list.removeAll { it.id == id }
         val editor = prefs.edit()
             .putString(KEY_CONNECTIONS, gson.toJson(list))
             .putStringSet(KEY_DELETED_SOURCE_IDS, prefs.getStringSet(KEY_DELETED_SOURCE_IDS, emptySet()).orEmpty() + id)
             .putStringSet(KEY_DELETED_URLS, prefs.getStringSet(KEY_DELETED_URLS, emptySet()).orEmpty() + normalizeUrl(removed.url))
         if (activeConnectionId == id ||
-            prefs.getString(KEY_LAST_ACTIVE_URL, null)?.let(::normalizeUrl) == normalizeUrl(removed.url)
+            (prefs.getString(KEY_LAST_ACTIVE_ID, null)?.let { it == id }
+                ?: (prefs.getString(KEY_LAST_ACTIVE_URL, null)?.let(::normalizeUrl) == normalizeUrl(removed.url)))
         ) {
             activeConnectionId = null
-            editor.remove(KEY_LAST_ACTIVE_URL).remove(KEY_LAST_ACTIVE_NAME).remove(KEY_LAST_ACTIVE_TASK_ID)
+            editor.remove(KEY_LAST_ACTIVE_ID).remove(KEY_LAST_ACTIVE_URL).remove(KEY_LAST_ACTIVE_NAME).remove(KEY_LAST_ACTIVE_TASK_ID)
         }
         editor.apply()
         return removed
     }
 
     /** 连接 ID 是首选身份；旧版隐藏监听使用 URL 时仍可精确解析。 */
-    fun findBySourceId(sourceId: String): RemoteConnection? =
-        getAllConnections().firstOrNull { it.id == sourceId }
-            ?: sourceId.takeIf { it.startsWith("http://") || it.startsWith("https://") }?.let(::findByUrl)
+    fun findBySourceId(sourceId: String): RemoteConnection? {
+        val space = ConnectionLoginSpace.fromSourceId(sourceId)
+        if (space != null) return findById(space.connectionId)?.takeIf { it.loginSpace == space }
+        return sourceId.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+            ?.let(::findByUrl)?.takeIf { it.loginGeneration == 0L }
+    }
+
+    fun findById(id: String): RemoteConnection? = getAllConnections().firstOrNull { it.id == id }
+
+    fun isLoginSpaceCurrent(space: ConnectionLoginSpace): Boolean = findById(space.connectionId)?.loginSpace == space
 
     /** 持久化删除标记，挡住已排队的旧页面回调和服务恢复 Intent。 */
     fun isSourceDeleted(sourceId: String): Boolean = sourceId.isNotBlank() && (
-        sourceId in prefs.getStringSet(KEY_DELETED_SOURCE_IDS, emptySet()).orEmpty() ||
+        (ConnectionLoginSpace.fromSourceId(sourceId)?.connectionId ?: sourceId) in
+            prefs.getStringSet(KEY_DELETED_SOURCE_IDS, emptySet()).orEmpty() ||
+            ConnectionLoginSpace.fromSourceId(sourceId)?.let { space ->
+                findById(space.connectionId)?.let { it.loginSpace != space }
+            } == true ||
             ((sourceId.startsWith("http://") || sourceId.startsWith("https://")) &&
                 normalizeUrl(sourceId) in prefs.getStringSet(KEY_DELETED_URLS, emptySet()).orEmpty())
         )
 
+    @Synchronized
     fun updateLastConnected(id: String) {
         val list = getAllConnections()
         val conn = list.find { it.id == id } ?: return
@@ -149,6 +196,7 @@ class ConnectionRepository(context: Context) {
         saveList(list)
         // 持久化活跃连接：进程被系统回收后恢复用
         prefs.edit()
+            .putString(KEY_LAST_ACTIVE_ID, conn.id)
             .putString(KEY_LAST_ACTIVE_URL, conn.url)
             .putString(KEY_LAST_ACTIVE_NAME, conn.name)
             .putString(KEY_LAST_ACTIVE_TASK_ID, conn.lastTaskId)
@@ -159,6 +207,7 @@ class ConnectionRepository(context: Context) {
      * 记录某连接当前所在的任务会话：切出远程页时调用，
      * 下次切回该连接时自动跳转到此会话。
      */
+    @Synchronized
     fun updateLastTaskId(connectionId: String, taskId: String) {
         val list = getAllConnections()
         val conn = list.find { it.id == connectionId } ?: return
@@ -176,8 +225,40 @@ class ConnectionRepository(context: Context) {
         return getAllConnections().firstOrNull { normalizeUrl(it.url) == normalized }
     }
 
+    /** 只有本连接换到新空间，其他连接的登录状态不受影响。 */
+    @Synchronized
+    fun resetLogin(id: String): RemoteConnection? {
+        val list = getAllConnections()
+        val connection = list.firstOrNull { it.id == id } ?: return null
+        enqueueProfileDeletion(connection.loginSpace)
+        connection.loginGeneration++
+        connection.lastTaskId = ""
+        saveList(list)
+        if (activeConnectionId == id || prefs.getString(KEY_LAST_ACTIVE_ID, null) == id)
+            prefs.edit().remove(KEY_LAST_ACTIVE_TASK_ID).apply()
+        return connection
+    }
+
+    private fun enqueueProfileDeletion(space: ConnectionLoginSpace) {
+        prefs.edit().putStringSet(KEY_RETIRED_PROFILES,
+            prefs.getStringSet(KEY_RETIRED_PROFILES, emptySet()).orEmpty() + space.profileName).apply()
+    }
+
+    fun pendingLoginProfileDeletions(): Set<String> =
+        prefs.getStringSet(KEY_RETIRED_PROFILES, emptySet()).orEmpty().toSet()
+
+    @Synchronized
+    fun completeLoginProfileDeletions(completed: Set<String>) {
+        prefs.edit().putStringSet(KEY_RETIRED_PROFILES, pendingLoginProfileDeletions() - completed).apply()
+    }
+
     /** 获取最近一次活跃连接的 URL（用于进程被杀后自动恢复远程页）。 */
     fun getLastActiveUrl(): String? = prefs.getString(KEY_LAST_ACTIVE_URL, null)
+
+    fun getLastActiveConnection(): RemoteConnection? {
+        val id = prefs.getString(KEY_LAST_ACTIVE_ID, null)
+        return if (!id.isNullOrBlank()) findById(id) else getLastActiveUrl()?.let(::findByUrl)
+    }
 
     /** 获取最近一次活跃连接的名称。 */
     fun getLastActiveName(): String? = prefs.getString(KEY_LAST_ACTIVE_NAME, null)
@@ -194,10 +275,12 @@ class ConnectionRepository(context: Context) {
         private const val PREFS_NAME = "zcode_remote_prefs"
         private const val KEY_CONNECTIONS = "key_connections"
         private const val KEY_LAST_ACTIVE_URL = "key_last_active_url"
+        private const val KEY_LAST_ACTIVE_ID = "key_last_active_connection_id"
         private const val KEY_LAST_ACTIVE_NAME = "key_last_active_name"
         private const val KEY_LAST_ACTIVE_TASK_ID = "key_last_active_task_id"
         private const val KEY_DELETED_SOURCE_IDS = "key_deleted_source_ids"
         private const val KEY_DELETED_URLS = "key_deleted_connection_urls"
+        private const val KEY_RETIRED_PROFILES = "key_retired_login_profiles"
 
         @Volatile
         private var instance: ConnectionRepository? = null
