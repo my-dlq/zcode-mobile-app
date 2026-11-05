@@ -81,6 +81,10 @@ dependencies {
     implementation(libs.androidx.webkit)
     implementation(libs.google.gson)
     implementation(libs.okhttp)
+    implementation(libs.markwon.core)
+    implementation(libs.markwon.strikethrough)
+    implementation(libs.markwon.tables)
+    implementation(libs.markwon.tasklist)
 
     // CameraX
     implementation(libs.androidx.camera.core)

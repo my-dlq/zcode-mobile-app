@@ -8,7 +8,6 @@ import ai.zcode.remote.databinding.DialogUpdateBinding
 import ai.zcode.remote.utils.ToastUtils
 import android.app.Dialog
 import android.os.Bundle
-import android.text.method.ScrollingMovementMethod
 import android.view.LayoutInflater
 import android.view.View
 import androidx.appcompat.app.AlertDialog
@@ -64,10 +63,10 @@ class UpdateDialog : DialogFragment() {
         binding.tvFileSize.text = getString(R.string.update_file_size, formatFileSize(updateInfo.fileSize))
 
         if (updateInfo.releaseNotes.isNotBlank()) {
-            binding.tvReleaseNotes.text = updateInfo.releaseNotes
-            binding.tvReleaseNotes.movementMethod = ScrollingMovementMethod()
+            UpdateNotesRenderer.render(binding.tvReleaseNotes, updateInfo.releaseNotes)
         } else {
             binding.tvReleaseNotes.visibility = View.GONE
+            binding.scrollReleaseNotes.visibility = View.GONE
         }
 
         binding.btnIgnore.setOnClickListener {

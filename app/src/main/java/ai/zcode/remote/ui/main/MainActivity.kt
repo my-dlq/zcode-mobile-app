@@ -121,8 +121,8 @@ class MainActivity : BaseActivity() {
                 mid = parsed.mid,
                 sid = parsed.sid
             )
-            repository.saveConnection(connection)
-            RemoteControlActivity.start(this, connection.url, connection.name)
+            val saved = repository.saveConnection(connection)
+            RemoteControlActivity.start(this, saved.url, saved.name, connectionId = saved.id)
         }
     }
 
@@ -134,12 +134,12 @@ class MainActivity : BaseActivity() {
                 // 正常点击连接不传 taskId：停留在任务列表页，让用户自己选会话
                 RemoteControlActivity.start(
                     this, connection.url, connection.name,
-                    startInSettingsMode = false
+                    startInSettingsMode = false, connectionId = connection.id,
                 )
             },
             onSettingsClick = { connection ->
                 repository.updateLastConnected(connection.id)
-                RemoteControlActivity.start(this, connection.url, connection.name, startInSettingsMode = true)
+                RemoteControlActivity.start(this, connection.url, connection.name, startInSettingsMode = true, connectionId = connection.id)
                 ToastUtils.show(this, getString(R.string.toast_connecting_config_mode))
             },
             onEditClick = { connection ->
@@ -147,6 +147,9 @@ class MainActivity : BaseActivity() {
             },
             onDeleteClick = { connection ->
                 showDeleteConfirmDialog(connection)
+            },
+            onLoginClick = { connection ->
+                ai.zcode.remote.ui.remote.ConnectionLoginDialog.show(this, connection.id)
             },
             onStartDrag = { viewHolder ->
                 itemTouchHelper?.startDrag(viewHolder)
@@ -266,8 +269,8 @@ class MainActivity : BaseActivity() {
                     mid = parsed.mid,
                     sid = parsed.sid
                 )
-                repository.saveConnection(conn)
-                RemoteControlActivity.start(this, conn.url, conn.name)
+                val saved = repository.saveConnection(conn)
+                RemoteControlActivity.start(this, saved.url, saved.name, connectionId = saved.id)
             }
         }
     }
@@ -365,10 +368,9 @@ class MainActivity : BaseActivity() {
             .setTitle(R.string.confirm_delete_title)
             .setMessage(getString(R.string.confirm_delete_msg, connection.name))
             .setPositiveButton(R.string.action_delete) { _, _ ->
-                repository.deleteConnection(connection.id)
-                ai.zcode.remote.ui.remote.RemoteControlActivity.closeConnection(connection.id, connection.url)
-                ai.zcode.remote.service.KeepAliveService.forgetConnection(connection.id, connection.url)
-                ai.zcode.remote.ui.remote.event.TaskNotifier.discardConnection(this, connection.id, connection.url)
+                repository.deleteConnection(connection.id)?.let {
+                    ai.zcode.remote.ui.remote.ConnectionLoginDialog.stopOldSession(this, it)
+                }
                 refreshList()
                 ToastUtils.show(this, getString(R.string.toast_deleted))
             }

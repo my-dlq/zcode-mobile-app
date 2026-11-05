@@ -26,19 +26,25 @@
         android:textSize="12sp"
         tools:text="当前版本 0.1.1" />
 
-    <TextView
-        android:id="@+id/tvReleaseNotes"
+    <ai.zcode.remote.ui.main.UpdateNotesScrollView
+        android:id="@+id/scrollReleaseNotes"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="14dp"
         android:background="?attr/zcBgSurface"
-        android:lineSpacingExtra="3dp"
-        android:maxLines="8"
-        android:padding="10dp"
-        android:scrollbars="vertical"
-        android:textColor="?attr/zcTextSecondary"
-        android:textSize="13sp"
-        tools:text="更新内容说明" />
+        android:scrollbars="vertical">
+
+        <TextView
+            android:id="@+id/tvReleaseNotes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:lineSpacingExtra="3dp"
+            android:padding="10dp"
+            android:textColor="?attr/zcTextSecondary"
+            android:textColorLink="?attr/zcPrimary"
+            android:textSize="13sp"
+            tools:text="更新内容说明" />
+    </ai.zcode.remote.ui.main.UpdateNotesScrollView>
 
     <TextView
         android:id="@+id/tvFileSize"

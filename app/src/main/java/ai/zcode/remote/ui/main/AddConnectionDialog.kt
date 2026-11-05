@@ -142,20 +142,21 @@ class AddConnectionDialog : DialogFragment() {
         }
 
         val repository = ConnectionRepository.getInstance(requireContext())
-        val connection = editingConnection?.apply {
-            this.name = name
-            this.url = parsed.originalUrl
-            this.mid = parsed.mid
-            this.sid = parsed.sid
-        } ?: RemoteConnection(
+        val old = editingConnection?.let { repository.findById(it.id) }
+        val connection = editingConnection?.copy(
+            name = name, url = parsed.originalUrl, mid = parsed.mid, sid = parsed.sid,
+        ) ?: RemoteConnection(
             name = name,
             url = parsed.originalUrl,
             mid = parsed.mid,
             sid = parsed.sid
         )
 
-        repository.saveConnection(connection)
-        onSavedListener?.invoke(connection)
+        val saved = repository.saveConnection(connection)
+        if (old != null && old.loginSpace != saved.loginSpace) {
+            ai.zcode.remote.ui.remote.ConnectionLoginDialog.stopOldSession(requireContext(), old)
+        }
+        onSavedListener?.invoke(saved)
         ToastUtils.show(requireContext(), getString(R.string.toast_save_success))
         dismiss()
     }

@@ -19,6 +19,11 @@ class ZCodeApp : Application() {
         val themeMode = AppSettingsRepository.getInstance(this).getThemeMode()
         AppCompatDelegate.setDefaultNightMode(ThemeHelper.nightModeFor(themeMode))
 
+        // 在前台或隐藏 WebView 加载任何登录空间前，处理上次退出前遗留的删除队列。
+        runCatching {
+            ai.zcode.remote.ui.remote.web.ConnectionWebProfile.cleanPendingAtStartup(this)
+        }
+
         // 开启 WebView 调试支持（便于必要时通过 Chrome DevTools 排查）
         if (BuildConfig.DEBUG) {
             WebView.setWebContentsDebuggingEnabled(true)

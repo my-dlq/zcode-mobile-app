@@ -20,6 +20,7 @@ class ConnectionAdapter(
     private val onSettingsClick: (RemoteConnection) -> Unit,
     private val onEditClick: (RemoteConnection) -> Unit,
     private val onDeleteClick: (RemoteConnection) -> Unit,
+    private val onLoginClick: (RemoteConnection) -> Unit = {},
     private val onStartDrag: (RecyclerView.ViewHolder) -> Unit = {},
     private val onOrderChanged: (List<String>) -> Unit = {},
 ) : RecyclerView.Adapter<ConnectionAdapter.ViewHolder>() {
@@ -140,9 +141,14 @@ class ConnectionAdapter(
             menu.add(0, 1, 0, anchorView.context.getString(R.string.action_edit))
             menu.add(0, 2, 1, anchorView.context.getString(R.string.action_copy_url))
             menu.add(0, 3, 2, anchorView.context.getString(R.string.action_delete))
+            menu.add(0, 4, 3, anchorView.context.getString(R.string.connection_login_title))
 
             popup.setOnMenuItemClickListener { menuItem ->
                 when (menuItem.itemId) {
+                    4 -> {
+                        onLoginClick(item)
+                        true
+                    }
                     1 -> {
                         onEditClick(item)
                         true
