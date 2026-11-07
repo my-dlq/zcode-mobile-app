@@ -8,6 +8,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -97,7 +98,7 @@ class RemoteControlActivity : BaseActivity() {
     private var mainMenuPopup: PopupWindow? = null
 
     private lateinit var customWebViewClient: ZCodeWebViewClient
-    private lateinit var tabletSidebar: TabletSidebarController
+    private lateinit var workspaceSidebar: WorkspaceSidebarController
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private lateinit var eventBridge: TaskEventBridge
     private var eventBridgeAlive = false
@@ -221,12 +222,9 @@ class RemoteControlActivity : BaseActivity() {
         setupImmersiveAndScreen()
         setupKeyboardInsets()
         setupNativeTopBar()
-        tabletSidebar = TabletSidebarController(
+        workspaceSidebar = WorkspaceSidebarController(
             context = this,
             webView = binding.webView,
-            topBar = binding.layoutNativeTopBar,
-            topBarButton = binding.btnTopBarSidebar,
-            overlayButton = binding.btnOverlaySidebar,
             isPageAvailable = { isWebPageAvailable() && binding.layoutErrorOverlay.visibility != View.VISIBLE },
         ).also { it.bindConnection(connectionId) }
         setupWebView()
@@ -496,7 +494,25 @@ class RemoteControlActivity : BaseActivity() {
             mainMenuPopup?.dismiss()
             mainMenuPopup = null
         }
-        if (::tabletSidebar.isInitialized) tabletSidebar.onTopBarVisibilityChanged()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (!webViewReady || webViewDisposed) return
+        workspaceSidebar.onConfigurationChanged()
+        // 横竖屏由本 Activity 自行处理；等 WebView 得到新宽度后重算远程页视口。
+        val webView = binding.webView
+        webView.addOnLayoutChangeListener(object : View.OnLayoutChangeListener {
+            override fun onLayoutChange(
+                view: View, left: Int, top: Int, right: Int, bottom: Int,
+                oldLeft: Int, oldTop: Int, oldRight: Int, oldBottom: Int,
+            ) {
+                webView.removeOnLayoutChangeListener(this)
+                if (!isWebPageAvailable()) return
+                customWebViewClient.applyPageZoom(webView)
+                workspaceSidebar.onPageFinished()
+            }
+        })
     }
 
     private fun setupKeyboardInsets() {
@@ -684,7 +700,7 @@ class RemoteControlActivity : BaseActivity() {
             appContext = applicationContext,
             onPageStart = pageStart@ {
                 if (!isWebPageAvailable()) return@pageStart
-                tabletSidebar.onPageStarted()
+                workspaceSidebar.onPageStarted()
                 pageLoading = true
                 loginNoticePageGeneration++
                 loginNoticeProbePending = false
@@ -706,7 +722,7 @@ class RemoteControlActivity : BaseActivity() {
                 // 整页加载后按当前设置重注 viewport 缩放（SPA 内部导航不改 meta，
                 // 无需额外轮询；设置页改完缩放返回走 onResume 那条路径）
                 customWebViewClient.applyPageZoom(binding.webView)
-                tabletSidebar.onPageFinished()
+                workspaceSidebar.onPageFinished()
                 // 通知点击带来的会话跳转：页面加载完成后注入 JS 定位并点击任务条目
                 jumpToPendingSession(1500)
                 if (isSettingsModeRequested && binding.layoutErrorOverlay.visibility != View.VISIBLE) {
@@ -731,7 +747,7 @@ class RemoteControlActivity : BaseActivity() {
             },
             onPageError = pageError@ { _, description ->
                 if (!isWebPageAvailable()) return@pageError
-                tabletSidebar.onPageUnavailable()
+                workspaceSidebar.onPageUnavailable()
                 binding.progressBar.visibility = View.GONE
                 binding.layoutErrorOverlay.visibility = View.VISIBLE
                 binding.tvErrorDetail.text = description
@@ -1300,7 +1316,7 @@ class RemoteControlActivity : BaseActivity() {
         if (connectionId.isNotEmpty()) {
             repo.updateLastConnected(connectionId)
         }
-        tabletSidebar.bindConnection(connectionId)
+        workspaceSidebar.bindConnection(connectionId)
         // singleTop 切换连接时同步事件源目标：本页仍是唯一控制端，服务只更新接管目标，
         // 不创建隐藏监听；本页销毁后才按新 URL 接管。
         ai.zcode.remote.service.KeepAliveService.acquireEventSource(
@@ -1369,7 +1385,7 @@ class RemoteControlActivity : BaseActivity() {
             // 幂等——注入脚本按当前设置增删 dashboard 样式元素与调色板按钮。
             customWebViewClient.reapplyPageAdaptation(binding.webView)
         }
-        tabletSidebar.onForegroundTick()
+        workspaceSidebar.onForegroundTick()
     }
 
     override fun onStart() {
@@ -1408,7 +1424,7 @@ class RemoteControlActivity : BaseActivity() {
             if (!foregroundSessionVisible.get() || !isWebPageAvailable()) return
             refreshForegroundSessionId()
             refreshLoginNotice()
-            tabletSidebar.onForegroundTick()
+            workspaceSidebar.onForegroundTick()
             handler.postDelayed(this, FOREGROUND_SESSION_TICK_MS)
         }
     }
@@ -1512,7 +1528,7 @@ class RemoteControlActivity : BaseActivity() {
         if (webViewDisposed) return
         webViewDisposed = true
         webViewReady = false
-        if (::tabletSidebar.isInitialized) tabletSidebar.dispose()
+        if (::workspaceSidebar.isInitialized) workspaceSidebar.dispose()
         if (::customWebViewClient.isInitialized) customWebViewClient.invalidate()
         pendingSessionJump?.let { handler.removeCallbacks(it) }
         pendingSessionJump = null

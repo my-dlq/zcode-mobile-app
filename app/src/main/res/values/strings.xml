@@ -3,7 +3,6 @@
     <string name="topbar_toggle_theme">切换主题</string>
     <string name="sidebar_collapse">收起任务侧栏</string>
     <string name="sidebar_expand">展开任务侧栏</string>
-    <string name="sidebar_toggle_failed">当前页面未能切换任务侧栏</string>
     <string name="title_connections">连接列表</string>
     <string name="hint_drag_to_sort">长按拖动进行排序</string>
     

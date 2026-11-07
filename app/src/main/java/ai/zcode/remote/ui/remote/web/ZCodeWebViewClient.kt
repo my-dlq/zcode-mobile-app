@@ -378,6 +378,7 @@ class ZCodeWebViewClient(
      *   width = 屏幕CSS宽 / Z、initial-scale = Z
      * 布局视口高度随之变成 屏幕高/Z，100dvh × Z 正好铺满，不裁切；同时真正改变布局
      * 视口宽度会触发远端响应式重排，等价于浏览器缩放（非捏合式纯放大）。
+     * 横屏手机/平板不足 768px 时取远程侧栏所需的最小布局宽度，按屏幕宽度等比缩放。
      * 桌面模式（进设置中心临时态）忽略缩放，沿用原有 width=1280/initial-scale=0.32。
      */
     private fun viewportContent(webView: WebView, isDesktop: Boolean): String {
@@ -388,9 +389,6 @@ class ZCodeWebViewClient(
         val zoomPercent = pageZoomProvider().coerceIn(
             AppSettingsRepository.PAGE_ZOOM_MIN, AppSettingsRepository.PAGE_ZOOM_MAX
         )
-        if (zoomPercent == 100) {
-            return "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-        }
         // 屏幕 CSS 宽度：原生像素宽 / density，Kotlin 侧算好不依赖 JS 测量
         val density = webView.resources.displayMetrics.density
         val screenCssWidth = if (density > 0f && webView.width > 0) {
@@ -399,9 +397,11 @@ class ZCodeWebViewClient(
             // WebView 尚未测量完成时退化为屏幕宽（density 已含在 displayMetrics 里）
             (webView.resources.displayMetrics.widthPixels / density).roundToInt()
         }
-        val zoom = zoomPercent / 100f
-        val layoutWidth = (screenCssWidth / zoom).roundToInt().coerceAtLeast(1)
-        return "width=$layoutWidth, initial-scale=$zoom, maximum-scale=$zoom, user-scalable=no"
+        return WorkspaceSidebarViewport.content(
+            screenCssWidth,
+            zoomPercent,
+            WorkspaceSidebarViewport.isEligible(webView.resources.configuration),
+        )
     }
 
     private fun applyViewportContent(webView: WebView, viewportContent: String) {
