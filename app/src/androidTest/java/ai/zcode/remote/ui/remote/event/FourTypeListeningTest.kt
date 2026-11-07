@@ -114,10 +114,10 @@ class FourTypeListeningTest {
                 assertEquals(type, record.second)
                 assertEquals(if (master && disabled != i) "DELIVERED" else "DISCARDED", record.third)
             }
-            val times = notifications().associate { it.id to it.postTime }
+            val times = notifications().associate { (it.tag to it.id) to it.postTime }
             sendStates(changes, taskIndex, wire = taskIndex)
             SystemClock.sleep(300)
-            assertEquals("重复快照不重新发布通知", times, notifications().associate { it.id to it.postTime })
+            assertEquals("重复快照不重新发布通知", times, notifications().associate { (it.tag to it.id) to it.postTime })
             assertEquals(before + 4, records().size)
             evidence.put(JSONObject().put("case", label).put("format", if (taskIndex) "tasks-index/base64" else "sessions-index")
                 .put("states", JSONObject().apply { actual.forEach { put(it.second, it.third) } }).put("replay", "unchanged"))
@@ -197,7 +197,7 @@ class FourTypeListeningTest {
             throw failure
         } finally {
             // 只清理本次隔离任务；连接及全部偏好按原值恢复，不碰正式包数据。
-            notifications().forEach { manager.cancel(it.id) }
+            notifications().forEach { manager.cancel(it.tag, it.id) }
             activity?.let { target -> instrumentation.runOnMainSync { target.finish() } }
             KeepAliveService.stop(context)
             fixture.close()

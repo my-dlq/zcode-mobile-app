@@ -21,26 +21,47 @@ internal class TaskNotificationInbox(context: Context, databaseName: String = DA
     @Synchronized
     fun enqueue(event: TaskEventParser.TaskEvent): Boolean {
         val now = System.currentTimeMillis()
-        writableDatabase.delete(
-            TABLE,
-            "$COL_STATE IN (?, ?) AND $COL_CREATED_AT < ?",
-            arrayOf(STATE_DELIVERED, STATE_DISCARDED, (now - RETENTION_MS).toString()),
-        )
-        val values = ContentValues().apply {
-            put(COL_EVENT_KEY, stableKey(event))
-            put(COL_TASK_ID, event.taskId)
-            put(COL_TYPE, event.type.name)
-            put(COL_TITLE, event.taskTitle)
-            put(COL_DEVICE, event.deviceName)
-            put(COL_SOURCE_ID, event.sourceId)
-            put(COL_STATE, STATE_PENDING)
-            put(COL_LEASE_UNTIL, 0L)
-            put(COL_NEXT_ATTEMPT_AT, now)
-            put(COL_CREATED_AT, now)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete(
+                TABLE,
+                "$COL_STATE IN (?, ?) AND $COL_CREATED_AT < ?",
+                arrayOf(STATE_DELIVERED, STATE_DISCARDED, (now - RETENTION_MS).toString()),
+            )
+            if (event.eventKey.isBlank()) {
+                // 旧兜底键没有 source；只有身份列明确相同才可延续其所有状态的防重放。
+                // 检查与插入必须同事务，多个 helper 实例并发入队也不能绕过去重。
+                val exists = db.query(
+                    TABLE, arrayOf(COL_ROW_ID), "$COL_EVENT_KEY = ? AND $COL_SOURCE_ID = ?",
+                    arrayOf(TaskNotificationIdentity.legacyFallbackKey(event), event.sourceId),
+                    null, null, null, "1",
+                ).use { it.moveToFirst() }
+                if (exists) {
+                    db.setTransactionSuccessful()
+                    return false
+                }
+            }
+            val values = ContentValues().apply {
+                put(COL_EVENT_KEY, TaskNotificationIdentity.stableKey(event))
+                put(COL_TASK_ID, event.taskId)
+                put(COL_TYPE, event.type.name)
+                put(COL_TITLE, event.taskTitle)
+                put(COL_DEVICE, event.deviceName)
+                put(COL_SOURCE_ID, event.sourceId)
+                put(COL_STATE, STATE_PENDING)
+                put(COL_LEASE_UNTIL, 0L)
+                put(COL_NEXT_ATTEMPT_AT, now)
+                put(COL_CREATED_AT, now)
+            }
+            val inserted = db.insertWithOnConflict(
+                TABLE, null, values, SQLiteDatabase.CONFLICT_IGNORE,
+            ) != -1L
+            db.setTransactionSuccessful()
+            return inserted
+        } finally {
+            db.endTransaction()
         }
-        return writableDatabase.insertWithOnConflict(
-            TABLE, null, values, SQLiteDatabase.CONFLICT_IGNORE,
-        ) != -1L
     }
 
     /** 事务内领取最早的可消费事件；处理租约过期的记录会自动回到待消费状态。 */
@@ -179,7 +200,8 @@ internal class TaskNotificationInbox(context: Context, databaseName: String = DA
         writableDatabase.update(TABLE, ContentValues().apply {
             put(COL_STATE, STATE_DISCARDED)
             put(COL_LEASE_UNTIL, 0L)
-        }, "$COL_STATE IN (?, ?) AND ($COL_SOURCE_ID = ? OR substr($COL_EVENT_KEY, 1, ?) = ?)",
+        }, "$COL_STATE IN (?, ?) AND ($COL_SOURCE_ID = ? OR " +
+            "($COL_SOURCE_ID = '' AND substr($COL_EVENT_KEY, 1, ?) = ?))",
             arrayOf(STATE_PENDING, STATE_PROCESSING, sourceId, prefix.length.toString(), prefix))
     }
 
@@ -221,12 +243,6 @@ internal class TaskNotificationInbox(context: Context, databaseName: String = DA
         // 只追加身份列，旧记录和唯一事件键原样保留，避免升级后重放历史通知。
         if (oldVersion < 2) db.execSQL("ALTER TABLE $TABLE ADD COLUMN $COL_SOURCE_ID TEXT NOT NULL DEFAULT ''")
     }
-
-    private fun stableKey(event: TaskEventParser.TaskEvent): String =
-        event.eventKey.ifBlank {
-            // 旧格式的显式事件缺少交互 ID 时仍需跨重连幂等；会话状态事件会带 generation。
-            "legacy|${event.deviceName}|${event.taskId}|${event.type}|${event.taskTitle}"
-        }
 
     private companion object {
         const val DATABASE_NAME = "zcode_task_notifications.db"

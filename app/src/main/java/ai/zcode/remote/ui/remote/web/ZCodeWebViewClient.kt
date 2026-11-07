@@ -29,7 +29,17 @@ class ZCodeWebViewClient(
         { AppSettingsRepository.DashboardMode.NATIVE },
 ) : WebViewClient() {
 
+    private var invalidated = false
+    private val injectionHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** 死亡或已释放的页面不能再注入；取消 Kotlin 侧设置中心轮询，迟到回调也直接丢弃。 */
+    fun invalidate() {
+        invalidated = true
+        injectionHandler.removeCallbacksAndMessages(null)
+    }
+
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+        if (invalidated) return
         super.onPageStarted(view, url, favicon)
         // 在页面最早执行阶段注入全套桌面端环境特征模拟（针对电脑端设置判定）
         view?.let { wv ->
@@ -58,6 +68,7 @@ class ZCodeWebViewClient(
     }
 
     override fun onPageFinished(view: WebView?, url: String?) {
+        if (invalidated) return
         super.onPageFinished(view, url)
         view?.let { injectAntiMisoperation(it) }
         // 详情页返回按钮同样在每次页面加载后注入：设置中心内是 SPA 导航，
@@ -72,15 +83,17 @@ class ZCodeWebViewClient(
     }
 
     private fun injectEventCapture(view: WebView) {
+        if (invalidated) return
         view.evaluateJavascript(EventCaptureScript.build(TaskEventBridge.BRIDGE_NAME), null)
     }
 
     @androidx.annotation.RequiresApi(26)
     override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
+        if (invalidated) return true
+        invalidate()
         val didCrash = detail?.didCrash() == true
         android.util.Log.e("ZCodeWeb", "onRenderProcessGone: didCrash=$didCrash")
-        val reasonRes = if (didCrash) R.string.error_renderer_crashed else R.string.error_renderer_recycled
-        onPageError(-100, appContext.getString(reasonRes))
+        // 2026-11-07：renderer 死亡不是普通网络错误，原 view 只能移除并 destroy，不能重载。
         onRenderProcessGone()
         return true
     }
@@ -90,6 +103,7 @@ class ZCodeWebViewClient(
         request: WebResourceRequest?,
         error: WebResourceError?
     ) {
+        if (invalidated) return
         super.onReceivedError(view, request, error)
         if (request?.isForMainFrame == true) {
             val code = error?.errorCode ?: -1
@@ -104,6 +118,7 @@ class ZCodeWebViewClient(
         request: WebResourceRequest?,
         errorResponse: WebResourceResponse?
     ) {
+        if (invalidated) return
         super.onReceivedHttpError(view, request, errorResponse)
         if (request?.isForMainFrame == true) {
             val code = errorResponse?.statusCode ?: -1
@@ -113,6 +128,7 @@ class ZCodeWebViewClient(
     }
 
     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+        if (invalidated) return true
         val uri = request?.url ?: return false
         val scheme = uri.scheme?.lowercase()
 
@@ -146,6 +162,7 @@ class ZCodeWebViewClient(
      * 侧边栏：优先选择"已完成"任务，只做导航查看，绝不触碰停止/取消类控件。
      */
     fun openWorkspaceSettings(webView: WebView, onDone: ((Boolean) -> Unit)? = null) {
+        if (invalidated) return
         // 回切移动端视口时用的内容（含当前页面缩放），在此算好注入，避免 JS 侧写死
         val mobileViewportContent = viewportContent(webView, isDesktop = false)
         val js = """
@@ -314,7 +331,9 @@ class ZCodeWebViewClient(
         // 因此对结果标志位做二次轮询，拿到真实结果后才回调 onDone（约 1s 后开始，最多等 12s）
         var resultChecks = 0
         fun pollResult() {
+            if (invalidated) return
             webView.evaluateJavascript("(window.__zcodeSettingsOpened === true)") { result ->
+                if (invalidated) return@evaluateJavascript
                 when {
                     result == "true" -> {
                         // 回切移动端视口的 reflow 可能使早前注入的 <style> 失效或丢失，
@@ -325,18 +344,19 @@ class ZCodeWebViewClient(
                         injectDetailBackButton(webView)
                         onDone?.invoke(true)
                     }
-                    resultChecks++ < 24 -> webView.postDelayed({ pollResult() }, 500)
+                    resultChecks++ < 24 -> injectionHandler.postDelayed({ pollResult() }, 500)
                     else -> onDone?.invoke(false)
                 }
             }
         }
-        webView.postDelayed({ pollResult() }, 1000)
+        injectionHandler.postDelayed({ pollResult() }, 1000)
     }
 
     /**
      * 动态切换桌面宽屏渲染模式与移动端自适应模式
      */
     fun setDesktopViewport(webView: WebView, isDesktop: Boolean) {
+        if (invalidated) return
         applyViewportContent(webView, viewportContent(webView, isDesktop))
     }
 
@@ -345,6 +365,7 @@ class ZCodeWebViewClient(
      * 100% 时与原生移动端行为完全一致。
      */
     fun applyPageZoom(webView: WebView) {
+        if (invalidated) return
         applyViewportContent(webView, viewportContent(webView, isDesktop = false))
     }
 
@@ -384,6 +405,7 @@ class ZCodeWebViewClient(
     }
 
     private fun applyViewportContent(webView: WebView, viewportContent: String) {
+        if (invalidated) return
         val js = """
             (function() {
                 var meta = document.querySelector('meta[name="viewport"]');
@@ -404,6 +426,7 @@ class ZCodeWebViewClient(
      * 解决模型设置、供应商列表、下拉菜单等在移动端触摸误判为滑动导致点击不响应的问题
      */
     private fun injectAntiMisoperation(webView: WebView) {
+        if (invalidated) return
         val css = """
             /* 1. 禁用点击高亮与长按呼出：全局 user-select:none 让非文本区不可选中
                （原生长按拦截已移除——它曾把输入框的长按粘贴菜单一并吞掉），
@@ -2607,6 +2630,7 @@ aside[class*="min-w-0"] nav {
 
     /** 设置中心复用主滚动区，模块切换和键盘缩放需分别处理，避免干预会话滚动。 */
     private fun injectSettingsLayoutGuards(webView: WebView) {
+        if (invalidated) return
         val js = """
             (function() {
                 if (window.__zcodeSettingsLayoutInstalled) return;
@@ -2704,6 +2728,7 @@ aside[class*="min-w-0"] nav {
      * 侧边栏"太宽松，会误命中对话问题导航等其它 nav 导致点击错按钮。
      */
     private fun injectDetailBackButton(webView: WebView) {
+        if (invalidated) return
         val js = """
             (function() {
                 if (window.__zcodeDetailBackInjected) return;

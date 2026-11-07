@@ -33,6 +33,7 @@ import ai.zcode.remote.data.repository.ConnectionRepository
 import ai.zcode.remote.data.model.RemoteConnection
 import ai.zcode.remote.data.model.ConnectionLoginSpace
 import ai.zcode.remote.ui.remote.web.ConnectionWebProfile
+import ai.zcode.remote.ui.remote.web.TaskListVisibilityScript
 import ai.zcode.remote.utils.UrlParser
 import ai.zcode.remote.databinding.ActivityRemoteControlBinding
 import ai.zcode.remote.databinding.PopupRemoteMenuBinding
@@ -67,6 +68,20 @@ class RemoteControlActivity : BaseActivity() {
     private var loginSpace: ConnectionLoginSpace? = null
     private var webViewReady = false
     private var webViewDisposed = false
+    private val rendererRecovery = RendererRecoveryState()
+    private var rendererRecoveryScheduled = false
+    private val rendererRecoveryRunnable = Runnable {
+        rendererRecoveryScheduled = false
+        performRendererRecovery()
+    }
+    private var pendingSettingsOpen: Runnable? = null
+    private var loginNoticeIsolated = false
+    private var loginNoticeEligible = false
+    private var loginNoticeResumed = false
+    private var loginNoticeProbePending = false
+    private var loginNoticePageGeneration = 0L
+    private var loginNoticeTimer = LoginNoticeTimer()
+    private val hideLoginNotice = Runnable { binding.tvLoginNotice.visibility = View.GONE }
     private var isFullscreen = true
     private var isKeepScreenOn = true
     private var lastBackPressTime = 0L
@@ -89,11 +104,15 @@ class RemoteControlActivity : BaseActivity() {
     private lateinit var networkCallback: ConnectivityManager.NetworkCallback
     private val handler = Handler(Looper.getMainLooper())
     private val claimDialogs by lazy {
-        ClaimCampaignDialogController(this) { key, callback ->
+        ClaimCampaignDialogController(this) claim@ { key, callback ->
+            if (!requireWebPage()) {
+                callback(false)
+                return@claim
+            }
             val quoted = org.json.JSONObject.quote(key)
             binding.webView.evaluateJavascript(
                 "!!(window.__zcodeClaims && window.__zcodeClaims.claim($quoted))"
-            ) { value -> callback(value == "true") }
+            ) { value -> if (isWebPageAvailable()) callback(value == "true") }
         }
     }
     private val connectivityManager by lazy {
@@ -107,9 +126,7 @@ class RemoteControlActivity : BaseActivity() {
     private var lastReconnectAtElapsedMs = 0L
     private val reconnectRunnable = Runnable {
         reconnectScheduled = false
-        if (!networkAvailable || isFinishing || (Build.VERSION.SDK_INT >= 17 && isDestroyed)) {
-            return@Runnable
-        }
+        if (!requireWebPage() || !networkAvailable) return@Runnable
         reconnectAttempt++
         lastReconnectAtElapsedMs = android.os.SystemClock.elapsedRealtime()
         android.util.Log.i("ZCodeWeb", "reload for reconnect: attempt=$reconnectAttempt")
@@ -155,12 +172,6 @@ class RemoteControlActivity : BaseActivity() {
         ClaimCampaignNotifier.acknowledgeIntent(this, intent)
         isSettingsModeRequested = intent.getBooleanExtra(EXTRA_SETTINGS_MODE, false)
 
-        if (targetUrl.isBlank()) {
-            ToastUtils.show(this, getString(R.string.toast_invalid_remote_url))
-            finish()
-            return
-        }
-
         // 反查 connectionId：用于 onPause 时保存当前任务会话到对应连接
         val repo = ConnectionRepository.getInstance(this)
         val connection = resolveConnection(intent)
@@ -204,7 +215,7 @@ class RemoteControlActivity : BaseActivity() {
         )
         current?.takeIf { it !== this }?.let { closeConnection(it.connectionId, it.targetUrl) }
         current = this
-        setupLoginNotice(connection, profileMode)
+        setupLoginNotice(connection, profileMode, savedInstanceState)
 
         setupImmersiveAndScreen()
         setupKeyboardInsets()
@@ -241,7 +252,9 @@ class RemoteControlActivity : BaseActivity() {
                     ?.pathSegments?.firstOrNull().orEmpty()
             }
         if (sourceId.isNotBlank()) {
-            return repository.findBySourceId(sourceId)?.takeIf { it.url == url }
+            // 来源身份已包含登录代数；URL 是可编辑的快照，不能用旧地址否决有效通知。
+            if (repository.isSourceDeleted(sourceId)) return null
+            return repository.findBySourceId(sourceId)
         }
         if (repository.isSourceDeleted(url)) return null
         repository.findByUrl(url)?.let { return it }
@@ -253,26 +266,130 @@ class RemoteControlActivity : BaseActivity() {
         ))
     }
 
-    private fun setupLoginNotice(connection: RemoteConnection, mode: ConnectionWebProfile.Mode) {
-        val isolated = mode == ConnectionWebProfile.Mode.ISOLATED
-        val first = isolated && !ConnectionWebProfile.hasShownIntroduction(this, connection.loginSpace)
-        binding.tvLoginNotice.visibility = if (!isolated || first) View.VISIBLE else View.GONE
-        binding.tvLoginNotice.setText(if (isolated) R.string.login_space_first_visit else R.string.login_space_unsupported)
+    private fun setupLoginNotice(connection: RemoteConnection, mode: ConnectionWebProfile.Mode, savedState: Bundle?) {
+        loginNoticeIsolated = mode == ConnectionWebProfile.Mode.ISOLATED
+        loginNoticeEligible = loginNoticeIsolated &&
+            !ConnectionWebProfile.hasShownIntroduction(this, connection.loginSpace)
+        // 重建只能延续同一登录空间的剩余时间，跨连接 recreate 不能带走旧横幅。
+        savedState?.takeIf {
+            it.getString("login_notice_source") == connection.loginSpace.sourceId &&
+                it.getInt("login_notice_process") == android.os.Process.myPid()
+        }?.let {
+            loginNoticeTimer = LoginNoticeTimer(it.getLong("login_notice_deadline", 0L))
+        }
+        binding.tvLoginNotice.visibility = if (loginNoticeIsolated) View.GONE else View.VISIBLE
+        binding.tvLoginNotice.setText(if (loginNoticeIsolated) R.string.login_space_first_visit else R.string.login_space_unsupported)
         binding.tvLoginNotice.setOnClickListener {
             ConnectionLoginDialog.show(this, connection.id)
-            if (isolated) {
-                ConnectionWebProfile.markIntroductionShown(this, connection.loginSpace)
+            if (loginNoticeIsolated) {
+                loginNoticeTimer.dismiss()
+                handler.removeCallbacks(hideLoginNotice)
                 binding.tvLoginNotice.visibility = View.GONE
             }
         }
     }
 
-    private fun ownsCurrentLoginSpace(): Boolean = webViewReady && !eventSourceHandedOver &&
+    private fun refreshLoginNotice() {
+        if (!loginNoticeIsolated || !loginNoticeResumed || !isWebPageAvailable()) return
+        if (pageLoading || binding.layoutErrorOverlay.visibility == View.VISIBLE) {
+            binding.tvLoginNotice.visibility = View.GONE
+            return
+        }
+        val remaining = loginNoticeTimer.remainingMillis(android.os.SystemClock.elapsedRealtime())
+        if (!loginNoticeEligible && remaining == 0L) {
+            binding.tvLoginNotice.visibility = View.GONE
+            return
+        }
+        if (loginNoticeProbePending) return
+        val space = loginSpace ?: return
+        val pageGeneration = loginNoticePageGeneration
+        val pageUrl = binding.webView.url ?: return
+        // OAuth 页面不参与判定；只检查当前连接同源页面中的真实任务列表。
+        if (Uri.parse(pageUrl).let { page ->
+                val target = Uri.parse(targetUrl)
+                page.scheme != target.scheme || page.host != target.host || page.port != target.port
+            }) {
+            binding.tvLoginNotice.visibility = View.GONE
+            return
+        }
+        loginNoticeProbePending = true
+        binding.webView.evaluateJavascript(TaskListVisibilityScript.js) { visible ->
+            if (pageGeneration != loginNoticePageGeneration) return@evaluateJavascript
+            loginNoticeProbePending = false
+            if (!loginNoticeResumed || !isWebPageAvailable() || loginSpace != space ||
+                binding.webView.url != pageUrl || pageLoading ||
+                binding.layoutErrorOverlay.visibility == View.VISIBLE) return@evaluateJavascript
+            if (visible != "true") {
+                binding.tvLoginNotice.visibility = View.GONE
+                return@evaluateJavascript
+            }
+            if (loginNoticeEligible) {
+                loginNoticeEligible = false
+                if (ConnectionWebProfile.hasShownIntroduction(this, space)) return@evaluateJavascript
+                ConnectionWebProfile.markIntroductionShown(this, space)
+                loginNoticeTimer.start(android.os.SystemClock.elapsedRealtime())
+            }
+            val duration = loginNoticeTimer.remainingMillis(android.os.SystemClock.elapsedRealtime())
+            handler.removeCallbacks(hideLoginNotice)
+            binding.tvLoginNotice.visibility = if (duration > 0) View.VISIBLE else View.GONE
+            if (duration > 0) handler.postDelayed(hideLoginNotice, duration)
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("login_notice_source", loginSpace?.sourceId)
+        outState.putInt("login_notice_process", android.os.Process.myPid())
+        outState.putLong("login_notice_deadline", loginNoticeTimer.deadlineElapsedMs)
+        super.onSaveInstanceState(outState)
+    }
+
+    /** 连接归属不随 renderer 消失；死 view 仍需靠此判断是否有权重建同一登录空间。 */
+    private fun ownsCurrentLoginSpace(): Boolean = !eventSourceHandedOver &&
         current === this && !isFinishing && !isDestroyed &&
         loginSpace?.let { ConnectionRepository.getInstance(this).isLoginSpaceCurrent(it) } == true
 
+    private fun isWebPageAvailable(): Boolean = ownsCurrentLoginSpace() &&
+        webViewReady && !webViewDisposed && !rendererRecovery.pending
+
+    /** 网页操作发现 renderer 已死时只转恢复；不把 load/reload 投递给已销毁的 view。 */
+    private fun recoverRendererIfNeeded(): Boolean {
+        if (!rendererRecovery.pending) return false
+        if (!ownsCurrentLoginSpace()) {
+            if (!isFinishing && !isDestroyed) finish()
+            return true
+        }
+        if (rendererRecovery.requested) return true
+        if (!activityVisible) {
+            handler.removeCallbacks(rendererRecoveryRunnable)
+            rendererRecoveryScheduled = false
+            performRendererRecovery()
+        } else if (!rendererRecoveryScheduled) {
+            rendererRecoveryScheduled = true
+            handler.postDelayed(rendererRecoveryRunnable, RENDERER_RECOVERY_DELAY_MS)
+        }
+        return true
+    }
+
+    private fun performRendererRecovery() {
+        when (rendererRecovery.nextAction(ownsCurrentLoginSpace(), activityVisible)) {
+            RendererRecoveryState.Action.RECREATE -> {
+                android.util.Log.i("ZCodeWeb", "recreate activity after renderer process exit")
+                // 保留当前 Intent 与 onSaveInstanceState 的同 source/PID 横幅计时，不改 Profile。
+                recreate()
+            }
+            RendererRecoveryState.Action.HANDOVER -> handoverEventSourceToKeepAlive("renderer-gone-background")
+            RendererRecoveryState.Action.NONE -> Unit
+        }
+    }
+
+    private fun requireWebPage(): Boolean {
+        if (recoverRendererIfNeeded()) return false
+        return isWebPageAvailable()
+    }
+
     /** 注册任务事件桥并在每次页面加载后注入捕获脚本（SPA 导航可能重建 window）。 */
     private fun setupEventCapture() {
+        if (!requireWebPage()) return
         ensureNotificationPermission()
         if (::eventBridge.isInitialized) {
             eventBridge.dispose()
@@ -290,16 +407,16 @@ class RemoteControlActivity : BaseActivity() {
             deviceName = deviceName,
             defaultTaskName = getString(R.string.task_unnamed_background),
             onConnectionState = { state ->
-                runOnUiThread { if (ownsCurrentLoginSpace()) handleConnectionState(state) }
+                runOnUiThread { if (isWebPageAvailable()) handleConnectionState(state) }
             },
             onEvent = { event ->
-                runOnUiThread { if (ownsCurrentLoginSpace()) TaskNotifier.notify(this, event) }
+                runOnUiThread { if (isWebPageAvailable()) TaskNotifier.notify(this, event) }
             },
             onClaimCampaigns = { body ->
-                if (!ownsCurrentLoginSpace()) return@TaskEventBridge
+                if (!isWebPageAvailable()) return@TaskEventBridge
                 val campaigns = ClaimCampaignNotifier.receive(this, sourceId, deviceName, body)
                 runOnUiThread {
-                    if (sourceId == loginSpace?.sourceId && ownsCurrentLoginSpace()) {
+                    if (sourceId == loginSpace?.sourceId && isWebPageAvailable()) {
                         claimDialogs.receive(campaigns)
                     }
                 }
@@ -309,7 +426,7 @@ class RemoteControlActivity : BaseActivity() {
             },
             onClaimCampaignStatus = { key, message, finished ->
                 runOnUiThread {
-                    if (sourceId == loginSpace?.sourceId && ownsCurrentLoginSpace()) {
+                    if (sourceId == loginSpace?.sourceId && isWebPageAvailable()) {
                         claimDialogs.status(key, message, finished)
                     }
                 }
@@ -379,7 +496,8 @@ class RemoteControlActivity : BaseActivity() {
             val navHeight = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
             val keyboardHeight = if (imeHeight > 0) (imeHeight - navHeight).coerceAtLeast(0) else 0
 
-            val webViewLp = binding.webView.layoutParams as? android.widget.FrameLayout.LayoutParams
+            val webViewLp = if (webViewDisposed) null else
+                binding.webView.layoutParams as? android.widget.FrameLayout.LayoutParams
             if (webViewLp != null && webViewLp.bottomMargin != keyboardHeight) {
                 webViewLp.bottomMargin = keyboardHeight
                 binding.webView.layoutParams = webViewLp
@@ -398,6 +516,7 @@ class RemoteControlActivity : BaseActivity() {
     /** 原生顶部栏：调色板按钮（当前已隐藏）→ 通过 JS 打开网页内主题菜单。 */
     private fun setupNativeTopBar() {
         binding.btnTopBarTheme.setOnClickListener {
+            if (!requireWebPage()) return@setOnClickListener
             // 调网页内 zcodeTriggerThemeToggle()（由 ZCodeWebViewClient 在 onPageFinished 注入）
             binding.webView.evaluateJavascript(
                 "(window.zcodeTriggerThemeToggle && window.zcodeTriggerThemeToggle()) || 'not-ready'",
@@ -449,7 +568,7 @@ class RemoteControlActivity : BaseActivity() {
                 .coerceIn(AppSettingsRepository.PAGE_ZOOM_MIN, AppSettingsRepository.PAGE_ZOOM_MAX)
             if (next == appSettings.getPageZoom()) return
             appSettings.setPageZoom(next)
-            customWebViewClient.applyPageZoom(binding.webView)
+            if (requireWebPage()) customWebViewClient.applyPageZoom(binding.webView)
             renderZoomRow()
             showZoomHint(next)
         }
@@ -554,8 +673,11 @@ class RemoteControlActivity : BaseActivity() {
         customWebViewClient = ZCodeWebViewClient(
             appContext = applicationContext,
             onPageStart = pageStart@ {
-                if (!ownsCurrentLoginSpace()) return@pageStart
+                if (!isWebPageAvailable()) return@pageStart
                 pageLoading = true
+                loginNoticePageGeneration++
+                loginNoticeProbePending = false
+                if (loginNoticeIsolated) binding.tvLoginNotice.visibility = View.GONE
                 pendingSessionJump?.let { handler.removeCallbacks(it) }
                 pendingSessionJump = null
                 handler.removeCallbacks(reconnectRunnable)
@@ -564,20 +686,24 @@ class RemoteControlActivity : BaseActivity() {
                 binding.layoutErrorOverlay.visibility = View.GONE
             },
             onPageFinish = pageFinish@ { _ ->
-                if (!ownsCurrentLoginSpace()) return@pageFinish
+                if (!isWebPageAvailable()) return@pageFinish
                 pageLoading = false
                 handler.removeCallbacks(reconnectRunnable)
                 reconnectScheduled = false
                 binding.progressBar.visibility = View.GONE
+                refreshLoginNotice()
                 // 整页加载后按当前设置重注 viewport 缩放（SPA 内部导航不改 meta，
                 // 无需额外轮询；设置页改完缩放返回走 onResume 那条路径）
                 customWebViewClient.applyPageZoom(binding.webView)
                 // 通知点击带来的会话跳转：页面加载完成后注入 JS 定位并点击任务条目
                 jumpToPendingSession(1500)
                 if (isSettingsModeRequested && binding.layoutErrorOverlay.visibility != View.VISIBLE) {
-                    binding.webView.postDelayed({
-                        if (!ownsCurrentLoginSpace() || !isSettingsModeRequested || binding.layoutErrorOverlay.visibility == View.VISIBLE) return@postDelayed
+                    pendingSettingsOpen?.let { handler.removeCallbacks(it) }
+                    val openSettings = Runnable {
+                        pendingSettingsOpen = null
+                        if (!isWebPageAvailable() || !isSettingsModeRequested || binding.layoutErrorOverlay.visibility == View.VISIBLE) return@Runnable
                         customWebViewClient.openWorkspaceSettings(binding.webView) { opened ->
+                            if (!isWebPageAvailable()) return@openWorkspaceSettings
                             isSettingsModeRequested = false
                             if (opened) {
                                 ToastUtils.show(this@RemoteControlActivity, getString(R.string.toast_entered_settings_center))
@@ -586,32 +712,24 @@ class RemoteControlActivity : BaseActivity() {
                                 ToastUtils.show(this@RemoteControlActivity, getString(R.string.toast_enter_settings_failed))
                             }
                         }
-                    }, 500)
+                    }
+                    pendingSettingsOpen = openSettings
+                    handler.postDelayed(openSettings, 500)
                 }
             },
             onPageError = pageError@ { _, description ->
-                if (!ownsCurrentLoginSpace()) return@pageError
+                if (!isWebPageAvailable()) return@pageError
                 binding.progressBar.visibility = View.GONE
                 binding.layoutErrorOverlay.visibility = View.VISIBLE
                 binding.tvErrorDetail.text = description
                 if (networkAvailable) scheduleReconnect("page-error")
             },
             onRenderProcessGone = {
-                // 渲染进程被系统回收后，前台页面可以 recreate 重建；后台不可见时
-                // recreate 出的新页面没有 surface，加载/WS 仍可能失败（实测 vivo 会
-                // 反复回收）。后台场景直接把事件源交接给保活服务的隐藏监听 WebView
-                // （无 UI 也能跑 JS/WS），避免“Activity 活着但事件源已死”的空窗。
-                handler.postDelayed({
-                    if (isFinishing || (Build.VERSION.SDK_INT >= 17 && isDestroyed)) return@postDelayed
-                    if (activityVisible) {
-                        if (networkAvailable) {
-                            android.util.Log.i("ZCodeWeb", "recreate activity after renderer process exit")
-                            recreate()
-                        }
-                    } else {
-                        handoverEventSourceToKeepAlive("renderer-gone-background")
-                    }
-                }, RENDERER_RECOVERY_DELAY_MS)
+                // 必须在回调内同步失效并销毁，不能让迟到回调/按钮/重连再触碰死 view。
+                if (rendererRecovery.markGone()) {
+                    disposeWebView()
+                    recoverRendererIfNeeded()
+                }
             },
             pageZoomProvider = { appSettings.getPageZoom() },
             dashboardModeProvider = { appSettings.getDashboardMode() },
@@ -621,7 +739,8 @@ class RemoteControlActivity : BaseActivity() {
         // 配置 WebChromeClient
         webView.webChromeClient = ZCodeWebChromeClient(
             allowedHost = Uri.parse(targetUrl).host,
-            onProgressUpdate = { progress ->
+            onProgressUpdate = progressUpdate@ { progress ->
+                if (!isWebPageAvailable()) return@progressUpdate
                 binding.progressBar.progress = progress
                 if (progress >= 100) {
                     binding.progressBar.visibility = View.GONE
@@ -629,13 +748,15 @@ class RemoteControlActivity : BaseActivity() {
                     binding.progressBar.visibility = View.VISIBLE
                 }
             },
-            onTitleReceived = { title ->
+            onTitleReceived = titleReceived@ { title ->
+                if (!isWebPageAvailable()) return@titleReceived
                 // 仅当设备名仍是缺省值时才用 WebView 标题覆盖；用户显式命名过的连接不被标题替换
                 if (deviceName == getString(R.string.default_device_name) && title.isNotBlank()) {
                     deviceName = title
                 }
             },
-            onOpenFileChooser = { callback, params ->
+            onOpenFileChooser = fileChooser@ { callback, params ->
+                if (!isWebPageAvailable()) return@fileChooser false
                 filePathCallback?.onReceiveValue(null)
                 filePathCallback = callback
                 try {
@@ -651,6 +772,7 @@ class RemoteControlActivity : BaseActivity() {
         )
 
         binding.btnRetry.setOnClickListener {
+            if (!requireWebPage()) return@setOnClickListener
             binding.layoutErrorOverlay.visibility = View.GONE
             loadUrl(targetUrl)
         }
@@ -670,8 +792,10 @@ class RemoteControlActivity : BaseActivity() {
 
         // 打开设置中心：openWorkspaceSettings 内部会先切桌面视口拉起齿轮按钮，
         // 成功后再回切移动端视口以 APP 端布局展示设置中心
-        dialog.onOpenSettingsListener = {
+        dialog.onOpenSettingsListener = openSettings@ {
+            if (!requireWebPage()) return@openSettings
             customWebViewClient.openWorkspaceSettings(binding.webView) { success ->
+                if (!isWebPageAvailable()) return@openWorkspaceSettings
                 if (success) {
                     ToastUtils.show(this@RemoteControlActivity, getString(R.string.toast_entered_settings_center))
                 } else {
@@ -681,7 +805,8 @@ class RemoteControlActivity : BaseActivity() {
             }
         }
 
-        dialog.onRefreshListener = {
+        dialog.onRefreshListener = refresh@ {
+            if (!requireWebPage()) return@refresh
             binding.webView.reload()
             ToastUtils.show(this, getString(R.string.toast_reconnecting))
         }
@@ -699,14 +824,15 @@ class RemoteControlActivity : BaseActivity() {
         }
 
         dialog.onCopyUrlListener = {
-            val currentUrl = binding.webView.url ?: targetUrl
+            val currentUrl = if (isWebPageAvailable()) binding.webView.url ?: targetUrl else targetUrl
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             val clip = ClipData.newPlainText("ZCode URL", currentUrl)
             clipboard?.setPrimaryClip(clip)
             ToastUtils.show(this, getString(R.string.toast_copied))
         }
 
-        dialog.onClearCacheListener = {
+        dialog.onClearCacheListener = clearCache@ {
+            if (!requireWebPage()) return@clearCache
             binding.webView.clearCache(true)
             binding.webView.reload()
             ToastUtils.show(this, getString(R.string.toast_cache_cleared))
@@ -733,6 +859,12 @@ class RemoteControlActivity : BaseActivity() {
      * 系统返回键与页面内注入的「返回」按钮共用此逻辑，保证两者行为一致。
      */
     private fun dispatchPageBack() {
+        if (!isWebPageAvailable()) {
+            // 恢复中的旧页面不能探测 JS，但返回仍应能离开，不能困在等待恢复的空白页。
+            if (rendererRecovery.pending) handoverEventSourceToKeepAlive("renderer-gone-back")
+            exitToDeviceList()
+            return
+        }
         binding.webView.evaluateJavascript(
             """(function() {
                 function isVisible(el) {
@@ -920,6 +1052,7 @@ class RemoteControlActivity : BaseActivity() {
                 return 'false';
             })()""".trimIndent()
         ) { handled ->
+            if (!isWebPageAvailable()) return@evaluateJavascript
             if (handled == "\"dismiss-popup\"") {
                 // 用浏览器受信任键盘事件交给远端 Radix 的浮层栈处理；不合成 click、
                 // 不重复点击触发器，避免开关/子菜单双触发。此次返回只关闭浮层，
@@ -972,6 +1105,7 @@ class RemoteControlActivity : BaseActivity() {
      * 一个管 HTTP 请求头，一个管 JS 侧 navigator 读取。
      */
     private fun loadUrl(url: String) {
+        if (!requireWebPage()) return
         pageLoading = true
         pendingSessionJump?.let { handler.removeCallbacks(it) }
         pendingSessionJump = null
@@ -1047,6 +1181,7 @@ class RemoteControlActivity : BaseActivity() {
     }
 
     private fun scheduleReconnect(reason: String, minimumDelayMs: Long = 0L) {
+        if (!requireWebPage()) return
         if (!networkAvailable || reconnectScheduled || isFinishing ||
             (Build.VERSION.SDK_INT >= 17 && isDestroyed)
         ) return
@@ -1093,6 +1228,10 @@ class RemoteControlActivity : BaseActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         val next = resolveConnection(intent) ?: return
+        // 通知携带的地址可能早于用户编辑，重建及恢复都应使用当前仓库快照。
+        intent.putExtra(EXTRA_URL, next.url)
+        intent.putExtra(EXTRA_NAME, next.name)
+        intent.putExtra(EXTRA_SOURCE_ID, next.loginSpace.sourceId)
         setIntent(intent)
         if (loginSpace != next.loginSpace) {
             // WebView 的 Profile 只能在首次使用前设置；跨空间通过新实例完整重建。
@@ -1109,23 +1248,28 @@ class RemoteControlActivity : BaseActivity() {
             return
         }
         ClaimCampaignNotifier.acknowledgeIntent(this, intent)
-        val newUrl = intent.getStringExtra(EXTRA_URL) ?: return
-        if (ConnectionRepository.getInstance(this).isSourceDeleted(newUrl)) return
+        val newUrl = next.url
+        val newName = next.name
+        val newTaskId = intent.getStringExtra(EXTRA_TASK_ID) ?: ""
+        if (recoverRendererIfNeeded()) return
         val campaign = ClaimCampaignNotifier.campaignFromIntent(intent)
-        if (newUrl == targetUrl && campaign != null) {
-            // Notification taps keep the currently open conversation intact.
+        if (isWebPageAvailable() && campaign != null &&
+            binding.layoutErrorOverlay.visibility != View.VISIBLE) {
+            // 同登录空间的旧地址通知仍复用当前网页，不因可编辑 URL 变化丢失草稿。
+            targetUrl = newUrl
+            deviceName = newName
             claimDialogs.receive(listOf(campaign), fromNotification = true)
             return
         }
         claimDialogs.clear()
-        val newName = intent.getStringExtra(EXTRA_NAME) ?: deviceName
-        val newTaskId = intent.getStringExtra(EXTRA_TASK_ID) ?: ""
-        if (newUrl == targetUrl && newTaskId.isNotEmpty() &&
+        if (isWebPageAvailable() && newTaskId.isNotEmpty() &&
             binding.layoutErrorOverlay.visibility != View.VISIBLE
         ) {
             // 2026-10-20：通知原先无条件重载，v4 会重新配对并丢失现有 WS。
             // 同连接直接在现有页面导航；正在加载时由 onPageFinish 接续最新目标。
             isSettingsModeRequested = false
+            targetUrl = newUrl
+            deviceName = newName
             pendingTaskId = newTaskId
             binding.webView.evaluateJavascript("window.__zcodeJumpGen = (window.__zcodeJumpGen || 0) + 1", null)
             jumpToPendingSession()
@@ -1162,11 +1306,11 @@ class RemoteControlActivity : BaseActivity() {
     private fun jumpToPendingSession(delayMs: Long = 0) {
         pendingSessionJump?.let { handler.removeCallbacks(it) }
         pendingSessionJump = null
-        if (pendingTaskId.isEmpty() || pageLoading) return
+        if (!requireWebPage() || pendingTaskId.isEmpty() || pageLoading) return
         val tid = pendingTaskId
         val jump = Runnable {
             pendingSessionJump = null
-            if (isFinishing || isDestroyed || pageLoading || pendingTaskId != tid) return@Runnable
+            if (!isWebPageAvailable() || pageLoading || pendingTaskId != tid) return@Runnable
             binding.webView.evaluateJavascript(
                 ai.zcode.remote.ui.remote.event.SessionJumpScript.build(tid), null,
             )
@@ -1177,7 +1321,10 @@ class RemoteControlActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (!webViewReady || isFinishing) return
+        if (isFinishing) return
+        // renderer 待恢复必须先于 ready/ownership 退出分支，否则死 view 会误触 finish。
+        if (recoverRendererIfNeeded()) return
+        if (!webViewReady) return
         if (!ownsCurrentLoginSpace()) {
             finish()
             return
@@ -1193,6 +1340,8 @@ class RemoteControlActivity : BaseActivity() {
         // 系统通知跳过（见 TaskNotifier.notify 的前台会话判断）。
         // 周期刷新以跟随 SPA 页面内切换会话（页面内导航不触发 onPageFinished）
         foregroundSessionVisible.set(true)
+        loginNoticeResumed = true
+        refreshLoginNotice()
         claimDialogs.setVisible(true)
         refreshForegroundSessionId()
         handler.postDelayed(foregroundSessionTick, FOREGROUND_SESSION_TICK_MS)
@@ -1216,10 +1365,16 @@ class RemoteControlActivity : BaseActivity() {
     override fun onStop() {
         super.onStop()
         activityVisible = false
+        if (rendererRecovery.pending) recoverRendererIfNeeded()
     }
 
     override fun onPause() {
         super.onPause()
+        loginNoticeResumed = false
+        loginNoticePageGeneration++
+        loginNoticeProbePending = false
+        handler.removeCallbacks(hideLoginNotice)
+        if (loginNoticeIsolated) binding.tvLoginNotice.visibility = View.GONE
         // 页面离开前台时不停止 WebView 事件监听；仅暂停前台会话抑制与 UI 轮询。
         foregroundSessionVisible.set(false)
         claimDialogs.setVisible(false)
@@ -1235,15 +1390,16 @@ class RemoteControlActivity : BaseActivity() {
     /** 周期刷新前台会话 ID 的 Runnable（跟随页面内会话切换）。 */
     private val foregroundSessionTick = object : Runnable {
         override fun run() {
-            if (!foregroundSessionVisible.get()) return
+            if (!foregroundSessionVisible.get() || !isWebPageAvailable()) return
             refreshForegroundSessionId()
+            refreshLoginNotice()
             handler.postDelayed(this, FOREGROUND_SESSION_TICK_MS)
         }
     }
 
     /** 提取当前前台会话 ID 并更新全局（供 TaskNotifier 判断是否抑制通知）。 */
     private fun refreshForegroundSessionId() {
-        if (!webViewReady || !ownsCurrentLoginSpace()) return
+        if (!isWebPageAvailable()) return
         if (Build.VERSION.SDK_INT >= 17 && isDestroyed) return
         binding.webView.evaluateJavascript("""
             (function() {
@@ -1255,7 +1411,7 @@ class RemoteControlActivity : BaseActivity() {
                 return '';
             })()
         """.trimIndent()) { result ->
-            if (current !== this || !ownsCurrentLoginSpace()) return@evaluateJavascript
+            if (!isWebPageAvailable()) return@evaluateJavascript
             val taskId = result?.trim('"')?.trim() ?: ""
             foregroundSessionId.set(taskId)
             if (taskId.isNotBlank() && taskId == pendingTaskId) pendingTaskId = ""
@@ -1265,7 +1421,7 @@ class RemoteControlActivity : BaseActivity() {
 
     /** 从页面 DOM 提取当前所在的任务会话 ID 并保存到连接仓库。 */
     private fun saveCurrentTaskId() {
-        if (!webViewReady || !ownsCurrentLoginSpace()) return
+        if (!isWebPageAvailable()) return
         val savedSpace = loginSpace ?: return
         binding.webView.evaluateJavascript("""
             (function() {
@@ -1293,6 +1449,7 @@ class RemoteControlActivity : BaseActivity() {
                 return '';
             })()
         """.trimIndent()) { result ->
+            if (webViewDisposed || rendererRecovery.pending) return@evaluateJavascript
             val taskId = result?.trim('"')?.trim() ?: ""
             if (taskId.isNotEmpty() && ConnectionRepository.getInstance(this).isLoginSpaceCurrent(savedSpace)) {
                 ConnectionRepository.getInstance(this).updateLastTaskId(savedSpace.connectionId, taskId)
@@ -1339,7 +1496,27 @@ class RemoteControlActivity : BaseActivity() {
         if (webViewDisposed) return
         webViewDisposed = true
         webViewReady = false
-        binding.webView.stopLoading()
+        if (::customWebViewClient.isInitialized) customWebViewClient.invalidate()
+        pendingSessionJump?.let { handler.removeCallbacks(it) }
+        pendingSessionJump = null
+        pendingSettingsOpen?.let { handler.removeCallbacks(it) }
+        pendingSettingsOpen = null
+        cancelReconnect("webview-disposed")
+        handler.removeCallbacks(foregroundSessionTick)
+        handler.removeCallbacks(hideLoginNotice)
+        loginNoticePageGeneration++
+        loginNoticeProbePending = false
+        binding.tvLoginNotice.visibility = View.GONE
+        foregroundSessionVisible.set(false)
+        foregroundSessionId.set("")
+        claimDialogs.clear()
+        if (::eventBridge.isInitialized) eventBridge.dispose()
+        eventBridgeAlive = false
+        // renderer 已死时 ScriptHandler.remove 也可能调用 WebView；destroy 会一并释放脚本。
+        eventCaptureScript = null
+        filePathCallback?.onReceiveValue(null)
+        filePathCallback = null
+        if (!rendererRecovery.pending) binding.webView.stopLoading()
         (binding.webView.parent as? ViewGroup)?.removeView(binding.webView)
         binding.webView.destroy()
     }

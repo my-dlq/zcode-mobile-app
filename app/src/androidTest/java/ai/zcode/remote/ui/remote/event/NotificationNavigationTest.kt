@@ -100,9 +100,11 @@ class NotificationNavigationTest {
         fun publish(task: String, type: TaskEventParser.TaskEvent.Type): android.app.Notification {
             val key = "$run|$task|${type.name}|${UUID.randomUUID()}"
             TaskNotifier.notify(context, TaskEventParser.TaskEvent(type, task, "通知跳转-$task", run, key))
-            val id = if (type == TaskEventParser.TaskEvent.Type.PERMISSION_REQUEST || type == TaskEventParser.TaskEvent.Type.ELICITATION_REQUEST) task.hashCode() else key.hashCode()
-            await("通知已发布") { manager.activeNotifications.any { it.id == id } }
-            return manager.activeNotifications.single { it.id == id }.notification
+            val interaction = type == TaskEventParser.TaskEvent.Type.PERMISSION_REQUEST || type == TaskEventParser.TaskEvent.Type.ELICITATION_REQUEST
+            val id = if (interaction) task.hashCode() else key.hashCode()
+            val tag = if (interaction) run else null
+            await("通知已发布") { manager.activeNotifications.any { it.id == id && it.tag == tag } }
+            return manager.activeNotifications.single { it.id == id && it.tag == tag }.notification
         }
         fun tap(task: String, notification: android.app.Notification) {
             if (task == "a" && evidence.length() == 0 &&
@@ -162,7 +164,7 @@ class NotificationNavigationTest {
             instrumentation.runOnMainSync { lifecycle.removeLifecycleCallback(callback); activity?.finish() }
             KeepAliveService.stop(context)
             server.close()
-            manager.activeNotifications.filter { it.notification.extras.getCharSequence("android.text").toString().contains(run) }.forEach { manager.cancel(it.id) }
+            manager.activeNotifications.filter { it.notification.extras.getCharSequence("android.text").toString().contains(run) }.forEach { manager.cancel(it.tag, it.id) }
             TaskNotificationInbox(context).use { it.writableDatabase.delete("event_inbox", "event_key LIKE ?", arrayOf("$run|%")) }
             prefs.zip(saved).forEach { (pref, values) -> pref.edit().clear().apply {
                 values.forEach { (key, value) -> when (value) {

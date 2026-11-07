@@ -72,7 +72,7 @@ class TaskNotificationPairingTest {
         val task = "$prefix-task"
         val a = request("$prefix|$task|PERMISSION_REQUEST|a", task)
         val b = request("$prefix|$task|PERMISSION_REQUEST|b", task)
-        fun activeKey() = manager.activeNotifications.firstOrNull { it.id == task.hashCode() }
+        fun activeKey() = manager.activeNotifications.firstOrNull { it.id == task.hashCode() && it.tag == prefix }
             ?.notification?.extras?.getString(TaskNotifier.EXTRA_INTERACTION_KEY)
         fun awaitKey(key: String) {
             val deadline = SystemClock.elapsedRealtime() + 10_000
@@ -97,7 +97,7 @@ class TaskNotificationPairingTest {
             while (activeKey() != null && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(20)
             assertNull(activeKey())
         } finally {
-            manager.cancel(task.hashCode())
+            manager.cancel(prefix, task.hashCode())
             settings.setNotificationEnabled(previousEnabled)
             settings.setNotifApprovalEnabled(previousApproval)
             TaskNotificationInbox(context).use { inbox ->

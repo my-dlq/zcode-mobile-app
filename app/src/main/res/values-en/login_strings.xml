@@ -5,7 +5,7 @@
     <string name="connection_reset_login_confirm">This resets the login for this connection and opens its sign-in page. Other connections are unaffected. Sign in with the ZCode account that owns the target computer.</string>
     <string name="connection_login_isolated">%1$s\n\nThis connection stores its login separately from other connections. Sign in once after isolation is first enabled.\n\nUse the ZCode account that owns the target computer. The webpage shows the actual signed-in account.</string>
     <string name="connection_login_shared">%1$s\n\nThe current system web component does not support separate logins. Connections share their login state. Update Android System WebView or the active web component before using multiple accounts.\n\nThe webpage shows the actual signed-in account.</string>
-    <string name="login_space_first_visit">Separate login enabled. Sign in with this computer’s account on first use. Tap for details.</string>
+    <string name="login_space_first_visit">This connection stores its sign-in separately from other connections. Tap for details.</string>
     <string name="login_space_unsupported">This web component cannot isolate accounts. Connections share their login. Tap for details.</string>
     <string name="login_space_failed">Could not initialize a separate login. Update your system web component and try again.</string>
     <string name="login_space_understood">Got it</string>
