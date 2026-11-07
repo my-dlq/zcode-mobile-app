@@ -21,6 +21,18 @@
         android:paddingStart="16dp"
         android:paddingEnd="8dp">
 
+        <!-- 平板宽屏时复用远程页面的侧栏切换能力；窄屏与非工作区页面由代码隐藏。 -->
+        <ImageButton
+            android:id="@+id/btnTopBarSidebar"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginEnd="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/sidebar_collapse"
+            android:padding="8dp"
+            android:src="@drawable/ic_sidebar_collapse"
+            android:visibility="gone" />
+
         <!-- 顶栏 LOGO：位图（ic_launcher_foreground.png）。
              ⚠️ 该图四周有大量透明留白——实测非透明图案只占图片宽 62%、高 54%，
              因此控件尺寸的约一半在视觉上是空的，图案看起来比控件小很多。
@@ -114,6 +126,21 @@
             android:fitsSystemWindows="false"
             android:overScrollMode="never"
             android:scrollbars="none" />
+
+        <!-- 用户隐藏原生顶部栏时仍可展开侧栏；避开远程页左上角 0~92px 的前进、后退、新建按钮。 -->
+        <ImageButton
+            android:id="@+id/btnOverlaySidebar"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_gravity="top|start"
+            android:layout_marginStart="104dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_sidebar_toggle"
+            android:contentDescription="@string/sidebar_collapse"
+            android:elevation="8dp"
+            android:padding="8dp"
+            android:src="@drawable/ic_sidebar_collapse"
+            android:visibility="gone" />
 
         <!-- 页面顶部精细加载进度条 -->
         <ProgressBar
