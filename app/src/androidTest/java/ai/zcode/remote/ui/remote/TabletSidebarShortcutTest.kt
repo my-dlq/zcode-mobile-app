@@ -39,11 +39,15 @@ class TabletSidebarShortcutTest {
             webView.loadDataWithBaseURL(
                 "https://example.test/",
                 """
-                    <div data-workspace-shell="true">
-                      <div data-workspace-sidebar-panel="true" style="width:264px">
+                    <div data-workspace-shell="true" style="position:relative;width:800px;height:600px">
+                      <div data-workspace-sidebar-panel="true" style="position:absolute;width:264px">
                         <aside aria-hidden="false"></aside>
                       </div>
-                      <div><button data-testid="desktop-top-nav-back">返回</button></div>
+                      <div style="position:absolute;top:0;left:0;height:56px;display:flex;align-items:center">
+                        <div><button data-testid="desktop-top-nav-back" style="width:28px;height:28px">返回</button></div>
+                      </div>
+                      <header data-workspace-header-variant="task"
+                        style="position:absolute;top:0;left:264px;width:536px;height:48px"></header>
                     </div>
                     <script>
                       window.matchMedia = function() { return { matches: true }; };
@@ -65,6 +69,18 @@ class TabletSidebarShortcutTest {
             assertTrue("测试页加载超时", loaded.await(10, TimeUnit.SECONDS))
             assertEquals("\"open\"", evaluate(webView, WorkspaceSidebarButtonScript.probe(true, "收起侧栏", "展开侧栏")))
             assertEquals("true", evaluate(webView, "!!document.getElementById('zcode-remote-sidebar-toggle')"))
+            assertEquals("true", evaluate(webView, """
+                (function() {
+                    var header = document.querySelector('header').getBoundingClientRect();
+                    var back = document.querySelector('[data-testid="desktop-top-nav-back"]').getBoundingClientRect();
+                    var toggle = document.getElementById('zcode-remote-sidebar-toggle').getBoundingClientRect();
+                    var center = header.top + header.height / 2;
+                    return Math.abs(back.top + back.height / 2 - center) < 0.1 &&
+                        Math.abs(toggle.top + toggle.height / 2 - center) < 0.1;
+                })()
+            """.trimIndent()))
+            assertEquals("0.17s", evaluate(webView,
+                "getComputedStyle(document.querySelector('[data-workspace-sidebar-panel]')).transitionDuration").trim('"'))
             evaluate(webView, "document.getElementById('zcode-remote-sidebar-toggle').click()")
             assertEquals("1", evaluate(webView, "window.shortcutCount"))
             assertEquals("\"closed\"", evaluate(webView, WorkspaceSidebarButtonScript.probe(true, "收起侧栏", "展开侧栏")))
@@ -72,6 +88,7 @@ class TabletSidebarShortcutTest {
             evaluate(webView, WorkspaceSidebarButtonScript.remove)
             assertEquals("false", evaluate(webView, "!!document.getElementById('zcode-remote-sidebar-toggle')"))
             assertEquals("false", evaluate(webView, "!!document.querySelector('[data-zcode-sidebar-nav-shifted]')"))
+            assertEquals("false", evaluate(webView, "!!document.getElementById('zcode-remote-sidebar-motion')"))
         } finally {
             instrumentation.runOnMainSync { webView.destroy() }
         }
