@@ -1,6 +1,9 @@
 <resources>
     <string name="app_name">ZMobile</string>
     <string name="topbar_toggle_theme">Toggle theme</string>
+    <string name="sidebar_collapse">Collapse task sidebar</string>
+    <string name="sidebar_expand">Expand task sidebar</string>
+    <string name="sidebar_toggle_failed">Could not toggle the task sidebar on this page</string>
     <string name="title_connections">Connections</string>
     <string name="hint_drag_to_sort">Long press and drag to reorder</string>
 
