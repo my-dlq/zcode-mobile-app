@@ -36,17 +36,40 @@ object ConnectionWebProfile {
             }.isSuccess
         }
         repository.completeLoginProfileDeletions(completed)
+        cleanIntroductionProfiles(context, repository.getAllConnections().map { it.loginSpace }, completed)
+    }
+
+    internal fun cleanIntroductionProfiles(
+        context: Context,
+        currentSpaces: Iterable<ConnectionLoginSpace>,
+        completed: Set<String>,
+    ) {
+        // 升级前已读且已重置的连接，唯一记录可能还在待清理的旧代；必须先迁移再删除。
+        currentSpaces.forEach { hasShownIntroduction(context, it) }
         val introductions = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
         completed.forEach { introductions.remove(it) }
         introductions.apply()
     }
 
-    fun hasShownIntroduction(context: Context, space: ConnectionLoginSpace): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(space.profileName, false)
+    fun hasShownIntroduction(context: Context, space: ConnectionLoginSpace): Boolean {
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val connectionKey = INTRODUCTION_CONNECTION_PREFIX + space.connectionId
+        if (preferences.getBoolean(connectionKey, false)) return true
 
-    fun markIntroductionShown(context: Context, space: ConnectionLoginSpace) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(space.profileName, true).apply()
+        // 说明只对连接展示一次，不随登录空间换代；升级时兼容任意旧代已展示的记录。
+        val legacyPrefix = space.profileName.substringBeforeLast("_g") + "_g"
+        val shownBefore = preferences.getBoolean(space.profileName, false) || preferences.all.any { (key, value) ->
+            key.startsWith(legacyPrefix) && value == true
+        }
+        if (shownBefore) preferences.edit().putBoolean(connectionKey, true).apply()
+        return shownBefore
     }
 
+    fun markIntroductionShown(context: Context, space: ConnectionLoginSpace) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(INTRODUCTION_CONNECTION_PREFIX + space.connectionId, true).apply()
+    }
+
+    private const val INTRODUCTION_CONNECTION_PREFIX = "introduction_connection:"
     private const val PREFS = "zcode_connection_profiles"
 }

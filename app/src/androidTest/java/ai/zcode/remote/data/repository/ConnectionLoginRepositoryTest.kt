@@ -82,6 +82,43 @@ class ConnectionLoginRepositoryTest {
         assertEquals(edited.id, reloaded.getLastActiveConnection()?.id)
     }
 
+    @Test fun sameSpaceUrlEditResolvesOldNotificationSourceToLatestAddress() {
+        val original = repository.saveConnection(connection())
+        val oldSource = original.loginSpace.sourceId
+        val updated = repository.saveConnection(original.copy(sid = "fresh-session",
+            url = "https://example.com/remote?mid=computer-a&sid=fresh-session"))
+        assertEquals(oldSource, updated.loginSpace.sourceId)
+        assertFalse(repository.isSourceDeleted(oldSource))
+        assertEquals(updated.url, ConnectionRepository(storageContext).findBySourceId(oldSource)?.url)
+        assertNotEquals(original.url, updated.url)
+    }
+
+    @Test fun deletedSameUrlCardDoesNotInvalidateSurvivingSource() {
+        val removed = repository.saveConnection(connection())
+        val second = repository.saveConnection(connection(mid = "computer-b"))
+        val surviving = repository.saveConnection(second.copy(url = removed.url,
+            mid = removed.mid, sid = removed.sid))
+        repository.deleteConnection(removed.id)
+        assertTrue(repository.isSourceDeleted(removed.url))
+        assertTrue(repository.isSourceDeleted(removed.loginSpace.sourceId))
+        assertFalse(repository.isSourceDeleted(surviving.loginSpace.sourceId))
+        assertEquals(surviving.id, repository.findBySourceId(surviving.loginSpace.sourceId)?.id)
+    }
+
+    @Test fun editedLaterGenerationKeepsCurrentSourceButNeverRevivesPreviousGeneration() {
+        val original = repository.saveConnection(connection())
+        val reset = repository.resetLogin(original.id)!!
+        val updated = repository.saveConnection(reset.copy(sid = "fresh-session",
+            url = "https://example.com/remote?mid=computer-a&sid=fresh-session"))
+        assertEquals(reset.loginSpace.sourceId, updated.loginSpace.sourceId)
+        assertEquals(updated.url, repository.findBySourceId(reset.loginSpace.sourceId)?.url)
+        assertNull(repository.findBySourceId(original.loginSpace.sourceId))
+        val moved = repository.saveConnection(updated.copy(mid = "computer-b",
+            url = "https://example.com/remote?mid=computer-b&sid=fresh-session"))
+        assertNotEquals(updated.loginSpace, moved.loginSpace)
+        assertNull(repository.findBySourceId(updated.loginSpace.sourceId))
+    }
+
     @Test fun editingLastActiveTargetUpdatesRecoveryEvenAfterRepositoryReload() {
         val first = repository.saveConnection(connection())
         repository.updateLastConnected(first.id)

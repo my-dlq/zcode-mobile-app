@@ -10,3 +10,25 @@ internal object ReconnectPolicy {
         return (INITIAL_DELAY_MS shl shift).coerceAtMost(MAX_DELAY_MS)
     }
 }
+
+/** renderer 死亡后只允许一次重建/交接；恢复与网络是否在线无关，不能再使用旧 view。 */
+internal class RendererRecoveryState {
+    enum class Action { NONE, RECREATE, HANDOVER }
+
+    var pending = false
+        private set
+    var requested = false
+        private set
+
+    fun markGone(): Boolean {
+        if (pending) return false
+        pending = true
+        return true
+    }
+
+    fun nextAction(ownsConnection: Boolean, visible: Boolean): Action {
+        if (!pending || requested || !ownsConnection) return Action.NONE
+        requested = true
+        return if (visible) Action.RECREATE else Action.HANDOVER
+    }
+}

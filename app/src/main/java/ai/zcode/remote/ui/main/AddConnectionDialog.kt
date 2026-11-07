@@ -155,6 +155,8 @@ class AddConnectionDialog : DialogFragment() {
         val saved = repository.saveConnection(connection)
         if (old != null && old.loginSpace != saved.loginSpace) {
             ai.zcode.remote.ui.remote.ConnectionLoginDialog.stopOldSession(requireContext(), old)
+        } else if (old != null) {
+            ai.zcode.remote.service.KeepAliveService.syncConnection(saved.loginSpace.sourceId)
         }
         onSavedListener?.invoke(saved)
         ToastUtils.show(requireContext(), getString(R.string.toast_save_success))

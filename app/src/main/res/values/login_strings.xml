@@ -5,7 +5,7 @@
     <string name="connection_reset_login_confirm">将清除本连接的登录状态并重新打开登录页面，其他连接不受影响。请使用目标电脑所属的 ZCode 账号登录。</string>
     <string name="connection_login_isolated">%1$s\n\n此连接独立保存登录状态，与其他连接互不影响。首次启用时需要重新登录一次。\n\n请使用目标电脑所属的 ZCode 账号登录；实际登录账号以网页显示为准。</string>
     <string name="connection_login_shared">%1$s\n\n当前系统网页组件不支持独立登录，不同连接会共用登录状态。请先更新 Android System WebView 或当前网页组件，再尝试多账号连接。\n\n实际登录账号以网页显示为准。</string>
-    <string name="login_space_first_visit">已启用独立登录，首次请登录此电脑所属账号。点此查看说明。</string>
+    <string name="login_space_first_visit">此连接独立保存登录状态，与其他连接互不影响。点此查看说明。</string>
     <string name="login_space_unsupported">当前网页组件不支持多账号隔离，连接会共用登录。点此查看说明。</string>
     <string name="login_space_failed">独立登录空间初始化失败，请更新系统网页组件后重试。</string>
     <string name="login_space_understood">知道了</string>

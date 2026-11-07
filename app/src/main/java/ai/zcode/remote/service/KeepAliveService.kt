@@ -23,6 +23,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import ai.zcode.remote.R
+import ai.zcode.remote.data.model.RemoteConnection
 import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.data.repository.ConnectionRepository
 import ai.zcode.remote.ui.remote.RemoteControlActivity
@@ -63,10 +64,24 @@ class KeepAliveService : Service() {
         /** 过滤同一进程内迟到的旧启动命令，不能覆盖新页面选中的目标。 */
         @Volatile private var expectedSourceId: String = ""
 
-        /** 删除目标时只清理现有服务，不为清理动作另启动前台服务。 */
-        fun forgetConnection(id: String, url: String, sourceId: String = id) {
+        /** 同空间编辑只同步现有目标；不启动服务，也不改变页面选中的预期身份。 */
+        fun syncConnection(sourceId: String) {
             val service = currentService ?: return
             service.handler.post {
+                if (currentService === service && service.monitorSourceId == sourceId) {
+                    service.syncMonitorConnection()
+                }
+            }
+        }
+
+        /** 删除目标时只清理现有服务，不为清理动作另启动前台服务。 */
+        fun forgetConnection(id: String, url: String, sourceId: String = id) {
+            // 可能尚无 Service 实例，也可能 B 的启动命令正在排队；只能遗忘匹配的 A。
+            if (expectedSourceId == sourceId) expectedSourceId = ""
+            val service = currentService ?: return
+            service.handler.post {
+                if (currentService !== service) return@post
+                if (expectedSourceId == sourceId) expectedSourceId = ""
                 if (service.monitorSourceId == sourceId ||
                     ((service.monitorSourceId.isBlank() || service.monitorSourceId == service.monitorUrl) && service.monitorUrl == url)
                 ) {
@@ -74,10 +89,10 @@ class KeepAliveService : Service() {
                     service.monitorUrl = ""
                     service.monitorName = ""
                     service.monitorSourceId = ""
-                    if (!RemoteControlActivity.hasLiveInstance()) activityOwnsEventSource = false
-                    if (!AppSettingsRepository.getInstance(service).isKeepAliveEnabled() &&
-                        !RemoteControlActivity.hasLiveInstance()
-                    ) service.stopSelf()
+                    if (expectedSourceId.isBlank() && !RemoteControlActivity.hasLiveInstance()) {
+                        activityOwnsEventSource = false
+                        if (!AppSettingsRepository.getInstance(service).isKeepAliveEnabled()) service.stopSelf()
+                    }
                 }
             }
         }
@@ -157,6 +172,14 @@ class KeepAliveService : Service() {
     private var monitorSourceId: String = ""
     private var monitorActiveSourceId: String = ""
     private var monitorStartedAtElapsedMs: Long = 0L
+    /** 渲染进程死亡后不能再调用 stopLoading 等页面 API，只允许销毁该实例。 */
+    private var deadMonitorWebView: WebView? = null
+
+    // 本地服务测试可注入独立仓库，避免替换进程单例或触碰真实连接数据。
+    internal var monitorRepository: ConnectionRepository? = null
+    internal var monitorWebViewFactory: ((Context) -> WebView)? = null
+    private val connectionRepository: ConnectionRepository
+        get() = monitorRepository ?: ConnectionRepository.getInstance(this)
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -191,8 +214,8 @@ class KeepAliveService : Service() {
             val sourceId = intent.getStringExtra(EXTRA_SOURCE_ID).orEmpty().ifBlank { it }
             // 删除前已排队的旧启动命令不能重新覆盖恢复目标。
             if ((expectedSourceId.isBlank() || expectedSourceId == sourceId) &&
-                !ConnectionRepository.getInstance(this).isSourceDeleted(sourceId)) {
-                ConnectionRepository.getInstance(this).findBySourceId(sourceId)?.let { connection ->
+                !connectionRepository.isSourceDeleted(sourceId)) {
+                connectionRepository.findBySourceId(sourceId)?.let { connection ->
                     monitorUrl = connection.url
                     monitorName = connection.name
                     monitorSourceId = connection.loginSpace.sourceId
@@ -301,17 +324,26 @@ class KeepAliveService : Service() {
         wakeLock?.takeIf { it.isHeld }?.release()
     }
 
+    /** 按完整 sourceId 验证代际，绝不凭裸 connectionId 跟随到重置后的新空间。 */
+    private fun syncMonitorConnection(): RemoteConnection? {
+        val connection = connectionRepository.findBySourceId(monitorSourceId) ?: return null
+        monitorUrl = connection.url
+        monitorName = connection.name
+        monitorSourceId = connection.loginSpace.sourceId
+        return connection
+    }
+
     private fun startHiddenMonitor() {
-        val url = monitorUrl
+        // refresh 后主页面仍可能取得所有权；创建前再次防止出现双事件源。
+        if (activityOwnsEventSource || RemoteControlActivity.hasLiveInstance()) return
+        val connection = syncMonitorConnection() ?: return
+        val url = connection.url
         if (url.isBlank()) {
             Log.w(TAG, "hidden monitor skipped: no target url")
             return
         }
-        val connection = ConnectionRepository.getInstance(this).findBySourceId(monitorSourceId) ?: return
         val space = connection.loginSpace
-        if (connection.url != url) return
-        monitorSourceId = space.sourceId
-        val webView = WebView(this)
+        val webView = monitorWebViewFactory?.invoke(this) ?: WebView(this)
         try {
             ConnectionWebProfile.bind(webView, space)
         } catch (failure: Exception) {
@@ -332,8 +364,8 @@ class KeepAliveService : Service() {
 
         val sourceId = space.sourceId
         val name = monitorName
-        fun isCurrent(): Boolean = monitorWebView === webView &&
-            ConnectionRepository.getInstance(this).isLoginSpaceCurrent(space)
+        fun isCurrent(): Boolean = monitorWebView === webView && deadMonitorWebView !== webView &&
+            connectionRepository.isLoginSpaceCurrent(space)
         val bridge = TaskEventBridge(
             sourceId = sourceId,
             deviceName = monitorName.ifBlank { getString(R.string.default_device_name) },
@@ -371,7 +403,10 @@ class KeepAliveService : Service() {
                 Log.e(TAG, "hidden event monitor renderer gone; will recreate on next health check")
                 // 渲染进程已死，页面连接随之断开。立即销毁旧 WebView，由下一次巡检
                 // 重建——重建前先确认主页面没有重新出现，避免双事件源并存。
-                handler.post { if (monitorWebView === webView) disposeEventSource() }
+                if (monitorWebView === webView) {
+                    deadMonitorWebView = webView
+                    handler.post { if (monitorWebView === webView) disposeEventSource() }
+                }
                 return true
             }
         }
@@ -401,17 +436,21 @@ class KeepAliveService : Service() {
     }
 
     private fun disposeEventSource() {
-        monitorCaptureScript?.let {
+        val webView = monitorWebView
+        val rendererGone = webView != null && deadMonitorWebView === webView
+        // 先断开引用，销毁过程中的旧回调不能再被认作当前事件源。
+        monitorWebView = null
+        if (!rendererGone) monitorCaptureScript?.let {
             runCatching { it.remove() }
         }
         monitorCaptureScript = null
         monitorBridge?.dispose()
         monitorBridge = null
-        monitorWebView?.let {
-            runCatching { it.stopLoading() }
+        webView?.let {
+            if (!rendererGone) runCatching { it.stopLoading() }
             runCatching { it.destroy() }
         }
-        monitorWebView = null
+        deadMonitorWebView = null
         monitorActiveSourceId = ""
         monitorStartedAtElapsedMs = 0L
     }
@@ -430,12 +469,17 @@ class KeepAliveService : Service() {
     }
 
     private fun refreshEventSource() {
-        val repository = ConnectionRepository.getInstance(this)
-        if (repository.isSourceDeleted(monitorSourceId.ifBlank { monitorUrl })) {
+        val repository = connectionRepository
+        // 同空间二维码临时参数/名称可变，健康实例不重载；下次重建必须用仓库最新值。
+        // 旧代或已删除目标只清理，不通过 connectionId 升代到新的登录空间。
+        if (repository.isSourceDeleted(monitorSourceId.ifBlank { monitorUrl }) ||
+            (monitorSourceId.isNotBlank() && syncMonitorConnection() == null)
+        ) {
             disposeEventSource()
             monitorUrl = ""
             monitorName = ""
             monitorSourceId = ""
+            return
         }
         if (activityOwnsEventSource || RemoteControlActivity.hasLiveInstance()) {
             // 主页面活着不等于事件源健康：vivo 等 ROM 会在后台回收 WebView 渲染

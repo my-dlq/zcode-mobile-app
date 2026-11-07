@@ -89,14 +89,16 @@ object TaskNotifier {
             val extras = active.notification.extras
             val source = extras.getString(EXTRA_SOURCE_ID).orEmpty()
             val legacyKey = extras.getString(EXTRA_INTERACTION_KEY).orEmpty()
-            if (source == id || source == url || legacyKey.startsWith("$id|") || legacyKey.startsWith("$url|")) {
+            if (setOf(id, url).any {
+                    TaskNotificationIdentity.belongsToSource(active.tag, source, legacyKey, it)
+                }) {
                 manager.cancel(active.tag, active.id)
             }
         }
     }
 
     private fun sourceIdOf(event: TaskEventParser.TaskEvent): String =
-        event.sourceId.ifBlank { event.eventKey.substringBefore('|', "") }
+        TaskNotificationIdentity.sourceId(event.sourceId, event.eventKey)
 
     private fun handleResolved(context: Context, event: TaskEventParser.TaskEvent): Unit = synchronized(interactionLock) {
         val key = event.eventKey
@@ -105,16 +107,21 @@ object TaskNotifier {
         val id = event.taskId.hashCode()
         // 配对身份存在系统通知自身，进程重建也不会忘记当前横幅属于 A 还是 B。
         // 旧版本无身份的通知宁可保留，绝不按 taskId 猜测后误撤销新审批。
-        val active = manager.activeNotifications.firstOrNull { it.id == id && it.tag == null }
-        val matches = active?.notification?.extras?.getString(EXTRA_INTERACTION_KEY) == key
-        if (matches && System.currentTimeMillis() - active!!.postTime < RESOLVE_COOLDOWN_MS) {
+        val sourceId = sourceIdOf(event)
+        val matching = manager.activeNotifications.filter {
+            it.id == id && TaskNotificationIdentity.matchesInteraction(
+                it.tag, it.notification.extras.getString(EXTRA_SOURCE_ID).orEmpty(),
+                it.notification.extras.getString(EXTRA_INTERACTION_KEY).orEmpty(), sourceId, key,
+            )
+        }
+        if (matching.any { System.currentTimeMillis() - it.postTime < RESOLVE_COOLDOWN_MS }) {
             Log.d(TAG, "resolved ignored during cooldown: id=" + event.taskId + " key=" + key)
             return@synchronized
         }
         // 只清理与该交互严格对应的未投递记录。同一任务连续出现第二次审批时，
         // 旧 resolved 的 eventKey 与新请求不同，绝不会误伤新通知。
         inbox(context).discardPendingInteraction(event)
-        if (matches) manager.cancel(id)
+        for (active in matching) manager.cancel(active.tag, active.id)
     }
 
     private fun drainAsync(context: Context, delayMs: Long = 0L) {
@@ -213,7 +220,8 @@ object TaskNotifier {
             .setAutoCancel(true)
             .build()
         return try {
-            // 审批/提问使用 taskId 作为通知 ID：同一任务的新交互替换旧横幅，避免堆积。
+            // 审批/提问以完整 sourceId 为 tag、taskId 为通知 ID：同连接同任务替换横幅，
+            // 不同连接即使共享 taskId 或 source 的 hash 碰撞，也不会覆盖彼此。
             // 完成/失败必须使用稳定的 eventKey 作为 ID：这些事件没有 pending 交互，
             // 若统一退化为 "general"，多个后台任务的完成/失败会互相 cancel，最终
             // 永远只留下最后一条 —— 表现为“失败/完成通知几次后就没了”。
@@ -222,8 +230,22 @@ object TaskNotifier {
             } else {
                 event.eventKey.ifEmpty { event.taskId }.hashCode()
             }
-            if (isInteraction(event)) manager.cancel(id)
-            manager.notify(id, notification)
+            if (isInteraction(event)) {
+                val sourceId = sourceIdOf(event)
+                // 仅迁移明确属于本连接的旧无 tag 横幅；归属未知或冲突的一律保留。
+                for (active in manager.activeNotifications) {
+                    if (active.id == id && active.tag == null &&
+                        TaskNotificationIdentity.belongsToSource(
+                            active.tag, active.notification.extras.getString(EXTRA_SOURCE_ID).orEmpty(),
+                            active.notification.extras.getString(EXTRA_INTERACTION_KEY).orEmpty(), sourceId,
+                        )
+                    ) manager.cancel(active.tag, active.id)
+                }
+                manager.cancel(sourceId, id)
+                manager.notify(sourceId, id, notification)
+            } else {
+                manager.notify(id, notification)
+            }
             Log.i(TAG, "notification posted: type=${event.type} id=${event.taskId} key=${event.eventKey}")
             ConsumeResult.DELIVERED
         } catch (e: Exception) {
