@@ -36,8 +36,9 @@ The following screenshots show the current app on a real device. Click an image 
 - **Startup:** Opens the connection list after exiting and restarting the app so you can choose a connection, without automatically reopening the previous session.
 - **Event Notifications:** Supports task completion, task failure, approval requests, and questions. Each type can be enabled separately; tapping a notification opens the corresponding task session.
 - **Background Keep-Alive:** An optional foreground service and screen-off WakeLock reduce background disconnections, with guidance for battery optimization settings.
-- **Display Settings:** Supports immersive full-screen mode, a configurable top bar, and full-page scaling. Includes Light, Dark, and Graphite themes.
+- **Display Settings:** Supports immersive full-screen mode, a configurable top bar, and full-page scaling. The remote page's top-bar menu provides quick actions to enter or exit full-screen mode and hide the top bar. Includes Light, Dark, and Graphite themes.
 - **Page Adaptation:** Improves narrow-screen layouts for task lists, settings, and dialogs, adjusts conversation input text size, and reduces unwanted keyboard activation when opening project or model menus.
+- **Landscape Sidebar:** On tablets and landscape phones, a button to the left of the remote page navigation controls collapses or expands the task sidebar. This button is hidden in phone portrait mode.
 - **Mobile Interaction:** Handles Back actions by page level, keeps inputs clear of the keyboard, reduces accidental touches, and supports long-press text selection.
 - **Security Features:** Supports fingerprint authentication and pattern verification.
 - **Interface Language:** Supports Simplified Chinese, English, and following the system language.
@@ -60,6 +61,8 @@ You can save multiple connections. **Only the most recently opened connection is
 | Settings in the app menu | Display, themes, language, notifications, security verification, background keep-alive, and app updates |
 | Settings inside the remote page | ZCode workspace, model, plugin, and other remote settings; available options depend on the official page |
 
+The remote page's top-bar menu also provides quick full-screen and hide-top-bar actions. To show the top bar again, return to the connection list, open the upper-right menu, then go to **Settings → Display & Fullscreen** and enable **Show top bar**.
+
 ## Notifications and Back Navigation
 
 ### Four Notification Types
@@ -80,10 +83,12 @@ You can save multiple connections. **Only the most recently opened connection is
 
 | Current Screen | Back Action |
 | --- | --- |
-| Keyboard, menu, dialog, or side panel is open | Dismiss the keyboard or close the topmost overlay first |
+| Keyboard, menu, dialog, or slide-out panel is open | Dismiss the keyboard or close the topmost overlay first |
 | Task session, settings detail, or another nested page | Return to the previous page level |
 | Remote task home page | Press Back again within the prompted time window to open the app's connection list |
 | App connection list | Return directly to the phone's home screen |
+
+Use the button at the upper left of the remote page to collapse or expand the landscape task sidebar. The system Back button does not toggle it.
 
 Returning to the phone's home screen from the connection list retains the remote page in the background, and background keep-alive continues according to your settings. Restarting the app after exiting opens the connection list, including after Android has reclaimed the process. Tap a connection to open its remote page.
 
@@ -135,6 +140,8 @@ First check that you have the latest available APK. If the issue persists, open 
 - An Android emulator or an Android device with USB debugging enabled
 
 Before building, point `JAVA_HOME` to JDK 17 and configure the local Android SDK through Android Studio.
+
+Building a release APK also requires `ZCODE_RELEASE_*` signing properties in a local `gradle.properties` file at the project root; see `gradle.properties.example` for the property names. Do not commit that file or the signing key. Use the original signing key to allow upgrades over published versions.
 
 ## Build and Test
 
