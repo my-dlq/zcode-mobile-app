@@ -28,6 +28,9 @@
     <string name="menu_zoom_in">Zoom in</string>
     <string name="menu_zoom_out">Zoom out</string>
     <string name="menu_zoom_value">Page zoom %1$d%%</string>
+    <string name="menu_enter_fullscreen">Enter fullscreen</string>
+    <string name="menu_exit_fullscreen">Exit fullscreen</string>
+    <string name="menu_hide_topbar">Hide top bar</string>
     <string name="menu_more_options">More connection actions</string>
 
     <!-- Settings -->

@@ -28,6 +28,9 @@
     <string name="menu_zoom_in">放大页面</string>
     <string name="menu_zoom_out">缩小页面</string>
     <string name="menu_zoom_value">页面缩放 %1$d%%</string>
+    <string name="menu_enter_fullscreen">进入全屏</string>
+    <string name="menu_exit_fullscreen">退出全屏</string>
+    <string name="menu_hide_topbar">隐藏顶部栏</string>
     <string name="menu_more_options">更多连接操作</string>
 
     <!-- 设置 -->

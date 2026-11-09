@@ -9,6 +9,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.Rect
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -552,20 +553,28 @@ class RemoteControlActivity : BaseActivity() {
         binding.btnTopBarMenu.setOnClickListener { showMainMenu() }
     }
 
-    /**
-     * 顶栏菜单：缩放快捷方式（缩小/放大）+「设置」「关于」。
-     * 远程页已在某个连接中，不提供扫描/地址连接（会切换连接，属列表页职责）。
-     * 用独立的 popup_remote_menu.xml，与主界面菜单互不影响。
-     */
+    /** 远程页顶栏菜单提供显示快捷操作；横屏时限制高度，由菜单内部滚动。 */
     private fun showMainMenu() {
         mainMenuPopup?.dismiss()
 
         val menuBinding = PopupRemoteMenuBinding.inflate(layoutInflater)
         val popupWidth = resources.getDimensionPixelSize(R.dimen.main_menu_width)
+        val menuGap = (8 * resources.displayMetrics.density).toInt()
+        val anchorLocation = IntArray(2)
+        binding.btnTopBarMenu.getLocationOnScreen(anchorLocation)
+        val visibleFrame = Rect()
+        binding.root.getWindowVisibleDisplayFrame(visibleFrame)
+        val visibleBottom = visibleFrame.bottom.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
+        val availableHeight = (visibleBottom - anchorLocation[1] - binding.btnTopBarMenu.height - menuGap * 2)
+            .coerceAtLeast((104 * resources.displayMetrics.density).toInt())
+        menuBinding.root.measure(
+            View.MeasureSpec.makeMeasureSpec(popupWidth, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+        )
         val popup = PopupWindow(
             menuBinding.root,
             popupWidth,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
+            minOf(menuBinding.root.measuredHeight, availableHeight),
             true
         ).apply {
             elevation = resources.displayMetrics.density * 12f
@@ -604,6 +613,24 @@ class RemoteControlActivity : BaseActivity() {
             popup.dismiss()
             ConnectionLoginDialog.show(this, connectionId)
         }
+        menuBinding.menuItemFullscreenLabel.setText(
+            if (isFullscreen) R.string.menu_exit_fullscreen else R.string.menu_enter_fullscreen
+        )
+        menuBinding.menuItemFullscreen.setOnClickListener {
+            popup.dismiss()
+            isFullscreen = !isFullscreen
+            appSettings.setFullscreenEnabled(isFullscreen)
+            setupImmersiveAndScreen()
+            ToastUtils.show(
+                this,
+                getString(if (isFullscreen) R.string.toast_entered_immersive else R.string.toast_exited_immersive),
+            )
+        }
+        menuBinding.menuItemHideTopBar.setOnClickListener {
+            popup.dismiss()
+            appSettings.setRemoteTopBarVisible(false)
+            applyTopBarVisibility()
+        }
         menuBinding.menuItemZoomOut.setOnClickListener { stepZoom(-STEP) }
         menuBinding.menuItemZoomIn.setOnClickListener { stepZoom(STEP) }
         menuBinding.menuItemSettings.setOnClickListener {
@@ -616,7 +643,7 @@ class RemoteControlActivity : BaseActivity() {
         }
 
         mainMenuPopup = popup
-        popup.showAsDropDown(binding.btnTopBarMenu, -popupWidth + binding.btnTopBarMenu.width, 8)
+        popup.showAsDropDown(binding.btnTopBarMenu, -popupWidth + binding.btnTopBarMenu.width, menuGap)
     }
 
     /**
@@ -1024,6 +1051,9 @@ class RemoteControlActivity : BaseActivity() {
                 var headerBackBtn = allTopInteractives.find(function(b) {
                     if (b.id === '__zcode_detail_back') return false;
                     if (b.id === '__zcode_title_back') return false;
+                    // 横屏侧栏按钮固定在左上角 32px 热区，会命中下方几何兜底；
+                    // 网页首页的“后退”按钮也可见但已禁用，均不能消费系统返回。
+                    if (b.id === 'zcode-remote-sidebar-toggle' || b.disabled || b.getAttribute('aria-disabled') === 'true') return false;
                     if (b.getAttribute('aria-label') === '切换设备') return false;
                     if (!isVisible(b)) return false;
 
