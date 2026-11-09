@@ -11,6 +11,11 @@ internal object WorkspaceSidebarButtonScript {
 
     val remove: String = """
         (function() {
+            if (window.__zcodeSidebarObserver) {
+                window.__zcodeSidebarObserver.disconnect();
+                delete window.__zcodeSidebarObserver;
+            }
+            delete window.__zcodeSidebarRefresh;
             var button = document.getElementById('zcode-remote-sidebar-toggle');
             if (button) button.remove();
             var motion = document.getElementById('zcode-remote-sidebar-motion');
@@ -31,6 +36,7 @@ internal object WorkspaceSidebarButtonScript {
 
     private val PROBE = """
         (function() {
+          function sync() {
             var button = document.getElementById('zcode-remote-sidebar-toggle');
             var motion = document.getElementById('zcode-remote-sidebar-motion');
             var shifted = document.querySelector('[data-zcode-sidebar-nav-shifted="true"]');
@@ -134,6 +140,39 @@ internal object WorkspaceSidebarButtonScript {
                 return collapsed;
             }
             return updateButton() ? 'closed' : 'open';
+          }
+          // SPA 切换任务会重建工作区导航；在同一次 DOM 提交后补齐按钮，避免等原生轮询。
+          window.__zcodeSidebarRefresh = sync;
+          if (!__ELIGIBLE__) {
+              if (window.__zcodeSidebarObserver) {
+                  window.__zcodeSidebarObserver.disconnect();
+                  delete window.__zcodeSidebarObserver;
+              }
+          } else if (!window.__zcodeSidebarObserver && document.documentElement) {
+              var relevantSelector = '[data-workspace-shell="true"], ' +
+                  '[data-workspace-sidebar-panel="true"], ' +
+                  '[data-testid="desktop-top-nav-back"], aside';
+              var observer = new MutationObserver(function(mutations) {
+                  var relevant = mutations.some(function(mutation) {
+                      if (mutation.type === 'attributes') {
+                          return mutation.target.matches &&
+                              mutation.target.matches('[data-workspace-sidebar-panel="true"] aside');
+                      }
+                      return Array.from(mutation.addedNodes).concat(Array.from(mutation.removedNodes))
+                          .some(function(node) {
+                              return node.nodeType === 1 &&
+                                  ((node.matches && node.matches(relevantSelector)) ||
+                                   (node.querySelector && node.querySelector(relevantSelector)));
+                          });
+                  });
+                  if (relevant && window.__zcodeSidebarRefresh) window.__zcodeSidebarRefresh();
+              });
+              observer.observe(document.documentElement, {
+                  childList: true, subtree: true, attributes: true, attributeFilter: ['aria-hidden']
+              });
+              window.__zcodeSidebarObserver = observer;
+          }
+          return sync();
         })()
     """.trimIndent()
 }
