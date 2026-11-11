@@ -10,8 +10,14 @@ class ZCodeWebChromeClient(
     private val allowedHost: String?,
     private val onProgressUpdate: (progress: Int) -> Unit,
     private val onTitleReceived: (title: String) -> Unit,
-    private val onOpenFileChooser: (filePathCallback: ValueCallback<Array<Uri>>, fileChooserParams: FileChooserParams) -> Boolean
+    private val onOpenFileChooser: (filePathCallback: ValueCallback<Array<Uri>>, fileChooserParams: FileChooserParams) -> Boolean,
+    private val onOpenWindow: (WebView, android.os.Message) -> Boolean = { _, _ -> false },
 ) : WebChromeClient() {
+
+    override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message?): Boolean {
+        if (view == null || resultMsg == null) return false
+        return onOpenWindow(view, resultMsg)
+    }
 
     override fun onProgressChanged(view: WebView?, newProgress: Int) {
         super.onProgressChanged(view, newProgress)
