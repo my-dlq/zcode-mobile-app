@@ -35,6 +35,7 @@ import ai.zcode.remote.data.repository.ConnectionRepository
 import ai.zcode.remote.data.model.RemoteConnection
 import ai.zcode.remote.data.model.ConnectionLoginSpace
 import ai.zcode.remote.ui.remote.web.ConnectionWebProfile
+import ai.zcode.remote.ui.remote.web.AuthorizationWindowController
 import ai.zcode.remote.ui.remote.web.TaskListVisibilityScript
 import ai.zcode.remote.utils.UrlParser
 import ai.zcode.remote.databinding.ActivityRemoteControlBinding
@@ -97,6 +98,7 @@ class RemoteControlActivity : BaseActivity() {
     @Volatile
     private var eventBridgeCreatedAtElapsedMs = 0L
     private var mainMenuPopup: PopupWindow? = null
+    private var authorizationWindow: AuthorizationWindowController? = null
 
     private lateinit var customWebViewClient: ZCodeWebViewClient
     private lateinit var workspaceSidebar: WorkspaceSidebarController
@@ -529,6 +531,7 @@ class RemoteControlActivity : BaseActivity() {
                 webViewLp.bottomMargin = keyboardHeight
                 binding.webView.layoutParams = webViewLp
             }
+            authorizationWindow?.updateKeyboardHeight(keyboardHeight)
 
             // 状态栏透明沉浸：原生顶部栏不被状态栏遮挡，paddingTop 动态 = 状态栏高
             val statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
@@ -609,6 +612,10 @@ class RemoteControlActivity : BaseActivity() {
         }
 
         renderZoomRow()
+        menuBinding.menuItemConnectionList.setOnClickListener {
+            popup.dismiss()
+            exitToDeviceList()
+        }
         menuBinding.menuItemLogin.setOnClickListener {
             popup.dismiss()
             ConnectionLoginDialog.show(this, connectionId)
@@ -691,7 +698,13 @@ class RemoteControlActivity : BaseActivity() {
         @Suppress("DEPRECATION")
         settings.allowUniversalAccessFromFileURLs = true
         settings.javaScriptCanOpenWindowsAutomatically = true
-        settings.setSupportMultipleWindows(false)
+        // 3.18.0 先开授权窗口、原页持续轮询；禁用多窗口会覆盖原页并丢失轮询。
+        settings.setSupportMultipleWindows(true)
+        authorizationWindow = AuthorizationWindowController(
+            binding.webContentContainer,
+            loginSpace ?: return,
+            isOwnerActive = { isWebPageAvailable() },
+        )
         settings.mediaPlaybackRequiresUserGesture = false
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         settings.cacheMode = WebSettings.LOAD_DEFAULT
@@ -727,6 +740,8 @@ class RemoteControlActivity : BaseActivity() {
             appContext = applicationContext,
             onPageStart = pageStart@ {
                 if (!isWebPageAvailable()) return@pageStart
+                // 原页轮询 ready 后会 location.replace；此时收起授权页，露出登录结果。
+                authorizationWindow?.close()
                 workspaceSidebar.onPageStarted()
                 pageLoading = true
                 loginNoticePageGeneration++
@@ -783,6 +798,7 @@ class RemoteControlActivity : BaseActivity() {
             onRenderProcessGone = {
                 // 必须在回调内同步失效并销毁，不能让迟到回调/按钮/重连再触碰死 view。
                 if (rendererRecovery.markGone()) {
+                    authorizationWindow?.close(rendererGone = true)
                     disposeWebView()
                     recoverRendererIfNeeded()
                 }
@@ -824,6 +840,9 @@ class RemoteControlActivity : BaseActivity() {
                     filePathCallback = null
                     false
                 }
+            },
+            onOpenWindow = { opener, resultMsg ->
+                authorizationWindow?.open(opener, resultMsg) == true
             }
         )
 
@@ -915,6 +934,7 @@ class RemoteControlActivity : BaseActivity() {
      * 系统返回键与页面内注入的「返回」按钮共用此逻辑，保证两者行为一致。
      */
     private fun dispatchPageBack() {
+        if (authorizationWindow?.handleBack() == true) return
         if (!isWebPageAvailable()) {
             // 恢复中的旧页面不能探测 JS，但返回仍应能离开，不能困在等待恢复的空白页。
             if (rendererRecovery.pending) handoverEventSourceToKeepAlive("renderer-gone-back")
@@ -1556,6 +1576,8 @@ class RemoteControlActivity : BaseActivity() {
 
     private fun disposeWebView() {
         if (webViewDisposed) return
+        authorizationWindow?.close()
+        authorizationWindow = null
         webViewDisposed = true
         webViewReady = false
         if (::workspaceSidebar.isInitialized) workspaceSidebar.dispose()

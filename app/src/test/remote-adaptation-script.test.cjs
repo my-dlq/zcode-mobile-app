@@ -11,6 +11,7 @@ const activity = fs.readFileSync(path.join(base, 'RemoteControlActivity.kt'), 'u
 const backSource = activity.slice(activity.indexOf('private fun dispatchPageBack()'))
   .split('"""')[1];
 const webSource = fs.readFileSync(path.join(base, 'web/ZCodeWebViewClient.kt'), 'utf8');
+const cssSource = webSource.split('val css = """')[1].split('"""')[0];
 const marker = webSource.indexOf('window.__zcodeDashboardAdaptive =');
 const behaviorSource = webSource.slice(webSource.lastIndexOf('(function()', marker), webSource.indexOf('""".trimIndent()', marker));
 const style = { display: 'block', visibility: 'visible', opacity: '1', pointerEvents: 'auto' };
@@ -126,6 +127,47 @@ test('明确设置返回仍有效，后台隐藏的设置返回不可命中', ()
 test('打开菜单时先关闭菜单，不触发页面返回', () => {
   assert.deepEqual(backHarness('popup'), { result: 'dismiss-popup', deviceClicks: 0, settingClicks: 0 });
 });
+test('远程菜单直接返回连接列表并保留后台远程页', () => {
+  const listener = activity.match(/menuBinding\.menuItemConnectionList\.setOnClickListener\s*\{([^}]+)\}/)?.[1];
+  assert.ok(listener);
+  assert.match(listener, /popup\.dismiss\(\)[\s\S]*exitToDeviceList\(\)/);
+  assert.doesNotMatch(listener, /finish\(|dispatchPageBack|clear/);
+  const menu = fs.readFileSync(path.join(__dirname, '../main/res/layout/popup_remote_menu.xml'), 'utf8');
+  assert.match(menu, /menuItemConnectionList/);
+  assert.equal((menu.match(/android:layout_height="44dp"/g) || []).length, 8);
+  assert.match(menu, /android:src="@drawable\/ic_login"/);
+  assert.doesNotMatch(menu, /android:layout_height="52dp"/);
+  assert.match(menu, /android:paddingTop="4dp"/);
+  assert.match(menu, /android:paddingBottom="4dp"/);
+  for (const locale of ['values', 'values-en']) {
+    const strings = fs.readFileSync(path.join(__dirname, `../main/res/${locale}/strings.xml`), 'utf8');
+    assert.equal((strings.match(/name="menu_connection_list"/g) || []).length, 1);
+  }
+});
+
+test('设置侧栏覆盖紧凑横排及双行网格，导航保留独立纵向滚动', () => {
+  const rules = [...cssSource.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  const rule = selector => {
+    const found = rules.find(([, selectors]) => selectors.trim() === selector);
+    assert.ok(found, `缺少规则：${selector}`);
+    return found[2];
+  };
+  const root = rule('[data-testid="settings-page"]');
+  assert.match(root, /grid-template-columns:\s*44px minmax\(0, 1fr\) !important/);
+  assert.match(root, /grid-template-rows:\s*minmax\(0, 1fr\) !important/);
+  const column = rule('[data-testid="settings-page"] > aside[class*="min-w-0"] > div.flex.h-full.flex-col');
+  assert.match(column, /flex-direction:\s*column !important/);
+  assert.match(column, /align-items:\s*stretch !important/);
+  const nav = rule('[data-testid="settings-page"] > aside[class*="min-w-0"] nav');
+  assert.match(nav, /min-height:\s*0 !important/);
+  assert.match(nav, /min-width:\s*44px !important/);
+  assert.match(nav, /overflow-y:\s*auto !important/);
+  assert.match(nav, /overflow-x:\s*hidden !important/);
+  const scrollbar = rule('[data-testid="settings-page"] > aside[class*="min-w-0"] nav::-webkit-scrollbar');
+  assert.match(scrollbar, /width:\s*2px !important/);
+  assert.ok(!cssSource.includes('aside[class*="min-w-0"] nav[class*="overflow-y-auto"]'));
+});
+
 test('完整适配脚本重注不增加行为监听，样式和模式仍可更新', () => {
   const nodes = new Map(); let observers = 0, listeners = 0;
   function node() { return { style: {}, appendChild(n) { nodes.set(n.id, n); }, querySelector: () => null,

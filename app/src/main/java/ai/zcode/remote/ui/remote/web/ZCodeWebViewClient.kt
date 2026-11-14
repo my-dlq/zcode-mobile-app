@@ -939,21 +939,47 @@ class ZCodeWebViewClient(
                 padding: 12px 14px !important;
             }
 
-            /* 7. 设置中心左栏豁免 sidebar 50px 强制：原生设计为 grid-cols-[64px]
-               图标栏，强制 50px 后内部 nav(px-2 内边距 + 40px 按钮 ≈ 56px)横向溢出，
-            	overflow-x:auto 产生左右滚动条。恢复原生尺寸并禁横向滚动 */
-            aside[class*="min-w-0"], aside[class*="min-w-0"] nav,
-            aside[class*="min-w-0"] div.workspace-sidebar,
-            aside[class*="min-w-0"] div.settings-sidebar,
-            aside[class*="min-w-0"] nav[class*="overflow-y-auto"] {
-                width: auto !important;
-                min-width: 0 !important;
-                max-width: none !important;
-                padding: 0 !important;
+            /* 7. 设置导航尺寸与滚动集中声明；移除旧版 overflow-y-auto
+               高特异性规则，避免覆盖导航尺寸。紧凑布局兼容见规则 11。 */
+            [data-testid="settings-page"] > aside[class*="min-w-0"] {
+                width: 44px !important;
+                min-width: 44px !important;
+                max-width: 44px !important;
+                min-height: 0 !important;
+                max-height: 100% !important;
+                overflow: hidden !important;
             }
-aside[class*="min-w-0"] nav {
-    overflow-x: hidden !important;
-}
+            [data-testid="settings-page"] > aside[class*="min-w-0"] > div.flex.h-full.flex-col {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                min-height: 0 !important;
+            }
+            [data-testid="settings-page"] > aside[class*="min-w-0"] nav {
+                flex: 1 1 auto !important;
+                width: 44px !important;
+                min-width: 44px !important;
+                max-width: 44px !important;
+                min-height: 0 !important;
+                padding: 0 2px 12px !important;
+                margin: 0 !important;
+                overflow-x: hidden !important;
+                overflow-y: auto !important;
+                scrollbar-width: auto !important;
+                scrollbar-color: auto !important;
+            }
+            /* 仅压细设置导航滚动条，保留触摸滚动；颜色跟随主题。
+               不设 scrollbar-width:thin，避免新版 WebView 用系统宽度覆盖 2px。 */
+            [data-testid="settings-page"] > aside[class*="min-w-0"] nav::-webkit-scrollbar {
+                width: 2px !important;
+            }
+            [data-testid="settings-page"] > aside[class*="min-w-0"] nav::-webkit-scrollbar-track {
+                background: transparent !important;
+            }
+            [data-testid="settings-page"] > aside[class*="min-w-0"] nav::-webkit-scrollbar-thumb {
+                background: color-mix(in srgb, currentColor 28%, transparent) !important;
+                border-radius: 2px !important;
+            }
+
 
             /* 8. 设置中心列表条目防溢出兜底：子智能体/MCP 服务器/命令等页面的
                条目是 cursor-default 的 grid 行，窄屏下长名称会把行内右侧的
@@ -997,62 +1023,50 @@ aside[class*="min-w-0"] nav {
                 pointer-events: none !important;
             }
 
-            /* 11. 设置中心左侧导航栏缩窄 + 图标居中。
-               原生结构：返回工作区(40px) + 14 个导航按钮(40×40 + 4px margin-bottom)
-               + 3 个分组标题(space-y-4 间距 16px) + 底部账号/帮助 —— 总高超出 851
-               出现滑动条，且分组间 16px gap 与组内 4px gap 混排导致图标间距不等。
-               统一压缩为 32×32 + 2px 间距 + 隐藏分组标题 + 侧边栏收窄。
-               ⚠️ 设置中心导航按钮全是 rounded-xl，规则 4 的 :not([class*="rounded-xl"])
-               排除不会命中它们——必须用此专属规则统一压缩（含 rounded-xl）。
-               关键：分组容器（space-y-4 / space-y-1）用 display:contents 打散——
-               容器自身不产生布局（border-t/padding/margin 全部失效），按钮直接
-               成为同级 flex item，间距完全统一 34px、图标垂直居中 8px 偏移。
-               初版用 margin-top 压缩仍残留 16px gap（space-y-4 的容差），
-               实测 display:contents 才能彻底统一。
-               作用域限定 aside nav button[aria-label]（设置中心左栏导航按钮），
-               避免误伤主界面侧边栏（那是 aside[class*="workspace-sidebar"]）。
-               侧边栏收窄：64px → 44px（比 40px 图标稍宽一点，左右各 2px 留白），
-               图标居中（nav padding 0 2px，44-40=4/2=2），选中/Hover/Tooltip 保留。
-               网格布局：grid-cols-[64px] → 44px，主内容随侧边栏缩窄向左扩展。
-               左箭头对齐：返回工作区按钮容器（px-2 pb-3 pt-3）改为 padding 12px 2px，
-               与菜单图标一致（实测 center=22 对齐）。
-               2026-10-20：按需求恢复小火箭引导入口，保留远端原有点击行为。 */
-            aside[class*="min-w-0"] {
-                width: 44px !important;
-                min-width: 44px !important;
-                max-width: 44px !important;
-            }
-            /* 网格布局：第一列 64px → 44px，主内容向左扩展 */
-            div[class*="grid-cols-[64px_minmax(0,1fr)]"] {
-                grid-template-columns: 44px minmax(0, 1fr) !important;
-            }
-            aside[class*="min-w-0"] nav {
-                width: 44px !important;
-                padding: 0 2px 12px !important;
-                margin: 0 !important;
-            }
-            aside nav button[aria-label][class*="rounded-xl"] {
+            /* 11. 设置导航统一为 44px 纵向图标栏，按钮保持 40×40。
+               2026-11-14 真机实测：远端 compact-web 将侧栏改为横向 flex，
+               但本地仍固定 44px，返回/搜索占满宽度后 nav 被压成 0px；
+               返回箭头因此居中、其它图标全被裁掉。规则 7 恢复纵向布局及
+               独立纵向滚动，分组 display:contents 消除桌面/紧凑布局间距。
+               仅作用于设置页，避免误伤工作区和模型供应商侧栏。 */
+            [data-testid="settings-page"] > aside nav button[aria-label][class*="rounded-xl"] {
                 width: 40px !important;
                 height: 40px !important;
                 min-width: 40px !important;
                 min-height: 40px !important;
+                justify-content: center !important;
                 margin: 0 !important;
                 padding: 0 !important;
             }
-            /* 隐藏设置中心导航里的分组标题（基础设置/Agent 能力/数据与统计） */
-            aside nav div[class*="text-ui-sm"][class*="max-lg:sr-only"] {
+            [data-testid="settings-page"] > aside nav button[aria-label] > span:not(:has(svg)):not(:has(img)),
+            [data-testid="settings-page"] > aside button[aria-label="搜索设置"] > span,
+            [data-testid="settings-page"] > aside button[aria-label="返回工作区"] > span {
                 display: none !important;
             }
-            /* 分组容器（space-y-4 / space-y-1）display:contents 打散布局 */
-            aside nav div[class*="space-y-4"],
-            aside nav div[class*="space-y-1"] {
+            /* 搜索与返回区域不参与压缩，导航独占剩余高度。 */
+            [data-testid="settings-page"] > aside > div.flex.h-full.flex-col > div:has(> button[aria-label="搜索设置"]) {
+                flex-shrink: 0 !important;
+                padding: 0 2px 8px !important;
+            }
+            [data-testid="settings-page"] > aside button[aria-label="搜索设置"] {
+                width: 40px !important;
+                min-width: 40px !important;
+                justify-content: center !important;
+                padding: 0 !important;
+            }
+            /* 隐藏设置中心导航里的分组标题（基础设置/Agent 能力/数据与统计）。 */
+            [data-testid="settings-page"] > aside nav div[class*="text-ui-sm"][class*="max-lg:sr-only"] {
+                display: none !important;
+            }
+            [data-testid="settings-page"] > aside nav div[class*="space-y-4"],
+            [data-testid="settings-page"] > aside nav div[class*="space-y-1"] {
                 display: contents !important;
             }
             /* 左箭头（返回工作区）与菜单图标对齐：容器 padding 12px 2px + margin-left 0 */
-            aside div[class*="px-2 pb-3 pt-3"] {
+            [data-testid="settings-page"] aside div[class*="px-2 pb-3 pt-3"] {
                 padding: 12px 2px !important;
             }
-            aside div button[aria-label="返回工作区"] {
+            [data-testid="settings-page"] aside div button[aria-label="返回工作区"] {
                 width: 40px !important;
                 height: 40px !important;
                 min-width: 40px !important;
@@ -1399,6 +1413,7 @@ aside[class*="min-w-0"] nav {
                   生效；桌面端 WebView 不会触发（项目只在移动端注入）。 */
             [data-testid="settings-page"] {
                 grid-template-columns: 44px minmax(0, 1fr) !important;
+                grid-template-rows: minmax(0, 1fr) !important;
             }
 
             /* 28. 设置中心侧边栏按钮的 hover tooltip 屏蔽（2026-09-26 需求，模拟器实测）。
@@ -1527,7 +1542,7 @@ aside[class*="min-w-0"] nav {
                 span.truncate.text-ui-base.font-medium {
                 font-size: 12px !important;
             }
-            /* 路径：长路径（如 D:\oss-install-windows-flow-assias-aiagent 38 字符）
+            /* 路径：较长的工作区路径（约 38 字符）
                默认 14px 会被截断；缩到 9px 让长路径完整显示（实测 9px 自然宽 ~232
                ≤ 可用 233）。**⚠️ 测量陷阱**：path 是 truncate，截断宽度由 flex
                父容器 min-w-0 决定，getBoundingClientRect().width 一直是 323，

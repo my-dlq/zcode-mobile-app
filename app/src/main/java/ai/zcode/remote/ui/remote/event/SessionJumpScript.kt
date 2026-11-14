@@ -6,8 +6,7 @@ package ai.zcode.remote.ui.remote.event
  * `data-testid="task-item-<taskId>"` 标记，脚本先精确查找；找不到时
  * 逐级展开工作区分组（aria-expanded）再重试，最多尝试 20 秒。
  *
- * 参考同类远程客户端的 session_jump 实现，改为面向 Android WebView
- * evaluateJavascript 的原生注入。
+ * 通过 Android WebView 的 evaluateJavascript 注入执行。
  */
 object SessionJumpScript {
 

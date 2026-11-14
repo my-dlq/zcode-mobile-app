@@ -37,7 +37,7 @@ import ai.zcode.remote.ui.remote.web.ConnectionWebProfile
 
 /**
  * 后台保活前台服务：远程会话期间息屏/切后台后保持进程存活，避免 WebView 会话
- * 被系统回收导致重连。实现参考 zremote（Flutter 版）的 KeepAliveService：
+ * 被系统回收导致重连。保活机制：
  * - 常驻低优先级通知（IMPORTANCE_LOW，无声音不弹窗）
  * - 息屏时持有 PARTIAL_WAKE_LOCK，防止 CPU 休眠中断 WebSocket 长连接；
  *   亮屏释放（亮屏时系统本身不会深度休眠，无需额外持有）
