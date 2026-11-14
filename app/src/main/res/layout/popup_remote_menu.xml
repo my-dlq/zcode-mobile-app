@@ -13,27 +13,69 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:paddingTop="8dp"
-    android:paddingBottom="8dp">
+    android:paddingTop="4dp"
+    android:paddingBottom="4dp">
 
-    <TextView
+    <LinearLayout
+        android:id="@+id/menuItemConnectionList"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp">
+
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_back"
+            app:tint="?attr/zcTextPrimary" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
+            android:text="@string/menu_connection_list"
+            android:textColor="?attr/zcTextPrimary"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/menuItemLogin"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
+        android:layout_height="44dp"
         android:background="?attr/selectableItemBackground"
-        android:gravity="center_vertical"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:text="@string/connection_login_title"
-        android:textColor="?attr/zcTextPrimary"
-        android:textSize="14sp"
         android:clickable="true"
-        android:focusable="true" />
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp">
+
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_login"
+            app:tint="?attr/zcTextPrimary" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
+            android:text="@string/connection_login_title"
+            android:textColor="?attr/zcTextPrimary"
+            android:textSize="14sp" />
+    </LinearLayout>
 
     <LinearLayout
         android:id="@+id/menuItemFullscreen"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
+        android:layout_height="44dp"
         android:background="?attr/selectableItemBackground"
         android:clickable="true"
         android:focusable="true"
@@ -62,7 +104,7 @@
     <LinearLayout
         android:id="@+id/menuItemHideTopBar"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
+        android:layout_height="44dp"
         android:background="?attr/selectableItemBackground"
         android:clickable="true"
         android:focusable="true"
@@ -90,8 +132,8 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:layout_marginTop="4dp"
-        android:layout_marginBottom="4dp"
+        android:layout_marginTop="2dp"
+        android:layout_marginBottom="2dp"
         android:layout_marginStart="16dp"
         android:layout_marginEnd="16dp"
         android:background="?attr/zcBorderColor" />
@@ -99,7 +141,7 @@
     <LinearLayout
         android:id="@+id/menuItemZoomOut"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
+        android:layout_height="44dp"
         android:background="?attr/selectableItemBackground"
         android:clickable="true"
         android:focusable="true"
@@ -128,7 +170,7 @@
     <LinearLayout
         android:id="@+id/menuItemZoomIn"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
+        android:layout_height="44dp"
         android:background="?attr/selectableItemBackground"
         android:clickable="true"
         android:focusable="true"
@@ -157,8 +199,8 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:layout_marginTop="4dp"
-        android:layout_marginBottom="4dp"
+        android:layout_marginTop="2dp"
+        android:layout_marginBottom="2dp"
         android:layout_marginStart="16dp"
         android:layout_marginEnd="16dp"
         android:background="?attr/zcBorderColor" />
@@ -166,7 +208,7 @@
     <LinearLayout
         android:id="@+id/menuItemSettings"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
+        android:layout_height="44dp"
         android:background="?attr/selectableItemBackground"
         android:clickable="true"
         android:focusable="true"
@@ -194,7 +236,7 @@
     <LinearLayout
         android:id="@+id/menuItemAbout"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
+        android:layout_height="44dp"
         android:background="?attr/selectableItemBackground"
         android:clickable="true"
         android:focusable="true"

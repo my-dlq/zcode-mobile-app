@@ -612,6 +612,10 @@ class RemoteControlActivity : BaseActivity() {
         }
 
         renderZoomRow()
+        menuBinding.menuItemConnectionList.setOnClickListener {
+            popup.dismiss()
+            exitToDeviceList()
+        }
         menuBinding.menuItemLogin.setOnClickListener {
             popup.dismiss()
             ConnectionLoginDialog.show(this, connectionId)

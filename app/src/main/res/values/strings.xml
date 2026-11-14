@@ -177,6 +177,7 @@
     <string name="menu_copy_url">复制地址</string>
     <string name="menu_clear_cache">清除网页缓存</string>
     <string name="menu_back_home">退出到设备列表</string>
+    <string name="menu_connection_list">返回连接列表</string>
     <string name="toast_copied">已复制远程 URL 到剪贴板</string>
     <string name="toast_cache_cleared">网页缓存已清除</string>
     <string name="press_again_to_exit">再按一次退出远程控制</string>
