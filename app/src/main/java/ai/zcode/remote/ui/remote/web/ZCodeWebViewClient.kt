@@ -1542,7 +1542,7 @@ class ZCodeWebViewClient(
                 span.truncate.text-ui-base.font-medium {
                 font-size: 12px !important;
             }
-            /* 路径：长路径（如 D:\oss-install-windows-flow-assias-aiagent 38 字符）
+            /* 路径：较长的工作区路径（约 38 字符）
                默认 14px 会被截断；缩到 9px 让长路径完整显示（实测 9px 自然宽 ~232
                ≤ 可用 233）。**⚠️ 测量陷阱**：path 是 truncate，截断宽度由 flex
                父容器 min-w-0 决定，getBoundingClientRect().width 一直是 323，
