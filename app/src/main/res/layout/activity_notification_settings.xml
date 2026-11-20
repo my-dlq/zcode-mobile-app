@@ -111,10 +111,19 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="22dp"
+                android:layout_marginBottom="8dp"
+                android:text="@string/notif_reminder_title"
+                android:textColor="?attr/zcTextMuted"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
                 app:cardBackgroundColor="?attr/zcBgSurface"
                 app:cardCornerRadius="18dp"
                 app:cardElevation="0dp"
@@ -122,16 +131,15 @@
                 app:strokeWidth="1dp">
 
                 <include
-                    android:id="@+id/notificationReminder"
+                    android:id="@+id/sharedReminder"
                     layout="@layout/item_notification_reminder" />
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- 事件类型 -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="26dp"
-                android:layout_marginBottom="10dp"
+                android:layout_marginTop="20dp"
+                android:layout_marginBottom="8dp"
                 android:text="@string/notif_settings_section_events"
                 android:textColor="?attr/zcTextMuted"
                 android:textSize="12sp"
@@ -147,189 +155,19 @@
                 app:strokeWidth="1dp">
 
                 <LinearLayout
+                    android:id="@+id/eventRows"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:paddingTop="4dp"
-                    android:paddingBottom="4dp">
-
-                    <!-- 审批请求 -->
-                    <LinearLayout
-                        android:id="@+id/rowNotifApproval"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackground"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:gravity="center_vertical"
-                        android:minHeight="60dp"
-                        android:orientation="horizontal"
-                        android:paddingStart="16dp"
-                        android:paddingTop="10dp"
-                        android:paddingEnd="16dp"
-                        android:paddingBottom="10dp">
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/notif_settings_approval"
-                                android:textColor="?attr/zcTextPrimary"
-                                android:textSize="15sp" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:text="@string/notif_settings_approval_summary"
-                                android:textColor="?attr/zcTextMuted"
-                                android:textSize="12sp" />
-                        </LinearLayout>
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/switchNotifApproval"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <!-- 提问确认 -->
-                    <LinearLayout
-                        android:id="@+id/rowNotifElicitation"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackground"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:gravity="center_vertical"
-                        android:minHeight="60dp"
-                        android:orientation="horizontal"
-                        android:paddingStart="16dp"
-                        android:paddingTop="10dp"
-                        android:paddingEnd="16dp"
-                        android:paddingBottom="10dp">
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/notif_settings_elicitation"
-                                android:textColor="?attr/zcTextPrimary"
-                                android:textSize="15sp" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:text="@string/notif_settings_elicitation_summary"
-                                android:textColor="?attr/zcTextMuted"
-                                android:textSize="12sp" />
-                        </LinearLayout>
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/switchNotifElicitation"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <!-- 任务完成 -->
-                    <LinearLayout
-                        android:id="@+id/rowNotifCompleted"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackground"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:gravity="center_vertical"
-                        android:minHeight="60dp"
-                        android:orientation="horizontal"
-                        android:paddingStart="16dp"
-                        android:paddingTop="10dp"
-                        android:paddingEnd="16dp"
-                        android:paddingBottom="10dp">
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/notif_settings_completed"
-                                android:textColor="?attr/zcTextPrimary"
-                                android:textSize="15sp" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:text="@string/notif_settings_completed_summary"
-                                android:textColor="?attr/zcTextMuted"
-                                android:textSize="12sp" />
-                        </LinearLayout>
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/switchNotifCompleted"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <!-- 任务失败 -->
-                    <LinearLayout
-                        android:id="@+id/rowNotifFailed"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackground"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:gravity="center_vertical"
-                        android:minHeight="60dp"
-                        android:orientation="horizontal"
-                        android:paddingStart="16dp"
-                        android:paddingTop="10dp"
-                        android:paddingEnd="16dp"
-                        android:paddingBottom="10dp">
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/notif_settings_failed"
-                                android:textColor="?attr/zcTextPrimary"
-                                android:textSize="15sp" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:text="@string/notif_settings_failed_summary"
-                                android:textColor="?attr/zcTextMuted"
-                                android:textSize="12sp" />
-                        </LinearLayout>
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/switchNotifFailed"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
-                </LinearLayout>
+                    android:orientation="vertical" />
             </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/notif_reminder_event_hint"
+                android:textColor="?attr/zcTextMuted"
+                android:textSize="12sp" />
         </LinearLayout>
     </ScrollView>
 </LinearLayout>

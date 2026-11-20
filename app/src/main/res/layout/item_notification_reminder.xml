@@ -37,10 +37,29 @@
     </LinearLayout>
 
     <ImageView
+        android:id="@+id/chevron"
         android:layout_width="20dp"
         android:layout_height="20dp"
         android:layout_marginStart="8dp"
         android:contentDescription="@null"
         android:src="@drawable/ic_chevron_right"
         app:tint="?attr/zcTextMuted" />
+
+    <ImageButton
+        android:id="@+id/modeButton"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@null"
+        android:padding="12dp"
+        android:src="@drawable/ic_more"
+        android:visibility="gone" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/receiveSwitch"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:minHeight="48dp"
+        android:saveEnabled="false"
+        android:visibility="gone" />
 </LinearLayout>
