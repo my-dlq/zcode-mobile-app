@@ -1,7 +1,10 @@
 package ai.zcode.remote.data.repository
 
+import ai.zcode.remote.data.model.TaskReminderMode
+import ai.zcode.remote.data.model.TaskReminderType
 import android.content.Context
 import android.content.SharedPreferences
+import android.provider.Settings
 import java.security.MessageDigest
 import java.security.SecureRandom
 
@@ -198,6 +201,32 @@ class AppSettingsRepository(context: Context) {
 
     fun setNotifFailedEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_NOTIF_FAILED, enabled).apply()
+    }
+
+    /** 没有选择时，由系统中是否存在旧渠道决定默认路由。 */
+    fun getTaskReminderMode(type: TaskReminderType): TaskReminderMode? {
+        val saved = prefs.getString("task_reminder_mode_${type.key}", null)
+        return TaskReminderMode.entries.firstOrNull { it.name == saved }
+    }
+
+    fun setTaskReminderMode(type: TaskReminderType, mode: TaskReminderMode?) {
+        prefs.edit().putString("task_reminder_mode_${type.key}", mode?.name).apply()
+    }
+
+    /** Android 7 不支持通知渠道。空字符串表示静默，未保存时使用系统默认音。 */
+    fun getTaskReminderTone(type: TaskReminderType?): String =
+        prefs.getString("task_reminder_tone_${type?.key ?: "shared"}", null)
+            ?: Settings.System.DEFAULT_NOTIFICATION_URI.toString()
+
+    fun setTaskReminderTone(type: TaskReminderType?, tone: String) {
+        prefs.edit().putString("task_reminder_tone_${type?.key ?: "shared"}", tone).apply()
+    }
+
+    fun isTaskReminderVibrationEnabled(type: TaskReminderType?): Boolean =
+        prefs.getBoolean("task_reminder_vibration_${type?.key ?: "shared"}", true)
+
+    fun setTaskReminderVibrationEnabled(type: TaskReminderType?, enabled: Boolean) {
+        prefs.edit().putBoolean("task_reminder_vibration_${type?.key ?: "shared"}", enabled).apply()
     }
 
     private fun hashPattern(pattern: List<Int>, salt: ByteArray): String {

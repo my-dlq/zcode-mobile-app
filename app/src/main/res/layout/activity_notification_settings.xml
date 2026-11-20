@@ -111,6 +111,21 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardBackgroundColor="?attr/zcBgSurface"
+                app:cardCornerRadius="18dp"
+                app:cardElevation="0dp"
+                app:strokeColor="?attr/zcBorderColor"
+                app:strokeWidth="1dp">
+
+                <include
+                    android:id="@+id/notificationReminder"
+                    layout="@layout/item_notification_reminder" />
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- 事件类型 -->
             <TextView
                 android:layout_width="wrap_content"

@@ -3,6 +3,7 @@ package ai.zcode.remote.ui.settings
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import ai.zcode.remote.R
 import ai.zcode.remote.ui.BaseActivity
 import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.databinding.ActivityNotificationSettingsBinding
@@ -24,6 +25,9 @@ class NotificationSettingsActivity : BaseActivity() {
         appSettings = AppSettingsRepository.getInstance(this)
 
         binding.btnBack.setOnClickListener { finish() }
+        binding.notificationReminder.root.setOnClickListener { NotificationReminderActivity.start(this) }
+        binding.notificationReminder.title.setText(R.string.notif_reminder_title)
+        binding.notificationReminder.summary.setText(R.string.notif_reminder_entry_summary)
 
         // 行点击 = 开关切换
         binding.rowNotifMaster.setOnClickListener { binding.switchNotifMaster.toggle() }

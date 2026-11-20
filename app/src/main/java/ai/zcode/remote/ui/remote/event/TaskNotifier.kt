@@ -1,17 +1,19 @@
 package ai.zcode.remote.ui.remote.event
 
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import ai.zcode.remote.R
+import ai.zcode.remote.data.model.TaskReminderMode
+import ai.zcode.remote.data.model.TaskReminderType
 import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.data.repository.ConnectionRepository
 import ai.zcode.remote.ui.remote.RemoteControlActivity
@@ -24,8 +26,6 @@ import java.util.concurrent.TimeUnit
  * 同一个 eventKey 被标记为已投递后会保留，重连快照及用户划掉通知均不会令它再次弹出。
  */
 object TaskNotifier {
-    private const val CHANNEL_EVENTS = "zcode_task_events"
-    private const val CHANNEL_APPROVALS = "zcode_task_approvals"
     private const val TAG = "ZCodeEvent"
     private const val RESOLVE_COOLDOWN_MS = 30_000L
     internal const val EXTRA_INTERACTION_KEY = "ai.zcode.remote.interaction_key"
@@ -40,23 +40,6 @@ object TaskNotifier {
     private val interactionLock = Any()
     @Volatile private var inboxInstance: TaskNotificationInbox? = null
     private var consumerRunning = false
-
-    fun ensureChannels(context: Context) {
-        if (Build.VERSION.SDK_INT < 26) return
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_APPROVALS, context.getString(R.string.notif_channel_approvals),
-                NotificationManager.IMPORTANCE_HIGH).apply {
-                description = context.getString(R.string.notif_channel_approvals_desc)
-            },
-        )
-        manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_EVENTS, context.getString(R.string.notif_channel_events),
-                NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = context.getString(R.string.notif_channel_events_desc)
-            },
-        )
-    }
 
     /** WebView 事件生产入口，不在回调线程同步发布通知。 */
     fun notify(context: Context, event: TaskEventParser.TaskEvent) {
@@ -190,12 +173,23 @@ object TaskNotifier {
             Log.d(TAG, "notification disabled; event consumed: type=${event.type} id=${event.taskId}")
             return ConsumeResult.DISCARDED
         }
-        ensureChannels(context)
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
             Log.w(TAG, "system notifications disabled; event consumed: id=${event.taskId}")
             return ConsumeResult.DISCARDED
         }
-        val channel = channelFor(event)
+        val reminderType = when (event.type) {
+            TaskEventParser.TaskEvent.Type.PERMISSION_REQUEST -> TaskReminderType.APPROVAL
+            TaskEventParser.TaskEvent.Type.ELICITATION_REQUEST -> TaskReminderType.QUESTION
+            TaskEventParser.TaskEvent.Type.TASK_COMPLETED -> TaskReminderType.COMPLETED
+            TaskEventParser.TaskEvent.Type.TASK_FAILED -> TaskReminderType.FAILED
+            TaskEventParser.TaskEvent.Type.RESOLVED -> return ConsumeResult.DISCARDED
+        }
+        val mode = TaskReminderChannels.mode(context, reminderType)
+        val channel = if (Build.VERSION.SDK_INT >= 26) {
+            TaskReminderChannels.ensure(context, reminderType, mode)
+        } else {
+            TaskReminderChannels.SHARED_ID
+        }
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26 &&
             manager.getNotificationChannel(channel)?.importance == NotificationManager.IMPORTANCE_NONE
@@ -218,6 +212,18 @@ object TaskNotifier {
                 putString(EXTRA_SOURCE_ID, sourceIdOf(event))
             })
             .setAutoCancel(true)
+            .apply {
+                if (Build.VERSION.SDK_INT < 26) {
+                    val profile = reminderType.takeIf { mode == TaskReminderMode.CUSTOM }
+                    val tone = settings.getTaskReminderTone(profile)
+                    val vibration = settings.isTaskReminderVibrationEnabled(profile)
+                    if (tone.isNotEmpty()) setSound(Uri.parse(tone))
+                    if (vibration) setDefaults(Notification.DEFAULT_VIBRATE)
+                    if (isInteraction(event) && (tone.isNotEmpty() || vibration)) {
+                        setPriority(NotificationCompat.PRIORITY_HIGH)
+                    }
+                }
+            }
             .build()
         return try {
             // 审批/提问以完整 sourceId 为 tag、taskId 为通知 ID：同连接同任务替换横幅，
@@ -268,9 +274,6 @@ object TaskNotifier {
         TaskEventParser.TaskEvent.Type.TASK_FAILED -> settings.isNotifFailedEnabled()
         TaskEventParser.TaskEvent.Type.RESOLVED -> false
     }
-
-    private fun channelFor(event: TaskEventParser.TaskEvent) =
-        if (isInteraction(event)) CHANNEL_APPROVALS else CHANNEL_EVENTS
 
     private fun notificationText(context: Context, event: TaskEventParser.TaskEvent): Pair<String, String> {
         val titleRes = when (event.type) {
