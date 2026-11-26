@@ -12,7 +12,6 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import ai.zcode.remote.R
-import ai.zcode.remote.data.model.TaskReminderMode
 import ai.zcode.remote.data.model.TaskReminderType
 import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.data.repository.ConnectionRepository
@@ -184,13 +183,20 @@ object TaskNotifier {
             TaskEventParser.TaskEvent.Type.TASK_FAILED -> TaskReminderType.FAILED
             TaskEventParser.TaskEvent.Type.RESOLVED -> return ConsumeResult.DISCARDED
         }
-        val mode = TaskReminderChannels.mode(context, reminderType)
-        val channel = if (Build.VERSION.SDK_INT >= 26) {
-            TaskReminderChannels.ensure(context, reminderType, mode)
-        } else {
-            TaskReminderChannels.SHARED_ID
-        }
+        val profile = settings.taskReminderProfile(reminderType)
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channel = if (Build.VERSION.SDK_INT >= 26) {
+            val baseId = TaskReminderChannels.ensure(context, reminderType)
+            val base = manager.getNotificationChannel(baseId)
+            if (base?.importance == NotificationManager.IMPORTANCE_NONE) return ConsumeResult.DISCARDED
+            if (base != null && profile != null && !profile.isSilent) {
+                TaskReminderChannels.ensurePreset(context, reminderType, base, profile)
+            } else {
+                baseId
+            }
+        } else {
+            TaskReminderChannels.channelId(reminderType)
+        }
         if (Build.VERSION.SDK_INT >= 26 &&
             manager.getNotificationChannel(channel)?.importance == NotificationManager.IMPORTANCE_NONE
         ) return ConsumeResult.DISCARDED
@@ -214,16 +220,18 @@ object TaskNotifier {
             .setAutoCancel(true)
             .apply {
                 if (Build.VERSION.SDK_INT < 26) {
-                    val profile = reminderType.takeIf { mode == TaskReminderMode.CUSTOM }
-                    val tone = settings.getTaskReminderTone(profile)
-                    val vibration = settings.isTaskReminderVibrationEnabled(profile)
-                    if (tone.isNotEmpty()) setSound(Uri.parse(tone))
+                    val originalTone = settings.getTaskReminderTone(reminderType).takeIf { it.isNotEmpty() }?.let(Uri::parse)
+                    val tone = if (profile == null) originalTone else profile.soundUri(context, originalTone)
+                    val vibration = profile?.vibrationEnabled ?: settings.isTaskReminderVibrationEnabled(reminderType)
+                    if (tone != null) setSound(tone)
                     if (vibration) setDefaults(Notification.DEFAULT_VIBRATE)
-                    if (isInteraction(event) && (tone.isNotEmpty() || vibration)) {
+                    if (isInteraction(event) && (tone != null || vibration)) {
                         setPriority(NotificationCompat.PRIORITY_HIGH)
                     }
                 }
             }
+            // 静默只改变这条通知的提醒方式，保留通知栏消息和已有系统渠道。
+            .setSilent(!settings.areTaskReminderAlertsEnabled() || profile?.isSilent == true)
             .build()
         return try {
             // 审批/提问以完整 sourceId 为 tag、taskId 为通知 ID：同连接同任务替换横幅，

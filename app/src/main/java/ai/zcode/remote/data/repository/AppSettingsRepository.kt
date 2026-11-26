@@ -1,9 +1,12 @@
 package ai.zcode.remote.data.repository
 
-import ai.zcode.remote.data.model.TaskReminderMode
+import ai.zcode.remote.data.model.TaskReminderProfile
+import ai.zcode.remote.data.model.TaskReminderSound
+import ai.zcode.remote.data.model.TaskReminderTone
 import ai.zcode.remote.data.model.TaskReminderType
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.Uri
 import android.provider.Settings
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -203,30 +206,68 @@ class AppSettingsRepository(context: Context) {
         prefs.edit().putBoolean(KEY_NOTIF_FAILED, enabled).apply()
     }
 
-    /** 没有选择时，由系统中是否存在旧渠道决定默认路由。 */
-    fun getTaskReminderMode(type: TaskReminderType): TaskReminderMode? {
-        val saved = prefs.getString("task_reminder_mode_${type.key}", null)
-        return TaskReminderMode.entries.firstOrNull { it.name == saved }
+    internal fun areTaskReminderAlertsEnabled(): Boolean =
+        prefs.getBoolean(KEY_TASK_REMINDER_ALERTS_ENABLED, true)
+
+    internal fun setTaskReminderAlertsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_TASK_REMINDER_ALERTS_ENABLED, enabled).apply()
     }
 
-    fun setTaskReminderMode(type: TaskReminderType, mode: TaskReminderMode?) {
-        prefs.edit().putString("task_reminder_mode_${type.key}", mode?.name).apply()
+    /** 缺省沿用原有提醒方式，另保留前一版用户已经选过的静默。 */
+    internal fun taskReminderProfile(type: TaskReminderType): TaskReminderProfile? {
+        val saved = prefs.getString("task_reminder_profile_${type.key}", null)?.split('|', limit = 5)
+        if (saved != null && saved.size >= 3) {
+            val tone = if (saved[0] == "system" && saved.size == 5) {
+                val uri = Uri.parse(Uri.decode(saved[3]))
+                TaskReminderSound.SystemTone(uri, saved[4]).takeIf {
+                    !uri.authority.isNullOrEmpty() && (uri.scheme == "content" || uri.scheme == "android.resource")
+                }
+            } else {
+                TaskReminderTone.entries.firstOrNull { it.key == saved[0] }
+            }
+            val sound = saved[1].toBooleanStrictOrNull()
+            val vibration = saved[2].toBooleanStrictOrNull()
+            if (sound != null && vibration != null) {
+                return TaskReminderProfile(sound, vibration, tone ?: TaskReminderTone.DEFAULT)
+            }
+        }
+        return if (prefs.getBoolean("task_reminder_silent_${type.key}", false)) {
+            TaskReminderProfile(soundEnabled = false, vibrationEnabled = false)
+        } else {
+            null
+        }
     }
+
+    internal fun setTaskReminderProfile(type: TaskReminderType, profile: TaskReminderProfile?) {
+        val key = "task_reminder_profile_${type.key}"
+        prefs.edit().apply {
+            if (profile == null) {
+                remove(key)
+            } else {
+                val switches = "${profile.soundEnabled}|${profile.vibrationEnabled}"
+                val stored = when (val tone = profile.tone) {
+                    is TaskReminderTone -> "${tone.key}|$switches"
+                    is TaskReminderSound.SystemTone -> "system|$switches|${Uri.encode(tone.source.toString())}|${tone.name}"
+                }
+                putString(key, stored)
+            }
+            remove("task_reminder_silent_${type.key}")
+        }.apply()
+    }
+
+    /** 仅在升级后初始化缺失的独立设置时读取旧版偏好。 */
+    internal fun previousTaskReminderMode(type: TaskReminderType): String? =
+        prefs.getString("task_reminder_mode_${type.key}", null)
 
     /** Android 7 不支持通知渠道。空字符串表示静默，未保存时使用系统默认音。 */
-    fun getTaskReminderTone(type: TaskReminderType?): String =
-        prefs.getString("task_reminder_tone_${type?.key ?: "shared"}", null)
+    fun getTaskReminderTone(type: TaskReminderType): String =
+        prefs.getString("task_reminder_tone_${type.key}", null)
+            ?: prefs.getString("task_reminder_tone_shared", null).takeUnless { previousTaskReminderMode(type) == "CUSTOM" }
             ?: Settings.System.DEFAULT_NOTIFICATION_URI.toString()
 
-    fun setTaskReminderTone(type: TaskReminderType?, tone: String) {
-        prefs.edit().putString("task_reminder_tone_${type?.key ?: "shared"}", tone).apply()
-    }
-
-    fun isTaskReminderVibrationEnabled(type: TaskReminderType?): Boolean =
-        prefs.getBoolean("task_reminder_vibration_${type?.key ?: "shared"}", true)
-
-    fun setTaskReminderVibrationEnabled(type: TaskReminderType?, enabled: Boolean) {
-        prefs.edit().putBoolean("task_reminder_vibration_${type?.key ?: "shared"}", enabled).apply()
+    fun isTaskReminderVibrationEnabled(type: TaskReminderType): Boolean {
+        val inherited = previousTaskReminderMode(type) == "CUSTOM" || prefs.getBoolean("task_reminder_vibration_shared", true)
+        return prefs.getBoolean("task_reminder_vibration_${type.key}", inherited)
     }
 
     private fun hashPattern(pattern: List<Int>, salt: ByteArray): String {
@@ -292,6 +333,7 @@ class AppSettingsRepository(context: Context) {
         private const val KEY_NOTIF_ELICITATION = "key_notif_elicitation"
         private const val KEY_NOTIF_COMPLETED = "key_notif_completed"
         private const val KEY_NOTIF_FAILED = "key_notif_failed"
+        private const val KEY_TASK_REMINDER_ALERTS_ENABLED = "task_reminder_alerts_enabled"
         private const val KEY_PAGE_ZOOM = "key_page_zoom"
         private const val KEY_DASHBOARD_MODE = "key_dashboard_mode"
         private const val KEY_APP_LANGUAGE = "key_app_language"

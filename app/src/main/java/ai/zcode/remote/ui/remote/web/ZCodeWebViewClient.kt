@@ -726,8 +726,8 @@ class ZCodeWebViewClient(
                顶偏 MCP 条目开关造成溢出——行内表单控件保持原生尺寸即可 */
             aside[class*="workspace-sidebar"] button:not([class*="rounded-xl"]),
             aside[class*="workspace-sidebar"] a:not([class*="rounded-xl"]),
-            nav button:not([class*="rounded-xl"]),
-            nav a:not([class*="rounded-xl"]) {
+            nav:where(:not([aria-label="设置路径"])) button:not([class*="rounded-xl"]),
+            nav:where(:not([aria-label="设置路径"])) a:not([class*="rounded-xl"]) {
                 min-width: 44px !important;
                 min-height: 44px !important;
                 margin: 4px 0 !important;
@@ -796,8 +796,8 @@ class ZCodeWebViewClient(
             div.workspace-sidebar a > span:not(:has(svg)):not(:has(img)),
             div.settings-sidebar button > span:not(:has(svg)):not(:has(img)),
             div.settings-sidebar a > span:not(:has(svg)):not(:has(img)),
-            nav button > span:not(:has(svg)):not(:has(img)),
-            nav a > span:not(:has(svg)):not(:has(img)) {
+            nav:where(:not([aria-label="设置路径"])) button > span:not(:has(svg)):not(:has(img)),
+            nav:where(:not([aria-label="设置路径"])) a > span:not(:has(svg)):not(:has(img)) {
                 display: none !important;
             }
 
@@ -848,6 +848,18 @@ class ZCodeWebViewClient(
                 order: 2 !important;
                 align-self: flex-start !important;
                 margin-top: 4px !important;
+            }
+
+            /* 2026-11-24 真机：新版设置说明区的 compact-web flex-basis 原用于横排换行。
+               打散网格改成纵排后，它会把说明撑到 160px 高；恢复自然高度，由外层统一留间距。 */
+            [data-testid="settings-page"] main div.border-t.py-3:has(> div[class*="grid-cols-[minmax"]) {
+                row-gap: 8px !important;
+            }
+            [data-testid="settings-page"] main div.border-t.py-3 > div[class*="grid-cols-[minmax"] > div.min-w-0:first-child {
+                flex: none !important;
+            }
+            [data-testid="settings-page"] main div.border-t.py-3 > div[class*="grid-cols-[minmax"] > div:last-child > button {
+                margin-top: 0 !important;
             }
 
             /* 3b. 键盘快捷键设置页表格行豁免（2026-09-26 模拟器 412px 实测根因）：
@@ -909,10 +921,29 @@ class ZCodeWebViewClient(
                     grid-area: scope !important;
                     justify-self: end !important;
                 }
-                [data-testid="settings-shortcuts-section"] [data-testid^="settings-shortcut-row-"] > :nth-child(4) {
+                [data-testid="settings-shortcuts-section"] [data-testid^="settings-shortcut-row-"] > button[aria-label^="清除"] {
                     grid-area: clear !important;
                     justify-self: end !important;
+                    min-width: 40px !important;
+                    min-height: 40px !important;
                 }
+                [data-testid="settings-shortcuts-section"] [data-testid^="settings-shortcut-row-"] button[aria-label^="重新录制"]:has(> kbd[data-slot="kbd"]) {
+                    display: inline-flex !important;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    gap: 6px;
+                    min-height: 40px;
+                    padding: 4px 8px;
+                    border: 1px solid var(--color-border);
+                }
+                [data-testid="settings-shortcuts-section"] [data-testid^="settings-shortcut-row-"] button[aria-label^="重新录制"]:has(> kbd[data-slot="kbd"])::after {
+                    content: "点击录制";
+                }
+            }
+
+            [data-testid="settings-page"][data-active-section="mcp"] label[data-zcode-required]::after {
+                content: "（必填）";
+                font-size: 0.85em;
             }
 
             /* 4. 下拉框、输入框自适应满宽，去除 PC 端 260px/320px 导致的挤压 */
@@ -960,24 +991,15 @@ class ZCodeWebViewClient(
                 min-width: 44px !important;
                 max-width: 44px !important;
                 min-height: 0 !important;
-                padding: 0 2px 12px !important;
+                padding: 0 2px 8px !important;
                 margin: 0 !important;
                 overflow-x: hidden !important;
                 overflow-y: auto !important;
-                scrollbar-width: auto !important;
-                scrollbar-color: auto !important;
+                scrollbar-width: none !important;
             }
-            /* 仅压细设置导航滚动条，保留触摸滚动；颜色跟随主题。
-               不设 scrollbar-width:thin，避免新版 WebView 用系统宽度覆盖 2px。 */
+            /* 低高度下仍可滑动和聚焦到末尾，旧版 WebView 也隐藏滚动条。 */
             [data-testid="settings-page"] > aside[class*="min-w-0"] nav::-webkit-scrollbar {
-                width: 2px !important;
-            }
-            [data-testid="settings-page"] > aside[class*="min-w-0"] nav::-webkit-scrollbar-track {
-                background: transparent !important;
-            }
-            [data-testid="settings-page"] > aside[class*="min-w-0"] nav::-webkit-scrollbar-thumb {
-                background: color-mix(in srgb, currentColor 28%, transparent) !important;
-                border-radius: 2px !important;
+                display: none !important;
             }
 
 
@@ -1023,7 +1045,8 @@ class ZCodeWebViewClient(
                 pointer-events: none !important;
             }
 
-            /* 11. 设置导航统一为 44px 纵向图标栏，按钮保持 40×40。
+            /* 11. 设置导航为 44px 纵向图标栏。379×742 的真机视口中，
+               17 个入口改为 40×36 后可同时看到，保留每项的触摸宽度。
                2026-11-14 真机实测：远端 compact-web 将侧栏改为横向 flex，
                但本地仍固定 44px，返回/搜索占满宽度后 nav 被压成 0px；
                返回箭头因此居中、其它图标全被裁掉。规则 7 恢复纵向布局及
@@ -1031,12 +1054,18 @@ class ZCodeWebViewClient(
                仅作用于设置页，避免误伤工作区和模型供应商侧栏。 */
             [data-testid="settings-page"] > aside nav button[aria-label][class*="rounded-xl"] {
                 width: 40px !important;
-                height: 40px !important;
+                height: 36px !important;
                 min-width: 40px !important;
-                min-height: 40px !important;
+                min-height: 36px !important;
                 justify-content: center !important;
                 margin: 0 !important;
                 padding: 0 !important;
+            }
+            [data-testid="settings-page"] > aside nav button[aria-label][class*="rounded-xl"] svg,
+            [data-testid="settings-page"] > aside button[aria-label="搜索设置"] > svg,
+            [data-testid="settings-page"] > aside button[aria-label="返回工作区"] > svg {
+                width: 15px !important;
+                height: 15px !important;
             }
             [data-testid="settings-page"] > aside nav button[aria-label] > span:not(:has(svg)):not(:has(img)),
             [data-testid="settings-page"] > aside button[aria-label="搜索设置"] > span,
@@ -1197,14 +1226,11 @@ class ZCodeWebViewClient(
                 padding-bottom: 24px !important;
             }
 
-            /* 16. 设置中心与表单长列表底部键盘安全滚动留白（限定只在设置中心生效，绝不影响任务会话）。
-               当编辑底部的模型名称或表单项时，软键盘弹出占用下半屏，
-               充足的 padding-bottom 允许列表自由向上滚动，避免被软键盘遮挡。 */
-            div:has(> aside) main,
-            main:has(div[class*="provider"]),
-            div:has(> nav[aria-label="设置路径"]) {
-                padding-bottom: min(45dvh, 320px) !important;
-                scroll-padding-bottom: min(45dvh, 320px) !important;
+            /* 16. 原生键盘 Insets 已缩小 WebView 的可见区域，由网页保留内容自身的底部边距。
+               给聚焦滚动留出少量间距，避免键盘收起时在设置列表末尾多出一大段空白。 */
+            [data-testid="settings-page"] main,
+            [data-testid="settings-page"] div:has(> nav[aria-label="设置路径"]) {
+                scroll-padding-bottom: 16px !important;
             }
 
             /* 17. 子智能体与任务消息气泡在窄屏及侧滑栏中的宽度与溢出适配。
@@ -1767,6 +1793,8 @@ class ZCodeWebViewClient(
                                 var clickable = touchTarget.closest('button, [role="button"], [role="tab"], a, select, [tabindex], [data-state], [data-slot], div[class*="item"], div[class*="provider"]') || touchTarget;
 
                                 if (clickable) {
+                                    // 创建自定义供应商会立刻写入远端，只处理原生点击，避免合成点击再次触发确认。
+                                    if (clickable.closest('[data-testid="model-provider-template-item-custom"]')) return;
                                     // 延迟触发前先检查原生 click 是否已经派发：
                                     // 浏览器在 touchend 后会立即合成原生 click，若已发生则跳过手动合成，
                                     // 否则 toggle 开关会切换两次回到原状态、对话框会开了又关、可折叠卡片会展开后瞬间收起
@@ -2643,7 +2671,7 @@ class ZCodeWebViewClient(
         injectSettingsLayoutGuards(webView)
     }
 
-    /** 设置中心复用主滚动区，模块切换和键盘缩放需分别处理，避免干预会话滚动。 */
+    /** 为远程设置页补充输入提示、创建确认和滚动保护。 */
     private fun injectSettingsLayoutGuards(webView: WebView) {
         if (invalidated) return
         val js = """
@@ -2654,6 +2682,22 @@ class ZCodeWebViewClient(
                 var settingsRoot = null;
                 var activeSection = null;
                 var sectionFrame = null;
+                var mcpFieldIds = new Map([['名称', 'name'], ['命令', 'command'], ['URL', 'url']]);
+                function markMcpRequiredFields(root) {
+                    var page = root.querySelector('nav[aria-label="设置路径"] [aria-current="page"]');
+                    if (!page || page.textContent.trim() !== '新建 MCP 服务器') return;
+                    var panel = root.querySelector('main [role="tabpanel"][data-state="active"]');
+                    if (!panel) return;
+                    panel.querySelectorAll('label').forEach(function(label) {
+                        var fieldId = mcpFieldIds.get(label.textContent.trim());
+                        var input = label.nextElementSibling;
+                        if (!fieldId || !input || !input.matches('input')) return;
+                        if (!input.id) input.id = 'zcode-mcp-create-' + fieldId;
+                        if (label.htmlFor !== input.id) label.htmlFor = input.id;
+                        if (!label.hasAttribute('data-zcode-required')) label.setAttribute('data-zcode-required', 'true');
+                        if (input.getAttribute('aria-required') !== 'true') input.setAttribute('aria-required', 'true');
+                    });
+                }
                 function syncSection() {
                     sectionFrame = null;
                     var root = document.querySelector('[data-testid="settings-page"]');
@@ -2666,6 +2710,7 @@ class ZCodeWebViewClient(
                     }
                     settingsRoot = root;
                     activeSection = section;
+                    if (section === 'mcp') markMcpRequiredFields(root);
                 }
                 function scheduleSection() {
                     if (!sectionFrame) sectionFrame = requestAnimationFrame(syncSection);
@@ -2680,6 +2725,19 @@ class ZCodeWebViewClient(
                 }
                 if (document.body) observeSections();
                 else document.addEventListener('DOMContentLoaded', observeSections, { once: true });
+
+                window.addEventListener('click', function(event) {
+                    var button = event.target.closest && event.target.closest(
+                        '[data-testid="settings-page"][data-active-section="modelProvider"] ' +
+                        'button[data-testid="model-provider-template-item-custom"]'
+                    );
+                    if (!button || button.disabled) return;
+                    // 远端在选择模板时直接创建记录。确认后放行同一个受信任事件，
+                    // 由远端处理创建，避免重复提交或合成点击绕过确认。
+                    if (event.isTrusted && window.confirm('确认创建自定义供应商？确认后会新增并启用该供应商，请接着填写连接配置。')) return;
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                }, true);
 
                 var focusFrame = null;
                 var focusSettleTimer = null;

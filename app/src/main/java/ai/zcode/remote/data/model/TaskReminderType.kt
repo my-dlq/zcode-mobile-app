@@ -6,7 +6,3 @@ enum class TaskReminderType(val key: String) {
     COMPLETED("completed"),
     FAILED("failed"),
 }
-
-enum class TaskReminderMode {
-    LEGACY, SHARED, CUSTOM,
-}

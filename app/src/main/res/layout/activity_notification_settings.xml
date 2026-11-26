@@ -111,19 +111,10 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="22dp"
-                android:layout_marginBottom="8dp"
-                android:text="@string/notif_reminder_title"
-                android:textColor="?attr/zcTextMuted"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
                 app:cardBackgroundColor="?attr/zcBgSurface"
                 app:cardCornerRadius="18dp"
                 app:cardElevation="0dp"
@@ -131,10 +122,9 @@
                 app:strokeWidth="1dp">
 
                 <include
-                    android:id="@+id/sharedReminder"
+                    android:id="@+id/reminderSettings"
                     layout="@layout/item_notification_reminder" />
             </com.google.android.material.card.MaterialCardView>
-
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -161,13 +151,6 @@
                     android:orientation="vertical" />
             </com.google.android.material.card.MaterialCardView>
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="@string/notif_reminder_event_hint"
-                android:textColor="?attr/zcTextMuted"
-                android:textSize="12sp" />
         </LinearLayout>
     </ScrollView>
 </LinearLayout>
