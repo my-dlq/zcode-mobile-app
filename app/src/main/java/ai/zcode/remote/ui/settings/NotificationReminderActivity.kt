@@ -9,9 +9,11 @@ import ai.zcode.remote.databinding.ActivityNotificationReminderBinding
 import ai.zcode.remote.databinding.ItemNotificationReminderCategoryBinding
 import ai.zcode.remote.ui.BaseActivity
 import ai.zcode.remote.ui.remote.event.TaskReminderChannels
+import ai.zcode.remote.utils.TaskReminderVibration
 import ai.zcode.remote.utils.ToastUtils
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.net.Uri
@@ -112,7 +114,10 @@ class NotificationReminderActivity : BaseActivity() {
         row.soundSwitch.isEnabled = alertsEnabled
         row.vibrationSwitch.isEnabled = alertsEnabled
         row.soundSwitch.setOnCheckedChangeListener { _, enabled -> save(type, profile.copy(soundEnabled = enabled)) }
-        row.vibrationSwitch.setOnCheckedChangeListener { _, enabled -> save(type, profile.copy(vibrationEnabled = enabled)) }
+        row.vibrationSwitch.setOnCheckedChangeListener { _, enabled ->
+            save(type, profile.copy(vibrationEnabled = enabled))
+            if (enabled) TaskReminderVibration.preview(this)
+        }
 
         val inheritedSound = originalSound?.takeUnless(RingtoneManager::isDefault)
         val selected = if (profile.tone == TaskReminderTone.ORIGINAL && inheritedSound == null) {
@@ -180,6 +185,11 @@ class NotificationReminderActivity : BaseActivity() {
         if (alreadyPlaying) return
         runCatching {
             val ringtone = checkNotNull(RingtoneManager.getRingtone(this, uri))
+            // 试听走当前媒体输出，系统通知仍由其通知渠道播放。
+            ringtone.audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build()
             preview = ringtone
             previewUri = uri
             ringtone.play()

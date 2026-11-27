@@ -16,6 +16,7 @@ import ai.zcode.remote.data.model.TaskReminderType
 import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.data.repository.ConnectionRepository
 import ai.zcode.remote.ui.remote.RemoteControlActivity
+import ai.zcode.remote.utils.TaskReminderVibration
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -224,7 +225,7 @@ object TaskNotifier {
                     val tone = if (profile == null) originalTone else profile.soundUri(context, originalTone)
                     val vibration = profile?.vibrationEnabled ?: settings.isTaskReminderVibrationEnabled(reminderType)
                     if (tone != null) setSound(tone)
-                    if (vibration) setDefaults(Notification.DEFAULT_VIBRATE)
+                    if (vibration) setVibrate(TaskReminderVibration.pattern())
                     if (isInteraction(event) && (tone != null || vibration)) {
                         setPriority(NotificationCompat.PRIORITY_HIGH)
                     }

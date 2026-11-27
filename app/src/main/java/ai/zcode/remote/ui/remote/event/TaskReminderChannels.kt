@@ -6,6 +6,7 @@ import ai.zcode.remote.data.model.TaskReminderSound
 import ai.zcode.remote.data.model.TaskReminderTone
 import ai.zcode.remote.data.model.TaskReminderType
 import ai.zcode.remote.data.repository.AppSettingsRepository
+import ai.zcode.remote.utils.TaskReminderVibration
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -60,11 +61,12 @@ internal object TaskReminderChannels {
         manager.createNotificationChannel(NotificationChannel(id, label, previousChannel?.importance ?: defaultImportance).apply {
             if (previousChannel != null) {
                 setSound(previousChannel.sound, previousChannel.audioAttributes)
-                previousChannel.vibrationPattern?.let(::setVibrationPattern)
-                enableVibration(previousChannel.shouldVibrate())
+                if (previousChannel.shouldVibrate()) {
+                    vibrationPattern = previousChannel.vibrationPattern ?: TaskReminderVibration.pattern()
+                }
             } else {
                 setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), notificationAudioAttributes())
-                enableVibration(true)
+                vibrationPattern = TaskReminderVibration.pattern()
             }
         })
         return id
@@ -78,9 +80,12 @@ internal object TaskReminderChannels {
         profile: TaskReminderProfile,
     ): String {
         val sound = profile.soundUri(context, base.sound)
-        if (sound == base.sound && profile.vibrationEnabled == base.shouldVibrate()) return base.id
+        val matchesBase = sound == base.sound && profile.vibrationEnabled == base.shouldVibrate()
+        val pattern = TaskReminderVibration.pattern()
+        if (matchesBase && (!profile.vibrationEnabled || base.vibrationPattern != null || base.canBypassDnd())) {
+            return base.id
+        }
 
-        // 每类通知和固定预设一一对应，切回旧预设时可以复用系统里已有的类别。
         val toneKey = if (profile.soundEnabled) {
             when (val tone = profile.tone) {
                 is TaskReminderTone -> tone.key
@@ -90,9 +95,17 @@ internal object TaskReminderChannels {
         } else {
             "no_sound"
         }
-        val id = "zcode_task_preset_${type.key}_${toneKey}_${profile.vibrationEnabled}"
+        val previousId = "zcode_task_preset_${type.key}_${toneKey}_${profile.vibrationEnabled}"
+        // Android 不允许修改已有渠道的震动节奏。新的震动预设使用固定 ID，避免反复创建渠道。
+        val id = if (profile.vibrationEnabled) "${previousId}_short" else previousId
         val manager = context.getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(id) != null) return id
+
+        val previous = if (matchesBase) base else manager.getNotificationChannel(previousId)
+        if (previous != null &&
+            (previous.importance == NotificationManager.IMPORTANCE_NONE ||
+                !previous.shouldVibrate() || previous.vibrationPattern != null || previous.canBypassDnd())
+        ) return previous.id
 
         val toneLabel = if (profile.soundEnabled) profile.tone.title(context) else context.getString(R.string.notif_reminder_no_sound)
         val vibrationLabel = if (profile.vibrationEnabled) R.string.notif_reminder_vibration else R.string.notif_reminder_vibration_off
@@ -100,12 +113,15 @@ internal object TaskReminderChannels {
             R.string.notif_reminder_channel_name,
             context.getString(label(type)), toneLabel, context.getString(vibrationLabel),
         )
-        manager.createNotificationChannel(NotificationChannel(id, name, base.importance).apply {
-            setSound(sound, base.audioAttributes ?: notificationAudioAttributes())
-            if (profile.vibrationEnabled) base.vibrationPattern?.let(::setVibrationPattern)
-            enableVibration(profile.vibrationEnabled)
-            setShowBadge(base.canShowBadge())
-            lockscreenVisibility = base.lockscreenVisibility
+        val settingsSource = previous ?: base
+        manager.createNotificationChannel(NotificationChannel(id, name, settingsSource.importance).apply {
+            setSound(if (previous == null) sound else previous.sound, settingsSource.audioAttributes ?: notificationAudioAttributes())
+            if (profile.vibrationEnabled) vibrationPattern = pattern
+            setShowBadge(settingsSource.canShowBadge())
+            lockscreenVisibility = settingsSource.lockscreenVisibility
+            group = settingsSource.group
+            enableLights(settingsSource.shouldShowLights())
+            lightColor = settingsSource.lightColor
         })
         return id
     }

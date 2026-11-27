@@ -7,6 +7,7 @@ import ai.zcode.remote.databinding.DialogNotificationTonePickerBinding
 import ai.zcode.remote.databinding.ItemNotificationToneBinding
 import android.content.ContentResolver
 import android.content.Context
+import android.media.AudioManager
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Handler
@@ -37,6 +38,7 @@ internal class NotificationTonePicker(
         val height = (context.resources.displayMetrics.heightPixels * 0.78f).toInt()
         behavior.maxHeight = height
         setContentView(binding.root, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height))
+        volumeControlStream = AudioManager.STREAM_MUSIC
         window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
         binding.title.requestFocus()
         binding.close.setOnClickListener { dismiss() }
