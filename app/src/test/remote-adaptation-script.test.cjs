@@ -14,6 +14,8 @@ const webSource = fs.readFileSync(path.join(base, 'web/ZCodeWebViewClient.kt'), 
 const cssSource = webSource.split('val css = """')[1].split('"""')[0];
 const marker = webSource.indexOf('window.__zcodeDashboardAdaptive =');
 const behaviorSource = webSource.slice(webSource.lastIndexOf('(function()', marker), webSource.indexOf('""".trimIndent()', marker));
+const settingsSource = webSource.slice(webSource.indexOf('private fun injectSettingsLayoutGuards('))
+  .split('"""')[1];
 const style = { display: 'block', visibility: 'visible', opacity: '1', pointerEvents: 'auto' };
 function el(attrs = {}, parent = null) {
   return { nodeType: 1, isConnected: true, parentElement: parent, hidden: false,
@@ -163,9 +165,50 @@ test('设置侧栏覆盖紧凑横排及双行网格，导航保留独立纵向�
   assert.match(nav, /min-width:\s*44px !important/);
   assert.match(nav, /overflow-y:\s*auto !important/);
   assert.match(nav, /overflow-x:\s*hidden !important/);
+  assert.match(nav, /scrollbar-width:\s*none !important/);
   const scrollbar = rule('[data-testid="settings-page"] > aside[class*="min-w-0"] nav::-webkit-scrollbar');
-  assert.match(scrollbar, /width:\s*2px !important/);
+  assert.match(scrollbar, /display:\s*none !important/);
+  const entry = rule('[data-testid="settings-page"] > aside nav button[aria-label][class*="rounded-xl"]');
+  assert.match(entry, /min-width:\s*40px !important/);
+  assert.match(entry, /min-height:\s*36px !important/);
   assert.ok(!cssSource.includes('aside[class*="min-w-0"] nav[class*="overflow-y-auto"]'));
+});
+
+test('自定义供应商仅放行已确认的原生点击', () => {
+  const listeners = [];
+  let confirmCount = 0;
+  let accepted = false;
+  const document = { addEventListener() {} };
+  const window = {
+    addEventListener(type, handler, capture) {
+      if (type === 'click') listeners.push({ handler, capture });
+    },
+    confirm() { confirmCount++; return accepted; }
+  };
+  vm.runInNewContext(settingsSource, { document, window });
+  vm.runInNewContext(settingsSource, { document, window });
+  assert.equal(listeners.length, 1);
+  assert.equal(listeners[0].capture, true);
+
+  function click(isTrusted, custom = true) {
+    let prevented = false;
+    let stopped = false;
+    listeners[0].handler({
+      isTrusted,
+      target: { closest: () => custom ? { disabled: false } : null },
+      preventDefault() { prevented = true; },
+      stopImmediatePropagation() { stopped = true; }
+    });
+    return [prevented, stopped];
+  }
+
+  assert.deepEqual(click(true, false), [false, false]);
+  assert.deepEqual(click(false), [true, true]);
+  assert.equal(confirmCount, 0);
+  assert.deepEqual(click(true), [true, true]);
+  accepted = true;
+  assert.deepEqual(click(true), [false, false]);
+  assert.equal(confirmCount, 2);
 });
 
 test('完整适配脚本重注不增加行为监听，样式和模式仍可更新', () => {

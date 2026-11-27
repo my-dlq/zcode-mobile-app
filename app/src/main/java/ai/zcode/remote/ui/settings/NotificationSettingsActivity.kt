@@ -1,94 +1,66 @@
 package ai.zcode.remote.ui.settings
 
+import ai.zcode.remote.R
+import ai.zcode.remote.data.model.TaskReminderType
+import ai.zcode.remote.data.repository.AppSettingsRepository
+import ai.zcode.remote.databinding.ActivityNotificationSettingsBinding
+import ai.zcode.remote.databinding.ItemNotificationReminderBinding
+import ai.zcode.remote.ui.BaseActivity
+import ai.zcode.remote.ui.remote.event.TaskReminderChannels
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import ai.zcode.remote.ui.BaseActivity
-import ai.zcode.remote.data.repository.AppSettingsRepository
-import ai.zcode.remote.databinding.ActivityNotificationSettingsBinding
+import androidx.core.view.isVisible
 
-/**
- * 通知管理设置页：总开关 + 各事件类型独立开关。
- * 偏好存 AppSettingsRepository，TaskNotifier 发布前逐条检查。
- */
 class NotificationSettingsActivity : BaseActivity() {
-
     private lateinit var binding: ActivityNotificationSettingsBinding
-    private lateinit var appSettings: AppSettingsRepository
+    private lateinit var settings: AppSettingsRepository
+    private val eventRows = mutableListOf<ItemNotificationReminderBinding>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityNotificationSettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
-
-        appSettings = AppSettingsRepository.getInstance(this)
+        settings = AppSettingsRepository.getInstance(this)
 
         binding.btnBack.setOnClickListener { finish() }
+        binding.reminderSettings.title.setText(R.string.notif_reminder_title)
+        binding.reminderSettings.summary.setText(R.string.notif_reminder_entry_summary)
+        binding.reminderSettings.root.setOnClickListener { NotificationReminderActivity.start(this) }
 
-        // 行点击 = 开关切换
+        binding.switchNotifMaster.isChecked = settings.isNotificationEnabled()
         binding.rowNotifMaster.setOnClickListener { binding.switchNotifMaster.toggle() }
-        binding.rowNotifApproval.setOnClickListener { binding.switchNotifApproval.toggle() }
-        binding.rowNotifElicitation.setOnClickListener { binding.switchNotifElicitation.toggle() }
-        binding.rowNotifCompleted.setOnClickListener { binding.switchNotifCompleted.toggle() }
-        binding.rowNotifFailed.setOnClickListener { binding.switchNotifFailed.toggle() }
-
-        refreshState()
+        binding.switchNotifMaster.setOnCheckedChangeListener { _, enabled ->
+            settings.setNotificationEnabled(enabled)
+            updateReceiveSwitches(enabled)
+        }
+        bindEventRow(TaskReminderType.APPROVAL, settings.isNotifApprovalEnabled(), settings::setNotifApprovalEnabled)
+        bindEventRow(TaskReminderType.QUESTION, settings.isNotifElicitationEnabled(), settings::setNotifElicitationEnabled)
+        bindEventRow(TaskReminderType.COMPLETED, settings.isNotifCompletedEnabled(), settings::setNotifCompletedEnabled)
+        bindEventRow(TaskReminderType.FAILED, settings.isNotifFailedEnabled(), settings::setNotifFailedEnabled)
+        updateReceiveSwitches(settings.isNotificationEnabled())
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (::binding.isInitialized && ::appSettings.isInitialized) {
-            refreshState()
-        }
+    private fun bindEventRow(type: TaskReminderType, enabled: Boolean, onEnabledChanged: (Boolean) -> Unit) {
+        val row = ItemNotificationReminderBinding.inflate(layoutInflater, binding.eventRows, true)
+        val title = getString(TaskReminderChannels.label(type))
+        row.title.text = title
+        row.summary.isVisible = false
+        row.chevron.isVisible = false
+        row.root.setOnClickListener { row.receiveSwitch.toggle() }
+        row.receiveSwitch.isVisible = true
+        row.receiveSwitch.contentDescription = getString(R.string.notif_reminder_receive_action, title)
+        row.receiveSwitch.isChecked = enabled
+        row.receiveSwitch.setOnCheckedChangeListener { _, checked -> onEnabledChanged(checked) }
+        eventRows += row
     }
 
-    private fun refreshState() {
-        // 总开关
-        binding.switchNotifMaster.setOnCheckedChangeListener(null)
-        binding.switchNotifMaster.isChecked = appSettings.isNotificationEnabled()
-        binding.switchNotifMaster.setOnCheckedChangeListener { _, checked ->
-            appSettings.setNotificationEnabled(checked)
-            updateEventRowsEnabled(checked)
+    private fun updateReceiveSwitches(masterEnabled: Boolean) {
+        for (row in eventRows) {
+            row.root.isEnabled = masterEnabled
+            row.receiveSwitch.isEnabled = masterEnabled
+            row.root.alpha = if (masterEnabled) 1f else 0.4f
         }
-        updateEventRowsEnabled(appSettings.isNotificationEnabled())
-
-        // 各事件类型
-        binding.switchNotifApproval.setOnCheckedChangeListener(null)
-        binding.switchNotifApproval.isChecked = appSettings.isNotifApprovalEnabled()
-        binding.switchNotifApproval.setOnCheckedChangeListener { _, checked ->
-            appSettings.setNotifApprovalEnabled(checked)
-        }
-
-        binding.switchNotifElicitation.setOnCheckedChangeListener(null)
-        binding.switchNotifElicitation.isChecked = appSettings.isNotifElicitationEnabled()
-        binding.switchNotifElicitation.setOnCheckedChangeListener { _, checked ->
-            appSettings.setNotifElicitationEnabled(checked)
-        }
-
-        binding.switchNotifCompleted.setOnCheckedChangeListener(null)
-        binding.switchNotifCompleted.isChecked = appSettings.isNotifCompletedEnabled()
-        binding.switchNotifCompleted.setOnCheckedChangeListener { _, checked ->
-            appSettings.setNotifCompletedEnabled(checked)
-        }
-
-        binding.switchNotifFailed.setOnCheckedChangeListener(null)
-        binding.switchNotifFailed.isChecked = appSettings.isNotifFailedEnabled()
-        binding.switchNotifFailed.setOnCheckedChangeListener { _, checked ->
-            appSettings.setNotifFailedEnabled(checked)
-        }
-    }
-
-    /** 总开关关闭时禁用事件类型行（视觉半透明 + 不可点击）。 */
-    private fun updateEventRowsEnabled(masterEnabled: Boolean) {
-        val alpha = if (masterEnabled) 1.0f else 0.4f
-        binding.rowNotifApproval.alpha = alpha
-        binding.rowNotifElicitation.alpha = alpha
-        binding.rowNotifCompleted.alpha = alpha
-        binding.rowNotifFailed.alpha = alpha
-        binding.switchNotifApproval.isEnabled = masterEnabled
-        binding.switchNotifElicitation.isEnabled = masterEnabled
-        binding.switchNotifCompleted.isEnabled = masterEnabled
-        binding.switchNotifFailed.isEnabled = masterEnabled
     }
 
     companion object {

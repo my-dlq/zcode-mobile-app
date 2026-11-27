@@ -1,20 +1,22 @@
 package ai.zcode.remote.ui.remote.event
 
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import ai.zcode.remote.R
+import ai.zcode.remote.data.model.TaskReminderType
 import ai.zcode.remote.data.repository.AppSettingsRepository
 import ai.zcode.remote.data.repository.ConnectionRepository
 import ai.zcode.remote.ui.remote.RemoteControlActivity
+import ai.zcode.remote.utils.TaskReminderVibration
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -24,8 +26,6 @@ import java.util.concurrent.TimeUnit
  * 同一个 eventKey 被标记为已投递后会保留，重连快照及用户划掉通知均不会令它再次弹出。
  */
 object TaskNotifier {
-    private const val CHANNEL_EVENTS = "zcode_task_events"
-    private const val CHANNEL_APPROVALS = "zcode_task_approvals"
     private const val TAG = "ZCodeEvent"
     private const val RESOLVE_COOLDOWN_MS = 30_000L
     internal const val EXTRA_INTERACTION_KEY = "ai.zcode.remote.interaction_key"
@@ -40,23 +40,6 @@ object TaskNotifier {
     private val interactionLock = Any()
     @Volatile private var inboxInstance: TaskNotificationInbox? = null
     private var consumerRunning = false
-
-    fun ensureChannels(context: Context) {
-        if (Build.VERSION.SDK_INT < 26) return
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_APPROVALS, context.getString(R.string.notif_channel_approvals),
-                NotificationManager.IMPORTANCE_HIGH).apply {
-                description = context.getString(R.string.notif_channel_approvals_desc)
-            },
-        )
-        manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_EVENTS, context.getString(R.string.notif_channel_events),
-                NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = context.getString(R.string.notif_channel_events_desc)
-            },
-        )
-    }
 
     /** WebView 事件生产入口，不在回调线程同步发布通知。 */
     fun notify(context: Context, event: TaskEventParser.TaskEvent) {
@@ -190,13 +173,31 @@ object TaskNotifier {
             Log.d(TAG, "notification disabled; event consumed: type=${event.type} id=${event.taskId}")
             return ConsumeResult.DISCARDED
         }
-        ensureChannels(context)
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
             Log.w(TAG, "system notifications disabled; event consumed: id=${event.taskId}")
             return ConsumeResult.DISCARDED
         }
-        val channel = channelFor(event)
+        val reminderType = when (event.type) {
+            TaskEventParser.TaskEvent.Type.PERMISSION_REQUEST -> TaskReminderType.APPROVAL
+            TaskEventParser.TaskEvent.Type.ELICITATION_REQUEST -> TaskReminderType.QUESTION
+            TaskEventParser.TaskEvent.Type.TASK_COMPLETED -> TaskReminderType.COMPLETED
+            TaskEventParser.TaskEvent.Type.TASK_FAILED -> TaskReminderType.FAILED
+            TaskEventParser.TaskEvent.Type.RESOLVED -> return ConsumeResult.DISCARDED
+        }
+        val profile = settings.taskReminderProfile(reminderType)
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channel = if (Build.VERSION.SDK_INT >= 26) {
+            val baseId = TaskReminderChannels.ensure(context, reminderType)
+            val base = manager.getNotificationChannel(baseId)
+            if (base?.importance == NotificationManager.IMPORTANCE_NONE) return ConsumeResult.DISCARDED
+            if (base != null && profile != null && !profile.isSilent) {
+                TaskReminderChannels.ensurePreset(context, reminderType, base, profile)
+            } else {
+                baseId
+            }
+        } else {
+            TaskReminderChannels.channelId(reminderType)
+        }
         if (Build.VERSION.SDK_INT >= 26 &&
             manager.getNotificationChannel(channel)?.importance == NotificationManager.IMPORTANCE_NONE
         ) return ConsumeResult.DISCARDED
@@ -218,6 +219,20 @@ object TaskNotifier {
                 putString(EXTRA_SOURCE_ID, sourceIdOf(event))
             })
             .setAutoCancel(true)
+            .apply {
+                if (Build.VERSION.SDK_INT < 26) {
+                    val originalTone = settings.getTaskReminderTone(reminderType).takeIf { it.isNotEmpty() }?.let(Uri::parse)
+                    val tone = if (profile == null) originalTone else profile.soundUri(context, originalTone)
+                    val vibration = profile?.vibrationEnabled ?: settings.isTaskReminderVibrationEnabled(reminderType)
+                    if (tone != null) setSound(tone)
+                    if (vibration) setVibrate(TaskReminderVibration.pattern())
+                    if (isInteraction(event) && (tone != null || vibration)) {
+                        setPriority(NotificationCompat.PRIORITY_HIGH)
+                    }
+                }
+            }
+            // 静默只改变这条通知的提醒方式，保留通知栏消息和已有系统渠道。
+            .setSilent(!settings.areTaskReminderAlertsEnabled() || profile?.isSilent == true)
             .build()
         return try {
             // 审批/提问以完整 sourceId 为 tag、taskId 为通知 ID：同连接同任务替换横幅，
@@ -268,9 +283,6 @@ object TaskNotifier {
         TaskEventParser.TaskEvent.Type.TASK_FAILED -> settings.isNotifFailedEnabled()
         TaskEventParser.TaskEvent.Type.RESOLVED -> false
     }
-
-    private fun channelFor(event: TaskEventParser.TaskEvent) =
-        if (isInteraction(event)) CHANNEL_APPROVALS else CHANNEL_EVENTS
 
     private fun notificationText(context: Context, event: TaskEventParser.TaskEvent): Pair<String, String> {
         val titleRes = when (event.type) {
