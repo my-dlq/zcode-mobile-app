@@ -11,8 +11,8 @@ android {
         applicationId = "ai.zcode.remote"
         minSdk = 24
         targetSdk = 34
-        versionCode = 13
-        versionName = "0.3.5"
+        versionCode = 14
+        versionName = "0.3.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
