@@ -35,6 +35,7 @@ The following screenshots show the current app on a real device. Click an image 
 - **Connection Management:** Connect by scanning a QR code, entering a URL, or using a clipboard shortcut. Save, edit, copy, delete, and reorder multiple connections by long-pressing and dragging.
 - **Startup:** Opens the connection list after exiting and restarting the app so you can choose a connection, without automatically reopening the previous session.
 - **Event Notifications:** Supports task completion, task failure, approval requests, and questions. Each type can be enabled separately; tapping a notification opens the corresponding task session.
+- **Notification Alerts:** Set sounds and vibration separately for each type of task notification.
 - **Background Keep-Alive:** An optional foreground service and screen-off WakeLock reduce background disconnections, with guidance for battery optimization settings.
 - **Display Settings:** Supports immersive full-screen mode, a configurable top bar, and full-page scaling. The remote page's top-bar menu provides quick actions to enter or exit full-screen mode and hide the top bar. Includes Light, Dark, and Graphite themes.
 - **Page Adaptation:** Improves narrow-screen layouts for task lists, settings, and dialogs, adjusts conversation input text size, and reduces unwanted keyboard activation when opening project or model menus.
